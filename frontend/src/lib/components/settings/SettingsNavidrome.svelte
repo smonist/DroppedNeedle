@@ -1,40 +1,55 @@
 <script lang="ts">
+	import { SECRET_MASK } from '$lib/ui/secretMask';
 	import { SETTINGS_ENDPOINTS } from '$lib/queries/settings/endpoints';
-	import { createSettingsForm } from '$lib/utils/settingsForm.svelte';
-	import { onDestroy } from 'svelte';
+	import {
+		createSaveNavidromeSettingsMutation,
+		createVerifyNavidromeMutation,
+		getNavidromeSettingsQuery
+	} from '$lib/queries/settings/SectionSettingsQueries.svelte';
 	import { api, ApiError } from '$lib/api/client';
-	import type { NavidromeConnectionSettings, NavidromePlaylistSyncResult } from '$lib/types';
+	import type { NavidromePlaylistSyncResult } from '$lib/types';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import QueryBoundary from '$lib/ui/QueryBoundary.svelte';
+	import SaveBar from '$lib/ui/SaveBar.svelte';
+	import SecretField from '$lib/ui/SecretField.svelte';
+	import SelectField from '$lib/ui/SelectField.svelte';
+	import TextField from '$lib/ui/TextField.svelte';
+	import ToggleRow from '$lib/ui/ToggleRow.svelte';
+	import { createSettingsSection } from '$lib/ui/settingsSection.svelte';
 
-	type NavidromeTestResult = { valid: boolean; message: string };
-	type NavidromeSettingsForm = ReturnType<
-		typeof createSettingsForm<NavidromeConnectionSettings>
-	> & {
-		testResult: NavidromeTestResult | null;
-	};
+	const verify = createVerifyNavidromeMutation();
 
-	const form = createSettingsForm<NavidromeConnectionSettings>({
-		loadEndpoint: SETTINGS_ENDPOINTS.navidrome(),
-		saveEndpoint: SETTINGS_ENDPOINTS.navidrome(),
-		testEndpoint: SETTINGS_ENDPOINTS.navidromeVerify(),
-		enabledField: 'enabled',
-		refreshIntegration: true
-	}) as NavidromeSettingsForm;
+	const section = createSettingsSection(
+		getNavidromeSettingsQuery(),
+		createSaveNavidromeSettingsMutation(),
+		{
+			refreshIntegration: true,
+			test: async (draft) => {
+				if (!draft.navidrome_url || !draft.username || !draft.password) {
+					return { passed: false, message: 'Add the URL, username and password first.' };
+				}
+				const result = await verify.mutateAsync(draft);
+				return { passed: result.valid, message: result.message };
+			}
+		}
+	);
 
-	let showPassword = $state(false);
+	// The switch stays locked until a test passes, unless already on.
+	const enableLocked = $derived(!section.testPassed && !section.saved?.enabled);
+
 	let syncing = $state(false);
 	let syncResult = $state<NavidromePlaylistSyncResult | null>(null);
-
-	export async function load() {
-		await form.load();
-	}
 
 	async function syncPlaylists() {
 		syncing = true;
 		syncResult = null;
 		try {
-			// The endpoint reads saved settings, so save first or an edited
-			// path or scope is ignored.
-			await form.save();
+			// The sync reads the saved settings, so unsaved edits are saved first.
+			if (section.dirty) {
+				await section.save();
+				if (section.dirty) return;
+			}
 			syncResult = await api.global.v3.POST(SETTINGS_ENDPOINTS.navidromePlaylistSync());
 		} catch (error) {
 			syncResult = {
@@ -56,113 +71,44 @@
 			syncing = false;
 		}
 	}
-
-	async function save() {
-		await form.save();
-	}
-
-	async function test() {
-		await form.test();
-	}
-
-	$effect(() => {
-		form.load();
-	});
-
-	onDestroy(() => form.cleanup());
 </script>
 
-<div class="card bg-base-200">
-	<div class="card-body">
-		<h2 class="card-title text-2xl">Navidrome Connection</h2>
-		<p class="text-base-content/70 mb-4">
-			Connect your Navidrome server for music streaming, recently played tracks, and favorites.
-		</p>
+<Card title="Navidrome Connection">
+	<p class="text-base-content/70 mb-4">
+		Connect your Navidrome server for music streaming, recently played tracks, and favorites.
+	</p>
 
-		{#if form.loading}
-			<div class="flex justify-center items-center py-12">
-				<span class="loading loading-spinner loading-lg"></span>
-			</div>
-		{:else if form.data}
+	<QueryBoundary query={section} what="the Navidrome settings">
+		{#snippet children(draft)}
 			<div class="space-y-4">
-				<div class="form-control w-full">
-					<label class="label" for="navidrome-url">
-						<span class="label-text">Navidrome URL</span>
-					</label>
-					<input
-						id="navidrome-url"
-						type="url"
-						bind:value={form.data.navidrome_url}
-						class="input input-bordered w-full"
-						placeholder="http://localhost:4533"
-					/>
-				</div>
+				<TextField
+					label="Navidrome URL"
+					type="url"
+					placeholder="http://localhost:4533"
+					bind:value={draft.navidrome_url}
+				/>
 
-				<div class="form-control w-full">
-					<label class="label" for="navidrome-username">
-						<span class="label-text">Username</span>
-					</label>
-					<input
-						id="navidrome-username"
-						type="text"
-						bind:value={form.data.username}
-						class="input input-bordered w-full"
-						placeholder="Your Navidrome username"
-					/>
-				</div>
+				<TextField
+					label="Username"
+					placeholder="Your Navidrome username"
+					bind:value={draft.username}
+				/>
 
-				<div class="form-control w-full">
-					<label class="label" for="navidrome-password">
-						<span class="label-text">Password</span>
-					</label>
-					<div class="join w-full">
-						<input
-							id="navidrome-password"
-							type={showPassword ? 'text' : 'password'}
-							bind:value={form.data.password}
-							class="input input-bordered join-item flex-1"
-							placeholder="Your Navidrome password"
-						/>
-						<button
-							type="button"
-							class="btn join-item"
-							onclick={() => (showPassword = !showPassword)}
-						>
-							{showPassword ? 'Hide' : 'Show'}
-						</button>
-					</div>
-				</div>
+				<SecretField
+					label="Password"
+					mask={SECRET_MASK}
+					placeholder="Your Navidrome password"
+					bind:value={draft.password}
+				/>
 
-				{#if form.testResult}
-					<div
-						class="alert"
-						class:alert-success={form.testResult.valid}
-						class:alert-error={!form.testResult.valid}
-					>
-						<span>{form.testResult.message}</span>
-					</div>
-				{/if}
-
-				<div class="form-control">
-					<label class="label cursor-pointer justify-start gap-4">
-						<input
-							type="checkbox"
-							bind:checked={form.data.enabled}
-							class="toggle toggle-primary"
-							disabled={!form.testResult?.valid && !form.wasAlreadyEnabled}
-						/>
-						<div>
-							<span class="label-text font-medium">Enable Navidrome Integration</span>
-							<p class="text-xs text-base-content/50">
-								{#if !form.testResult?.valid && !form.wasAlreadyEnabled}
-									Test connection first to enable
-								{:else}
-									Stream music, view recently played, and browse your Navidrome library
-								{/if}
-							</p>
-						</div>
-					</label>
-				</div>
+				<ToggleRow
+					label="Enable Navidrome Integration"
+					description={enableLocked
+						? 'Test the connection first.'
+						: 'Stream music, view recently played, and browse your Navidrome library'}
+					bind:checked={draft.enabled}
+					disabled={enableLocked}
+				/>
 
 				<div class="divider"></div>
 
@@ -175,86 +121,35 @@
 					</p>
 				</div>
 
-				<div class="form-control">
-					<label class="label cursor-pointer justify-start gap-4">
-						<input
-							type="checkbox"
-							bind:checked={form.data.playlist_sync_enabled}
-							class="toggle toggle-primary"
-						/>
-						<div class="whitespace-normal">
-							<span class="label-text font-medium">Export playlists to Navidrome</span>
-							<p class="text-xs text-base-content/50">
-								Nothing is written until this is on and the settings are saved
-							</p>
-						</div>
-					</label>
-				</div>
+				<ToggleRow
+					label="Export playlists to Navidrome"
+					description="Nothing is written until this is on and the settings are saved"
+					bind:checked={draft.playlist_sync_enabled}
+				/>
 
-				{#if form.data.playlist_sync_enabled}
-					<div class="form-control w-full">
-						<label class="label" for="navidrome-playlist-path">
-							<span class="label-text">Playlist folder</span>
-						</label>
-						<input
-							id="navidrome-playlist-path"
-							type="text"
-							bind:value={form.data.playlist_sync_path}
-							class="input input-bordered w-full"
-							placeholder="/music/playlists"
-						/>
-						<div class="label whitespace-normal">
-							<span class="label-text-alt text-base-content/50">
-								An absolute path <em>inside the DroppedNeedle container</em> that must sit
-								<strong>inside the same music library tree Navidrome scans</strong>. Track paths are
-								written relative to this folder, so both apps have to see the same folder-to-track
-								relationship.
-							</span>
-						</div>
-					</div>
+				{#if draft.playlist_sync_enabled}
+					<TextField
+						label="Playlist folder"
+						placeholder="/music/playlists"
+						help="An absolute path inside the DroppedNeedle container that must sit inside the same music library tree Navidrome scans. Track paths are written relative to this folder, so both apps have to see the same folder-to-track relationship."
+						bind:value={draft.playlist_sync_path}
+					/>
 
-					<div class="form-control w-full">
-						<label class="label" for="navidrome-playlist-scope">
-							<span class="label-text">Which playlists</span>
-						</label>
-						<select
-							id="navidrome-playlist-scope"
-							bind:value={form.data.playlist_sync_scope}
-							class="select select-bordered w-full"
-						>
-							<option value="public">Public playlists only</option>
-							<option value="all">All playlists</option>
-						</select>
-						<div class="label whitespace-normal">
-							<span class="label-text-alt text-base-content/50">
-								Navidrome does not scope an imported playlist to a user, so anything exported is
-								visible to everyone on that server. "All playlists" therefore publishes other users'
-								private playlists too. To have them correctly scoped to a user on Navidrome,
-								imported playlists can be assigned to a user (and made private or public) within the
-								Navidrome dashboard.
-							</span>
-						</div>
-					</div>
+					<SelectField
+						label="Which playlists"
+						bind:value={draft.playlist_sync_scope}
+						options={[
+							{ value: 'public', label: 'Public playlists only' },
+							{ value: 'all', label: 'All playlists' }
+						]}
+						help="Navidrome does not scope an imported playlist to a user, so anything exported is visible to everyone on that server. &quot;All playlists&quot; therefore publishes other users' private playlists too. To have them correctly scoped to a user on Navidrome, imported playlists can be assigned to a user (and made private or public) within the Navidrome dashboard."
+					/>
 
-					<div class="form-control">
-						<label class="label cursor-pointer justify-start gap-4">
-							<input
-								type="checkbox"
-								bind:checked={form.data.playlist_sync_remove_deleted}
-								class="toggle toggle-primary"
-							/>
-							<div class="whitespace-normal">
-								<span class="label-text font-medium">
-									Remove exported files when a playlist is removed from DroppedNeedle, or when a
-									playlist is made private and only public playlists are exported
-								</span>
-								<p class="text-xs text-base-content/50">
-									Only files exported from DroppedNeedle are ever removed. Other playlists in the
-									same folder are never removed.
-								</p>
-							</div>
-						</label>
-					</div>
+					<ToggleRow
+						label="Remove exported files when a playlist is removed from DroppedNeedle, or when a playlist is made private and only public playlists are exported"
+						description="Only files exported from DroppedNeedle are ever removed. Other playlists in the same folder are never removed."
+						bind:checked={draft.playlist_sync_remove_deleted}
+					/>
 
 					{#if syncResult}
 						<div
@@ -275,53 +170,20 @@
 					{/if}
 
 					<div class="flex justify-start">
-						<button
-							type="button"
-							class="btn btn-outline btn-sm"
+						<Button
+							variant="outline"
+							size="sm"
+							loading={syncing}
+							disabled={section.saving || !draft.playlist_sync_path}
 							onclick={syncPlaylists}
-							disabled={syncing || form.saving || !form.data.playlist_sync_path}
 						>
-							{#if syncing}
-								<span class="loading loading-spinner loading-sm"></span>
-							{/if}
 							Sync Now
-						</button>
+						</Button>
 					</div>
 				{/if}
 
-				{#if form.message}
-					<div
-						class="alert"
-						class:alert-success={form.messageType === 'success'}
-						class:alert-error={form.messageType === 'error'}
-					>
-						<span>{form.message}</span>
-					</div>
-				{/if}
-
-				<div class="flex justify-end gap-2 pt-2">
-					<button
-						type="button"
-						class="btn btn-ghost"
-						onclick={test}
-						disabled={form.testing ||
-							!form.data.navidrome_url ||
-							!form.data.username ||
-							!form.data.password}
-					>
-						{#if form.testing}
-							<span class="loading loading-spinner loading-sm"></span>
-						{/if}
-						Test Connection
-					</button>
-					<button type="button" class="btn btn-primary" onclick={save} disabled={form.saving}>
-						{#if form.saving}
-							<span class="loading loading-spinner loading-sm"></span>
-						{/if}
-						Save Settings
-					</button>
-				</div>
+				<SaveBar {...section.bar} testLabel="Test connection" />
 			</div>
-		{/if}
-	</div>
-</div>
+		{/snippet}
+	</QueryBoundary>
+</Card>

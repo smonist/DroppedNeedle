@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -59,7 +59,7 @@ describe('library route page', () => {
 		authStore.setUser(user('user'));
 		await render(LibraryPage);
 		const controls = page.getByRole('button', { name: 'Controls' });
-		await expect.element(controls).toHaveAttribute('aria-disabled', 'true');
+		await expect.element(controls).toBeDisabled();
 		await expect
 			.element(page.getByText('Library controls require administrator access.'))
 			.toBeInTheDocument();

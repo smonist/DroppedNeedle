@@ -3,12 +3,16 @@
 	import { withBasePath } from '$lib/utils/basePath';
 	import AlbumImage from './AlbumImage.svelte';
 	import DeleteAlbumModal from './DeleteAlbumModal.svelte';
-	import type { RequestItem } from '$lib/queries/requests/types';
-	import type { RequestKind } from '$lib/constants';
+	import type { RequestItem, RequestKind } from '$lib/queries/requests/types';
 	import { reimportDownload } from '$lib/queries/downloads/DownloadMutations.svelte';
+	import { createFromAlbumMutation } from '$lib/queries/requests/RequestMutations.svelte';
 	import { authStore } from '$lib/stores/authStore.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 	import {
 		ChevronDown,
+		ChevronUp,
 		X,
 		RotateCcw,
 		Trash2,
@@ -17,22 +21,27 @@
 		FileDown,
 		Loader,
 		CircleCheckBig,
+		Disc3,
 		CircleX,
 		TriangleAlert,
 		Ban,
 		Pause,
 		Music,
 		Radar,
-		Upload
+		Upload,
+		Eye
 	} from 'lucide-svelte';
 
 	interface Props {
 		item: RequestItem;
 		mode: 'active' | 'history';
+		// The linked download's own state on an active card (searching, awaiting
+		// review, downloading...), which the request row alone cannot tell.
+		liveStatus?: string;
 		// still being worked on despite the terminal status: 'retrying' = auto-retry
 		// ladder, 'watching' = wanted watcher. Renders a chip linking to the Wanted tab.
 		watchState?: 'retrying' | 'watching';
-		// R10 batch-cancel selection. Rendered only when `selectable` is set.
+		// Batch-cancel selection. Rendered only when `selectable` is set.
 		selectable?: boolean;
 		selected?: boolean;
 		onselect?: (mbid: string, requestKind: RequestKind, selected: boolean) => void;
@@ -46,6 +55,7 @@
 	let {
 		item,
 		mode,
+		liveStatus,
 		watchState,
 		selectable = false,
 		selected = false,
@@ -58,6 +68,7 @@
 	}: Props = $props();
 
 	const reimport = reimportDownload();
+	const fromAlbum = createFromAlbumMutation();
 
 	let confirmingCancel = $state(false);
 	let showDeleteModal = $state(false);
@@ -108,15 +119,27 @@
 		glow?: string;
 	};
 
-	const waitingForSource = $derived(
-		mode === 'active' && item.waiting_reason === 'no_download_source'
-	);
+	const waitingNote = $derived.by((): string | null => {
+		if (mode !== 'active') return null;
+		switch (item.waiting_reason) {
+			case 'no_download_source':
+				return 'Waiting: no download source configured';
+			case 'request_quota_full':
+				return 'Waiting: request quota full';
+			case 'storage_full':
+				return 'Waiting: storage full';
+			default:
+				return null;
+		}
+	});
+	const waiting = $derived(waitingNote !== null);
+	const status = $derived(mode === 'active' && liveStatus ? liveStatus : item.status);
 
 	const statusConfig = $derived.by((): StatusConfig => {
-		if (waitingForSource) {
+		if (waiting) {
 			return { badgeClass: 'badge-warning', label: 'Waiting', icon: Clock };
 		}
-		switch (item.status) {
+		switch (status) {
 			case 'pending':
 				return {
 					badgeClass: 'badge-warning',
@@ -155,10 +178,12 @@
 				return { badgeClass: 'badge-ghost', label: 'Cancelled', icon: Ban };
 			case 'awaiting_approval':
 				return { badgeClass: 'badge-warning', label: 'Awaiting Approval', icon: Clock };
+			case 'awaiting_review':
+				return { badgeClass: 'badge-warning', label: 'Awaiting Review', icon: Eye };
 			case 'rejected':
 				return { badgeClass: 'badge-error', label: 'Rejected', icon: Ban };
 			default:
-				return { badgeClass: 'badge-ghost', label: item.status, icon: Music };
+				return { badgeClass: 'badge-ghost', label: status, icon: Music };
 		}
 	});
 
@@ -227,19 +252,17 @@
 	const isActive = $derived(mode === 'active');
 	const hasProgress = $derived(
 		isActive &&
-			!waitingForSource &&
-			(item.status === 'downloading' || item.status === 'importing' || item.status === 'paused')
+			!waiting &&
+			(status === 'downloading' || status === 'importing' || status === 'paused')
 	);
 	const hasStatusMessages = $derived(
 		isActive && item.status_messages && item.status_messages.length > 0
 	);
 </script>
 
-<div
-	class="request-card relative flex flex-col rounded-box transition-all duration-200"
-	class:border-error={isFailedState}
-	class:border={isFailedState}
-	class:is-downloading={isActive && !waitingForSource && item.status === 'downloading'}
+<Card
+	padding="none"
+	class="relative transition-colors hover:bg-base-300 {isFailedState ? 'border border-error' : ''}"
 >
 	{#if albumContextMbid}
 		<a
@@ -270,9 +293,9 @@
 				rounded="lg"
 				className="w-full h-full"
 			/>
-			{#if isActive && item.status === 'pending'}
+			{#if isActive && status === 'pending' && !waiting}
 				<div class="absolute inset-0 bg-base-300/60 flex items-center justify-center">
-					<Loader class="h-5 w-5 text-warning animate-spin" />
+					<Loader class="h-5 w-5 text-warning animate-spin motion-keep" />
 				</div>
 			{/if}
 		</div>
@@ -305,6 +328,10 @@
 				{#if item.year}
 					<span class="text-base-content/20">•</span>
 					<span class="text-xs text-base-content/40">{item.year}</span>
+				{/if}
+				{#if item.origin === 'follow'}
+					<span class="text-base-content/20">•</span>
+					<span class="text-xs text-base-content/40">Followed artist</span>
 				{/if}
 				{#if isActive && item.quality}
 					<span class="text-base-content/20">•</span>
@@ -361,7 +388,7 @@
 						<div class="progress-track flex-1">
 							<div
 								class="progress-fill"
-								class:progress-fill-paused={item.status === 'paused'}
+								class:progress-fill-paused={status === 'paused'}
 								style="width: {item.progress ?? 0}%"
 							></div>
 						</div>
@@ -385,64 +412,82 @@
 						{/if}
 					</div>
 				</div>
-			{:else if waitingForSource}
+			{:else if waitingNote}
 				<span class="text-xs text-base-content/70 max-w-44 text-right">
-					Waiting: no download source configured
+					{waitingNote}
 				</span>
 			{:else if isActive && isFailedState && item.error_message}
 				<span class="text-xs text-error/80 max-w-44 text-right line-clamp-2"
 					>{item.error_message}</span
 				>
+			{:else if !isActive && item.album_version_only}
+				<span class="text-xs text-base-content/70 max-w-44 text-right">
+					Only the album version was found
+				</span>
 			{:else if !isActive && item.completed_at}
 				<span class="text-xs text-base-content/40">{formatDate(item.completed_at)}</span>
 			{/if}
 
 			<div class="flex gap-1 items-center">
 				{#if isActive && hasStatusMessages}
-					<button
-						class="btn btn-xs btn-ghost btn-square"
-						onclick={(e) => {
+					<IconButton
+						size="xs"
+						shape="square"
+						icon={showStatusDetails ? ChevronUp : ChevronDown}
+						label={showStatusDetails ? 'Hide details' : 'Show details'}
+						onclick={(e: MouseEvent) => {
 							e.stopPropagation();
 							showStatusDetails = !showStatusDetails;
 						}}
-						title={showStatusDetails ? 'Hide details' : 'Show details'}
 						aria-expanded={showStatusDetails}
-					>
-						<ChevronDown
-							class="h-3.5 w-3.5 transition-transform duration-200 {showStatusDetails
-								? 'rotate-180'
-								: ''}"
-						/>
-					</button>
+					/>
 				{/if}
 				{#if isActive}
 					{#if confirmingCancel}
 						<span class="text-xs text-base-content/60 mr-0.5" role="alert">Cancel?</span>
-						<button class="btn btn-xs btn-error" onclick={handleCancelClick}>Yes</button>
-						<button class="btn btn-xs btn-ghost" onclick={handleCancelNo}>No</button>
+						<Button variant="danger" size="xs" onclick={handleCancelClick}>Yes</Button>
+						<Button variant="ghost" size="xs" onclick={handleCancelNo}>No</Button>
 					{:else}
-						<button
-							class="btn btn-xs btn-ghost text-error/60 hover:text-error hover:bg-error/10"
+						<Button
+							variant="danger-ghost"
+							size="xs"
+							icon={X}
 							onclick={handleCancelClick}
 							title="Cancel download"
-						>
-							<X class="h-3.5 w-3.5" />
-						</button>
+							aria-label="Cancel download"
+						/>
 					{/if}
 				{:else}
+					{#if item.album_version_only && onretry}
+						<Button
+							variant="ghost"
+							size="xs"
+							icon={Disc3}
+							onclick={(e: MouseEvent) => {
+								e.stopPropagation();
+								fromAlbum.mutate(item.musicbrainz_id);
+							}}
+							disabled={fromAlbum.isPending}
+						>
+							Get it from the album
+						</Button>
+					{/if}
 					{#if item.status === 'failed' || item.status === 'cancelled' || item.status === 'incomplete'}
-						<button
-							class="btn btn-xs btn-primary btn-ghost"
+						<Button
+							variant="ghost"
+							size="xs"
+							icon={RotateCcw}
 							onclick={handleRetry}
 							title="Retry request"
-						>
-							<RotateCcw class="h-3.5 w-3.5" />
-						</button>
+							aria-label="Retry request"
+						/>
 					{/if}
 					{#if authStore.isAdmin && item.can_reimport && item.task_id}
-						<button
-							class="btn btn-xs btn-ghost"
-							onclick={(e) => {
+						<Button
+							variant="ghost"
+							size="xs"
+							icon={FileDown}
+							onclick={(e: MouseEvent) => {
 								e.stopPropagation();
 								reimport.mutate(
 									{
@@ -456,33 +501,33 @@
 							disabled={reimport.isPending}
 							title="Already fixed this in slskd? Check the downloads mount again without re-searching."
 							aria-label="Retry import from slskd"
-						>
-							<FileDown class="h-3.5 w-3.5" />
-						</button>
+						/>
 					{/if}
 					{#if authStore.isAdmin && !isTrackRequest && item.status === 'imported' && item.in_library !== false}
-						<button
-							class="btn btn-xs btn-ghost text-base-content/40 hover:text-error"
+						<Button
+							variant="ghost"
+							size="xs"
+							icon={Trash2}
 							onclick={handleRemoveFromLibrary}
 							title="Remove from library"
-						>
-							<Trash2 class="h-3.5 w-3.5" />
-						</button>
+							aria-label="Remove from library"
+						/>
 					{/if}
-					<button
-						class="btn btn-xs btn-ghost text-base-content/30 hover:text-base-content/70"
+					<Button
+						variant="ghost"
+						size="xs"
+						icon={X}
 						onclick={handleClear}
 						title="Clear from history"
-					>
-						<X class="h-3.5 w-3.5" />
-					</button>
+						aria-label="Clear from history"
+					/>
 				{/if}
 			</div>
 		</div>
 	</div>
 
 	{#if showStatusDetails && hasStatusMessages}
-		<div class="px-3 sm:px-4 pb-3 sm:pb-4 -mt-1 relative z-10">
+		<div class="px-3 sm:px-4 pb-3 sm:pb-4 -mt-3 relative z-10">
 			<div
 				class="bg-base-100/50 border border-error/10 rounded-lg p-3 text-xs max-h-48 overflow-y-auto"
 			>
@@ -497,7 +542,7 @@
 			</div>
 		</div>
 	{/if}
-</div>
+</Card>
 
 {#if showDeleteModal}
 	<DeleteAlbumModal
@@ -512,17 +557,6 @@
 {/if}
 
 <style>
-	.request-card {
-		background: oklch(from var(--color-base-200) l c h / 1);
-	}
-	.request-card:hover {
-		background: oklch(from var(--color-base-300) l c h / 1);
-		box-shadow: 0 0 12px oklch(from var(--color-primary) l c h / 0.06);
-	}
-	.request-card.is-downloading {
-		box-shadow: 0 0 16px oklch(from var(--color-info) l c h / 0.08);
-	}
-
 	.progress-track {
 		height: 6px;
 		border-radius: 3px;

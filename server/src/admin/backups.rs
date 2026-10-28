@@ -1,6 +1,6 @@
-//! Backup UX: list, run, pre-restore reports, pre-upgrade safety nets.
+//! Backup UX: list, run, pre-restore reports.
 //!
-//! The mechanism lives in [`crate::db::backup`]; this module is the admin
+//! The mechanism lives in [`droppedneedle_kernel::db::backup`]; this module is the admin
 //! face over it. Rotation stays at five (`BACKUP_KEEP`): verification
 //! always precedes rotation, so a failed run leaves the previous five
 //! untouched.
@@ -23,9 +23,15 @@ use super::{
     error::AdminError,
     models::{BackupListResponse, BackupRunResponse, BackupView, RestoreCheck, RestoreReport},
 };
-use crate::db::{
-    BACKUP_KEEP, BackupManifest, BackupReport, BackupService, backup::MANIFEST_SUFFIX,
+use droppedneedle_kernel::db::{
+    BACKUP_KEEP, BackupManifest, BackupReport, BackupService, UndoDir,
+    backup::{MANIFEST_SUFFIX, named_undo_copies},
+    undo_dir::UNDO_DIR_NAME,
 };
+
+/// The restore report's check on the backup's undo copies. A restore
+/// does not stop on it.
+pub const UNDO_COPIES_CHECK: &str = "undo-copies";
 
 /// List the backups on disk, oldest first. Blocking file IO. Files without a manifest sidecar
 /// still list with their on-disk size; only the manifest fields stay empty.
@@ -69,6 +75,7 @@ pub fn list_backups(backup_dir: &Path) -> Result<BackupListResponse, AdminError>
             created_at_unix: manifest
                 .as_ref()
                 .and_then(|found| unix_secs(found.created_at)),
+            undo_bytes: manifest.as_ref().map(|found| found.undo_bytes),
         });
     }
     Ok(BackupListResponse {
@@ -79,51 +86,12 @@ pub fn list_backups(backup_dir: &Path) -> Result<BackupListResponse, AdminError>
 
 /// Run one backup now and report what it produced.
 pub async fn run_backup(service: &BackupService) -> Result<BackupRunResponse, AdminError> {
-    let cancel = crate::db::writer::CancelFlag::never();
+    let cancel = droppedneedle_kernel::db::writer::CancelFlag::never();
     let report = service
         .backup(None, &cancel)
         .await
         .map_err(|error| AdminError::internal(&format_args!("backup run failed: {error}")))?;
     Ok(run_response(&report))
-}
-
-/// Take a safety backup before a schema upgrade. Reads the live stamp: when
-/// it already matches the binary, there is nothing to protect and this
-/// returns `None` without touching the backups directory. A fresh database
-/// (stamp 0 with no tables yet) also skips: there is nothing to lose.
-/// Otherwise it runs one verified backup (rotating at five) and returns its
-/// report. Boot treats a failure here as fatal: migrating without a safety
-/// net risks the catalog.
-///
-/// The stamp alone does not prove freshness: a legacy database could carry
-/// stamp 0 with real tables, and that still gets its backup. Only the
-/// stamp-0-plus-no-tables shape skips.
-pub async fn ensure_pre_upgrade_backup(
-    db_path: &Path,
-    backup_dir: &Path,
-) -> Result<Option<BackupReport>, crate::db::error::DbError> {
-    let found = read_user_version(db_path)?;
-    let expected = crate::schema::latest_version();
-    if found >= expected {
-        return Ok(None);
-    }
-    if found == 0 && !has_user_tables(db_path)? {
-        tracing::info!("fresh database; skipping the pre-upgrade backup");
-        return Ok(None);
-    }
-    tracing::info!(
-        found,
-        expected,
-        "schema upgrade pending; taking a pre-upgrade backup"
-    );
-    let service = BackupService::new(db_path, backup_dir);
-    let cancel = crate::db::writer::CancelFlag::never();
-    let report = service.backup(None, &cancel).await?;
-    tracing::info!(
-        backup = report.path.display().to_string(),
-        "pre-upgrade backup complete"
-    );
-    Ok(Some(report))
 }
 
 /// Verify a backup read-only and report whether an offline restore should
@@ -187,8 +155,8 @@ pub fn restore_report(backup_dir: &Path, name: &str) -> Result<RestoreReport, Ad
                 )
             },
         });
-        let sha_ok =
-            crate::db::backup::file_sha256(&path).is_ok_and(|(sha256, _)| sha256 == found.sha256);
+        let sha_ok = droppedneedle_kernel::db::backup::file_sha256(&path)
+            .is_ok_and(|(sha256, _)| sha256 == found.sha256);
         checks.push(RestoreCheck {
             name: "manifest-sha256".to_owned(),
             passed: sha_ok,
@@ -213,7 +181,7 @@ pub fn restore_report(backup_dir: &Path, name: &str) -> Result<RestoreReport, Ad
 
     let version_ok = match read_user_version(&path) {
         Ok(found) => {
-            let expected = crate::schema::latest_version();
+            let expected = droppedneedle_kernel::schema::latest_version();
             let current = found <= expected;
             checks.push(RestoreCheck {
                 name: "schema-version".to_owned(),
@@ -239,6 +207,8 @@ pub fn restore_report(backup_dir: &Path, name: &str) -> Result<RestoreReport, Ad
         }
     };
 
+    checks.push(undo_copies_check(backup_dir, &path, manifest.as_ref()));
+
     let ok = checks.iter().all(|check| check.passed);
     Ok(RestoreReport {
         backup: safe.to_owned(),
@@ -246,6 +216,45 @@ pub fn restore_report(backup_dir: &Path, name: &str) -> Result<RestoreReport, Ad
         restorable: present && integrity && version_ok,
         checks,
     })
+}
+
+/// Whether the pool beside the backups holds every undo copy the backup
+/// names. For information only: a restore goes ahead without a missing
+/// copy and lists it, and Undo then skips only the files that need it.
+fn undo_copies_check(
+    backup_dir: &Path,
+    path: &Path,
+    manifest: Option<&BackupManifest>,
+) -> RestoreCheck {
+    let name = UNDO_COPIES_CHECK.to_owned();
+    let named = match named_undo_copies(path) {
+        Ok(named) => named,
+        Err(_) => {
+            return RestoreCheck {
+                name,
+                passed: false,
+                detail: "The undo copies this backup names could not be read".to_owned(),
+            };
+        }
+    };
+    let pool = UndoDir::new(backup_dir.join(UNDO_DIR_NAME));
+    let known_missing = manifest.map_or(&[][..], |found| found.undo_missing.as_slice());
+    let missing = named
+        .iter()
+        .filter(|sha256| known_missing.contains(*sha256) || !pool.contains(sha256))
+        .count();
+    RestoreCheck {
+        name,
+        passed: missing == 0,
+        detail: if missing == 0 {
+            format!("All {} undo copies are beside the backup", named.len())
+        } else {
+            format!(
+                "{missing} of {} undo copies are missing; undo skips the files that need them",
+                named.len()
+            )
+        },
+    }
 }
 
 /// Accept only plain backup file names: no separators, no parent climbs,
@@ -311,25 +320,8 @@ fn integrity_clean(path: &Path) -> bool {
     violations == Ok(0)
 }
 
-/// Whether a database file holds any user tables yet. Opens read-only; a
-/// file that cannot be read counts as non-empty, so the safety net stays.
-fn has_user_tables(path: &Path) -> Result<bool, crate::db::error::DbError> {
-    let connection = match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
-        Ok(connection) => connection,
-        // Unreadable after a successful stamp read is bizarre; take the
-        // backup rather than trust the emptiness.
-        Err(_) => return Ok(true),
-    };
-    let tables: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(tables > 0)
-}
-
 /// `user_version` stamped in a database file.
-fn read_user_version(path: &Path) -> Result<i64, crate::db::error::DbError> {
+fn read_user_version(path: &Path) -> Result<i64, droppedneedle_kernel::db::error::DbError> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let found: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     Ok(found)

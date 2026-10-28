@@ -1,22 +1,26 @@
 <script lang="ts">
-	import { SvelteMap } from 'svelte/reactivity';
-	import type { CrateTrack, LocalAlbumSummary } from '$lib/types';
-	import { getLocalSearchV3Query } from '$lib/queries/local/LocalV3Queries.svelte';
+	import type { CrateTrack } from '$lib/types';
+	import { getLibrarySearchV3Query } from '$lib/queries/local/LocalV3Queries.svelte';
 	import {
-		albumCardToSummary,
 		albumCoverUrl,
 		crateCoverUrl,
-		suggestionToCrateTrack
+		searchAlbumToSpin,
+		searchTrackToCrateTrack,
+		type SpinAlbum
 	} from '$lib/queries/local/LocalV3Adapters';
-	import { fly } from 'svelte/transition';
+	import { fly } from '$lib/ui/motion';
 	import { Search, X, Disc3, Music2, Play, ListPlus, GripVertical, Loader } from 'lucide-svelte';
+	import CoverPlaceholder from '$lib/ui/CoverPlaceholder.svelte';
+	import AlbumImage from '$lib/components/AlbumImage.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
 
 	interface Props {
 		reducedMotion?: boolean;
 		onPlayTrack: (t: CrateTrack) => void;
 		onQueueTrack: (t: CrateTrack) => void;
-		onPlayAlbum: (a: LocalAlbumSummary) => void;
-		onQueueAlbum: (a: LocalAlbumSummary) => void;
+		onPlayAlbum: (a: SpinAlbum) => void;
+		onQueueAlbum: (a: SpinAlbum) => void;
 	}
 
 	let {
@@ -38,21 +42,15 @@
 		return () => clearTimeout(id);
 	});
 
-	const searchQuery = getLocalSearchV3Query(() => debounced);
+	const searchQuery = getLibrarySearchV3Query(() => debounced);
 
-	const albums = $derived((searchQuery.data?.albums ?? []).map(albumCardToSummary));
-	// Track covers resolve through the same response's album cards.
-	const tracks = $derived.by(() => {
-		const mbidByAlbumId = new SvelteMap(
-			(searchQuery.data?.albums ?? []).map((a) => [a.id, a.release_group_mbid ?? null] as const)
-		);
-		return (searchQuery.data?.tracks ?? []).map((t) =>
-			suggestionToCrateTrack(t, mbidByAlbumId.get(t.album_id) ?? null)
-		);
-	});
-	// Albums first, then tracks in backend order.
+	const albums = $derived((searchQuery.data?.albums ?? []).map(searchAlbumToSpin));
+	const tracks = $derived(
+		(searchQuery.data?.tracks ?? []).flatMap((t) => searchTrackToCrateTrack(t) ?? [])
+	);
+	// Albums first, then tracks, each best match first.
 	type Row =
-		| { kind: 'album'; key: string; album: LocalAlbumSummary }
+		| { kind: 'album'; key: string; album: SpinAlbum }
 		| { kind: 'track'; key: string; track: CrateTrack };
 	const rows = $derived<Row[]>([
 		...albums.map((a, i) => ({
@@ -75,7 +73,7 @@
 		draggingId = `track:${t.track_file_id}`;
 	}
 
-	function onAlbumDragStart(e: DragEvent, a: LocalAlbumSummary) {
+	function onAlbumDragStart(e: DragEvent, a: SpinAlbum) {
 		if (!e.dataTransfer) return;
 		e.dataTransfer.setData('application/x-crate-album', JSON.stringify(a));
 		e.dataTransfer.effectAllowed = 'copy';
@@ -83,36 +81,58 @@
 	}
 </script>
 
+{#snippet albumRowBody(a: SpinAlbum)}
+	{@const cover = albumCoverUrl(a)}
+	<div class="relative h-11 w-11 shrink-0 overflow-hidden rounded-md ring-1 ring-base-content/10">
+		{#if cover}
+			<AlbumImage
+				customUrl={cover}
+				alt={a.name}
+				size="full"
+				rounded="none"
+				className="h-full w-full"
+			/>
+		{:else}
+			<div class="relative h-full w-full overflow-hidden">
+				<CoverPlaceholder id={a.musicbrainz_id} name={a.name} />
+			</div>
+		{/if}
+	</div>
+	<div class="min-w-0 flex-1">
+		<p class="truncate text-sm font-semibold text-base-content">{a.name}</p>
+		<p class="truncate text-xs text-base-content/55">{a.artist_name}</p>
+		<span class="badge badge-xs badge-primary mt-1 gap-1 border-none">
+			<Disc3 class="h-2.5 w-2.5" /> Album
+		</span>
+	</div>
+{/snippet}
+
 <section class="flex h-full flex-col gap-3">
 	<header class="flex items-center gap-2 px-1">
 		<Search class="h-4 w-4 text-accent" />
 		<h2 class="text-sm font-bold uppercase tracking-wider text-base-content/80">Search library</h2>
 	</header>
 
-	<label
-		class="input input-sm flex items-center gap-2 rounded-xl bg-base-200/70 focus-within:outline-accent"
-	>
-		<Search class="h-4 w-4 shrink-0 text-base-content/40" />
-		<input
+	<div class="relative">
+		<Input
 			type="search"
-			class="grow bg-transparent"
+			size="sm"
+			icon={Search}
+			label="Search your library for albums and songs"
 			placeholder="Albums &amp; songs to spin…"
+			class="w-full pr-9"
 			bind:value={term}
-			aria-label="Search your library for albums and songs"
 		/>
-		{#if isActive && isFetching}
-			<Loader class="h-4 w-4 shrink-0 animate-spin text-base-content/40" />
-		{:else if term}
-			<button
-				class="btn btn-circle btn-ghost btn-xs"
-				onclick={() => (term = '')}
-				aria-label="Clear search"
-				title="Clear"
-			>
-				<X class="h-3.5 w-3.5" />
-			</button>
-		{/if}
-	</label>
+		<div class="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center">
+			{#if isActive && isFetching}
+				<Loader
+					class="mr-1 h-4 w-4 shrink-0 animate-spin text-base-content/40 motion-reduce:animate-none"
+				/>
+			{:else if term}
+				<IconButton size="xs" icon={X} label="Clear search" onclick={() => (term = '')} />
+			{/if}
+		</div>
+	</div>
 
 	<div class="flex-1 space-y-2 overflow-y-auto pr-0.5">
 		{#if !isActive}
@@ -141,7 +161,6 @@
 			{#each rows as row (row.key)}
 				{#if row.kind === 'album'}
 					{@const a = row.album}
-					{@const cover = albumCoverUrl(a)}
 					<div
 						class="search-row group flex items-center gap-3 rounded-xl border border-base-content/5 bg-base-200/70 p-2 backdrop-blur-sm"
 						class:is-dragging={draggingId === row.key}
@@ -162,43 +181,17 @@
 						<GripVertical
 							class="h-4 w-4 shrink-0 cursor-grab text-base-content/25 group-hover:text-base-content/50"
 						/>
+						{@render albumRowBody(a)}
 						<div
-							class="relative h-11 w-11 shrink-0 overflow-hidden rounded-md ring-1 ring-base-content/10"
+							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
 						>
-							{#if cover}
-								<img src={cover} alt={a.name} class="h-full w-full object-cover" loading="lazy" />
-							{:else}
-								<div class="flex h-full w-full items-center justify-center bg-base-300">
-									<Disc3 class="h-4 w-4 text-base-content/30" />
-								</div>
-							{/if}
-						</div>
-						<div class="min-w-0 flex-1">
-							<p class="truncate text-sm font-semibold text-base-content">{a.name}</p>
-							<p class="truncate text-xs text-base-content/55">{a.artist_name}</p>
-							<span class="badge badge-xs badge-primary mt-1 gap-1 border-none">
-								<Disc3 class="h-2.5 w-2.5" /> Album
-							</span>
-						</div>
-						<div
-							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100"
-						>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
-								onclick={() => onPlayAlbum(a)}
-								aria-label="Play album"
-								title="Play album"
-							>
-								<Play class="h-3.5 w-3.5" />
-							</button>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
+							<IconButton size="xs" icon={Play} label="Play album" onclick={() => onPlayAlbum(a)} />
+							<IconButton
+								size="xs"
+								icon={ListPlus}
+								label="Queue album"
 								onclick={() => onQueueAlbum(a)}
-								aria-label="Queue album"
-								title="Queue album"
-							>
-								<ListPlus class="h-3.5 w-3.5" />
-							</button>
+							/>
 						</div>
 					</div>
 				{:else}
@@ -228,15 +221,16 @@
 							class="relative h-11 w-11 shrink-0 overflow-hidden rounded-md ring-1 ring-base-content/10"
 						>
 							{#if trackCover}
-								<img
-									src={trackCover}
+								<AlbumImage
+									customUrl={trackCover}
 									alt={t.album_name}
-									class="h-full w-full object-cover"
-									loading="lazy"
+									size="full"
+									rounded="none"
+									className="h-full w-full"
 								/>
 							{:else}
-								<div class="flex h-full w-full items-center justify-center bg-base-300">
-									<Music2 class="h-4 w-4 text-base-content/30" />
+								<div class="relative h-full w-full overflow-hidden">
+									<CoverPlaceholder id={t.album_mbid} name={t.album_name} />
 								</div>
 							{/if}
 						</div>
@@ -250,24 +244,15 @@
 							</span>
 						</div>
 						<div
-							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
 						>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
-								onclick={() => onPlayTrack(t)}
-								aria-label="Play now"
-								title="Play now"
-							>
-								<Play class="h-3.5 w-3.5" />
-							</button>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
+							<IconButton size="xs" icon={Play} label="Play now" onclick={() => onPlayTrack(t)} />
+							<IconButton
+								size="xs"
+								icon={ListPlus}
+								label="Add to queue"
 								onclick={() => onQueueTrack(t)}
-								aria-label="Add to queue"
-								title="Add to queue"
-							>
-								<ListPlus class="h-3.5 w-3.5" />
-							</button>
+							/>
 						</div>
 					</div>
 				{/if}
@@ -275,3 +260,21 @@
 		{/if}
 	</div>
 </section>
+
+<style>
+	.search-row {
+		transition:
+			transform 0.2s var(--ease-spring),
+			box-shadow 0.2s var(--ease-spring),
+			border-color 0.2s ease;
+	}
+
+	.search-row:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 12px 24px -14px oklch(from var(--color-base-100) l c h / 0.9);
+	}
+
+	.search-row.is-dragging {
+		opacity: 0.4;
+	}
+</style>

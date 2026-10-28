@@ -1,16 +1,24 @@
 [workspace]
 resolver = "2"
-members = ["."]
+members = [".", "acquire", "auth", "catalog", "compat", "kernel", "library", "media", "plugins", "providers", "testkit", "tool"]
 
-[package]
-name = "droppedneedle"
+[workspace.package]
 version = "3.0.0"
 edition = "2024"
 rust-version = "1.89"
-description = "DroppedNeedle v3 backend"
 license = "AGPL-3.0-or-later"
 
-[dependencies]
+[workspace.dependencies]
+droppedneedle-acquire = { path = "acquire", version = "3.0.0" }
+droppedneedle-auth = { path = "auth", version = "3.0.0" }
+droppedneedle-catalog = { path = "catalog", version = "3.0.0" }
+droppedneedle-compat = { path = "compat", version = "3.0.0" }
+droppedneedle-kernel = { path = "kernel", version = "3.0.0" }
+droppedneedle-library = { path = "library", version = "3.0.0" }
+droppedneedle-media = { path = "media", version = "3.0.0" }
+droppedneedle-plugins = { path = "plugins", version = "3.0.0" }
+droppedneedle-providers = { path = "providers", version = "3.0.0" }
+droppedneedle-tool = { path = "tool", version = "3.0.0" }
 argon2 = { version = "0.5", features = ["alloc"] }
 axum = { version = "0.8", features = ["json", "query", "http1", "matched-path", "multipart"] }
 base64 = "0.22"
@@ -27,10 +35,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 ring = "0.17"
 sha1 = "0.10"
 rubato = "0.16"
-rusqlite = { version = "0.32", features = ["bundled", "backup", "functions"] }
+percent-encoding = "2"
+rusqlite = { version = "0.32", features = ["bundled", "backup", "functions", "hooks"] }
 rusty-chromaprint = "0.3"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 socket2 = "0.6"
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "macros", "migrate"] }
@@ -38,33 +47,110 @@ symphonia = { version = "0.6", features = ["aac", "alac", "isomp4", "mp3"] }
 symphonia-adapter-libopus = "0.3"
 thiserror = "2"
 unicode-normalization = "0.1"
-tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = "0.7"
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["cors", "compression-br", "compression-gzip"] }
+tower-http = { version = "0.6", features = ["cors", "compression-br", "compression-gzip", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 utoipa = "5"
+# Registers each route and its document entry from one `#[utoipa::path]`.
+# 0.3 needs utoipa 6.
+utoipa-axum = "=0.2.0"
 uuid = { version = "1", features = ["v4"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 hmac = "0.12"
 toml = "1"
 time = { version = "0.3", default-features = false, features = ["std", "formatting"] }
+# Daily scans run at local time in the server's time zone. Reads IANA zones
+# from the system database (the image ships tzdata) and handles
+# daylight-saving gaps and repeats. MIT or Unlicense; it brings jiff-core
+# (same author and licence) and nothing else on Linux.
+jiff = { version = "0.2.37", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Tokenises Newznab indexer responses, which are untrusted XML. MIT, one
 # dependency (memchr, already in the tree). No features: it never touches
 # the network, never reads a DTD and expands no declared entities.
 quick-xml = { version = "0.42", default-features = false }
+# Unicode script classes for Picard's "is this name in Latin script" test
+# when translating artist names. Already in the tree under tracing's
+# env-filter (regex-automata, regex-syntax).
+regex = "1.13.1"
+# Joins the parts of a declared SQL statement at compile time, so a
+# statement built from a column list is still one `&'static str` the schema
+# test can prepare. Zlib. It brings three small crates of the same author
+# (const_format_proc_macros, konst, konst_macro_rules; Zlib) and
+# unicode-xid (MIT or Apache-2.0); none has a build script.
+const_format = "0.2.36"
+
+[package]
+name = "droppedneedle"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "DroppedNeedle v3 backend"
+license.workspace = true
+
+[dependencies]
+droppedneedle-acquire.workspace = true
+droppedneedle-auth.workspace = true
+droppedneedle-catalog.workspace = true
+droppedneedle-compat.workspace = true
+droppedneedle-kernel.workspace = true
+droppedneedle-library.workspace = true
+droppedneedle-media.workspace = true
+droppedneedle-plugins.workspace = true
+droppedneedle-providers.workspace = true
+axum.workspace = true
+base64.workspace = true
+futures-util.workspace = true
+libc.workspace = true
+percent-encoding.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+socket2.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+uuid.workspace = true
+time.workspace = true
 
 [features]
 # Fakes, mocks, memory stores and test constructors for the test suite.
-test-support = []
+test-support = [
+    "droppedneedle-kernel/test-support",
+    "droppedneedle-providers/test-support",
+    "droppedneedle-auth/test-support",
+    "droppedneedle-library/test-support",
+    "droppedneedle-media/test-support",
+    "droppedneedle-catalog/test-support",
+    "droppedneedle-acquire/test-support",
+    "droppedneedle-compat/test-support",
+]
 
 [dev-dependencies]
 droppedneedle = { path = ".", features = ["test-support"] }
-regex = "1.13.1"
+droppedneedle-testkit = { path = "testkit", version = "0.1.0" }
+droppedneedle-tool = { workspace = true, features = ["test-support"] }
 tokio = { version = "1", features = ["test-util"] }
+flate2.workspace = true
+image.workspace = true
+md5.workspace = true
+lofty.workspace = true
+regex.workspace = true
+ring.workspace = true
+toml.workspace = true
+tracing-subscriber.workspace = true
+zip.workspace = true
 
 # Debug builds carry line tables for this crate and no debug info for
 # dependencies. Full debug info nearly doubled the time of a clean test

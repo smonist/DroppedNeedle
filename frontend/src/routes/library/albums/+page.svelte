@@ -3,11 +3,13 @@
 	import { goto } from '$app/navigation';
 	import { withBasePath } from '$lib/utils/basePath';
 	import { ChevronLeft, Disc3, Search, X } from 'lucide-svelte';
-	import { getLibraryAlbumsQuery } from '$lib/queries/library/LibraryQueries.svelte';
+	import { getLibraryAlbumsInfiniteQuery } from '$lib/queries/library/LibraryQueries.svelte';
 	import type { LibraryV3AlbumsParams } from '$lib/queries/library/LibraryQueryKeyFactory';
 	import LibraryAlbumCard from '$lib/components/library/LibraryAlbumCard.svelte';
-	import Pagination from '$lib/components/Pagination.svelte';
-	import type { AlbumSort } from '$lib/types';
+	import Button from '$lib/ui/Button.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
+	import type { AlbumSort, LibraryAlbumSummary } from '$lib/types';
 
 	const PAGE_SIZE = 50;
 	const SEARCH_DEBOUNCE_MS = 300;
@@ -17,10 +19,8 @@
 	// browse state lives in the url so it's shareable and back-button stable
 	const params = $derived.by(() => {
 		const sp = page.url.searchParams;
-		const pageNum = Math.max(1, parseInt(sp.get('page') ?? '1', 10) || 1);
 		const rawSort = (sp.get('sort') ?? 'recent') as AlbumSort;
 		return {
-			page: pageNum,
 			sort: VALID_SORTS.includes(rawSort) ? rawSort : 'recent',
 			q: sp.get('q') ?? '',
 			format: sp.get('format') ?? ''
@@ -35,25 +35,34 @@
 		artist: { sort: 'artist', order: 'asc' }
 	};
 
-	const albumsQuery = getLibraryAlbumsQuery(() => ({
+	const albumsQuery = getLibraryAlbumsInfiniteQuery(() => ({
 		limit: PAGE_SIZE,
-		offset: (params.page - 1) * PAGE_SIZE,
 		...SORT_MAP[params.sort],
 		...(params.q ? { q: params.q } : {}),
 		...(params.format ? { format: params.format } : {})
 	}));
-	const albums = $derived(albumsQuery.data?.items ?? []);
-	const total = $derived(albumsQuery.data?.total ?? 0);
-	const totalPages = $derived(
-		albumsQuery.data ? Math.max(1, Math.ceil(albumsQuery.data.total / PAGE_SIZE)) : 1
-	);
+	// An album can move between pages while they load (a scan renames it):
+	// keep its first appearance.
+	const albums = $derived.by(() => {
+		const seen: Record<string, true> = Object.create(null);
+		const out: LibraryAlbumSummary[] = [];
+		for (const response of albumsQuery.data?.pages ?? []) {
+			for (const album of response.items) {
+				if (seen[album.id]) continue;
+				seen[album.id] = true;
+				out.push(album);
+			}
+		}
+		return out;
+	});
+	const total = $derived(albumsQuery.data?.pages[0]?.total ?? 0);
 
 	// local edits win over the url term until back/forward navigation re-syncs the input
 	let searchInput = $derived(params.q);
 	let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => () => clearTimeout(searchTimeout));
 
-	function setParams(updates: Record<string, string | number | null>) {
+	function setParams(updates: Record<string, string | null>) {
 		const url = new URL(page.url);
 		for (const [k, v] of Object.entries(updates)) {
 			if (v === null || v === '') url.searchParams.delete(k);
@@ -65,16 +74,13 @@
 	function handleSearchInput(e: Event) {
 		searchInput = (e.target as HTMLInputElement).value;
 		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(
-			() => setParams({ q: searchInput.trim(), page: null }),
-			SEARCH_DEBOUNCE_MS
-		);
+		searchTimeout = setTimeout(() => setParams({ q: searchInput.trim() }), SEARCH_DEBOUNCE_MS);
 	}
 
 	function clearSearch() {
 		searchInput = '';
 		clearTimeout(searchTimeout);
-		setParams({ q: null, page: null });
+		setParams({ q: null });
 	}
 </script>
 
@@ -82,13 +88,11 @@
 
 <div class="container mx-auto p-4 md:p-6 lg:p-8">
 	<div class="flex items-center gap-4 mb-6">
-		<button
-			class="btn btn-ghost btn-circle"
+		<IconButton
+			icon={ChevronLeft}
+			label="Back to library"
 			onclick={() => goto(withBasePath('/library'))}
-			aria-label="Back to library"
-		>
-			<ChevronLeft class="w-6 h-6" />
-		</button>
+		/>
 		<div>
 			<h1 class="text-3xl font-bold">All Albums</h1>
 			<p class="text-base-content/70 text-sm mt-1">
@@ -99,33 +103,29 @@
 	</div>
 
 	<div class="flex flex-col sm:flex-row gap-3 mb-6">
-		<div class="relative group flex-1">
-			<Search
-				class="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-base-content/40
-				group-focus-within:text-primary transition-colors duration-200 pointer-events-none"
-			/>
-			<input
-				type="text"
+		<div class="relative flex-1">
+			<Input
+				icon={Search}
+				label="Search albums"
 				placeholder="Search albums or artists..."
-				class="input input-bordered w-full rounded-full pl-11 pr-12"
+				class="w-full pr-12"
 				value={searchInput}
 				oninput={handleSearchInput}
-				aria-label="Search albums"
 			/>
 			{#if searchInput}
-				<button
-					class="absolute right-3 top-1/2 -translate-y-1/2 btn btn-sm btn-ghost btn-circle"
+				<IconButton
+					size="sm"
+					icon={X}
+					label="Clear search"
+					class="absolute right-2 top-1/2 -translate-y-1/2"
 					onclick={clearSearch}
-					aria-label="Clear search"
-				>
-					<X class="h-4 w-4" />
-				</button>
+				/>
 			{/if}
 		</div>
 		<select
-			class="select select-bordered rounded-full"
+			class="select"
 			value={params.sort}
-			onchange={(e) => setParams({ sort: (e.target as HTMLSelectElement).value, page: null })}
+			onchange={(e) => setParams({ sort: (e.target as HTMLSelectElement).value })}
 			aria-label="Sort albums"
 		>
 			<option value="recent">Newest First</option>
@@ -133,9 +133,9 @@
 			<option value="artist">Artist A-Z</option>
 		</select>
 		<select
-			class="select select-bordered rounded-full"
+			class="select"
 			value={params.format}
-			onchange={(e) => setParams({ format: (e.target as HTMLSelectElement).value, page: null })}
+			onchange={(e) => setParams({ format: (e.target as HTMLSelectElement).value })}
 			aria-label="Filter by format"
 		>
 			<option value="">All formats</option>
@@ -148,7 +148,7 @@
 	{#if albumsQuery.isError}
 		<div class="alert alert-error mb-6">
 			<span>Couldn't load albums</span>
-			<button class="btn btn-sm btn-ghost" onclick={() => albumsQuery.refetch()}>Retry</button>
+			<Button variant="ghost" size="sm" onclick={() => albumsQuery.refetch()}>Retry</Button>
 		</div>
 	{:else if albumsQuery.isLoading}
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -156,7 +156,7 @@
 				<div class="skeleton aspect-square w-full rounded-lg"></div>
 			{/each}
 		</div>
-	{:else if !albumsQuery.data || albums.length === 0}
+	{:else if albums.length === 0}
 		<div class="flex flex-col items-center justify-center min-h-100 text-center">
 			<Disc3 class="h-12 w-12 text-base-content/40 mb-4" strokeWidth={1.5} />
 			<h2 class="text-2xl font-semibold mb-2">No albums found</h2>
@@ -173,13 +173,15 @@
 			{/each}
 		</div>
 
-		{#if totalPages > 1}
+		{#if albumsQuery.hasNextPage}
 			<div class="mt-6 flex justify-center">
-				<Pagination
-					current={params.page}
-					total={totalPages}
-					onchange={(p) => setParams({ page: p })}
-				/>
+				<Button
+					variant="outline"
+					loading={albumsQuery.isFetchingNextPage}
+					onclick={() => albumsQuery.fetchNextPage()}
+				>
+					Load more ({albums.length} / {total})
+				</Button>
 			</div>
 		{/if}
 	{/if}

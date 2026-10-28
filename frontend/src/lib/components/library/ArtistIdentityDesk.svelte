@@ -20,7 +20,7 @@
 		applyArtistMerge,
 		previewArtistMerge
 	} from '$lib/queries/library/LibraryCatalogMutations.svelte';
-	import type { MembershipPreviewResponse } from '$lib/queries/library/LibraryOperationsTypes';
+	import type { ArtistMergePreviewResponse } from '$lib/queries/library/LibraryOperationsTypes';
 	import { dismissArtistDuplicateGroup } from '$lib/queries/artist-reconciliation/ArtistReconciliationMutations.svelte';
 	import {
 		getArtistDuplicateGroupQuery,
@@ -33,6 +33,10 @@
 	} from '$lib/queries/artist-reconciliation/ArtistReconciliationTypes';
 	import { authStore } from '$lib/stores/authStore.svelte';
 	import { withBasePath } from '$lib/utils/basePath';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
 
 	import ArtistIdentityDeskSkeleton from './ArtistIdentityDeskSkeleton.svelte';
 
@@ -42,6 +46,7 @@
 		{ value: 'provider_conflict', label: 'Provider conflict' },
 		{ value: 'ambiguous_credit_structure', label: 'Ambiguous credit structure' },
 		{ value: 'same_name_only', label: 'Same name only' },
+		{ value: 'credits_moved', label: 'Songs moved' },
 		{ value: 'resolved_automatically', label: 'Resolved automatically' }
 	];
 
@@ -64,7 +69,7 @@
 	let providerChoice = $state<'detach' | 'retain_survivor'>('retain_survivor');
 	let confirmed = $state(false);
 	let stalePreview = $state(false);
-	let previewResult = $state<MembershipPreviewResponse | null>(null);
+	let previewResult = $state<ArtistMergePreviewResponse | null>(null);
 	let previewRequest = $state<{
 		source_artist_ids: string[];
 		surviving_artist_id: string;
@@ -74,7 +79,7 @@
 	let mergeHeading: HTMLHeadingElement;
 	let dismissDialog: HTMLDialogElement;
 	let dismissHeading: HTMLHeadingElement;
-	let actionOpener: HTMLButtonElement | null = null;
+	let actionOpener: HTMLElement | null = null;
 
 	const progressQuery = getArtistReconciliationProgressQuery(() => authStore.isAdmin);
 	const groupsQuery = getArtistDuplicateGroupsQuery(() => ({
@@ -101,15 +106,6 @@
 			(member) => member.id !== (previewRequest?.surviving_artist_id ?? survivingId)
 		) ?? []
 	);
-	const progressPercent = $derived(
-		progressQuery.data?.expected_count
-			? Math.min(
-					100,
-					Math.round((progressQuery.data.completed_count / progressQuery.data.expected_count) * 100)
-				)
-			: 0
-	);
-
 	$effect(() => {
 		filterState = appliedFilterState;
 		search = appliedSearch;
@@ -136,6 +132,11 @@
 	function stateLabel(state: ArtistReconciliationGroupState): string {
 		return stateOptions.find((option) => option.value === state)?.label ?? state;
 	}
+
+	const basisLabels: Record<NonNullable<ArtistDuplicateGroupSummary['merge_basis']>, string> = {
+		musicbrainz_proof: 'MusicBrainz proof',
+		same_name: 'Same name'
+	};
 
 	function stateClass(state: ArtistReconciliationGroupState): string {
 		if (state === 'resolved_automatically') return 'badge-success';
@@ -191,9 +192,7 @@
 		};
 	}
 
-	async function openMerge(
-		event: MouseEvent & { currentTarget: HTMLButtonElement }
-	): Promise<void> {
+	async function openMerge(event: MouseEvent & { currentTarget: HTMLElement }): Promise<void> {
 		const request = mergeRequest();
 		if (!request) return;
 		actionOpener = event.currentTarget;
@@ -254,7 +253,7 @@
 		}
 	}
 
-	function openDismiss(event: MouseEvent & { currentTarget: HTMLButtonElement }): void {
+	function openDismiss(event: MouseEvent & { currentTarget: HTMLElement }): void {
 		actionOpener = event.currentTarget;
 		dismissDialog.showModal();
 		dismissHeading.focus();
@@ -294,9 +293,9 @@
 				artists.
 			</p>
 		</div>
-		<a href={withBasePath('/library/management?tab=scanning')} class="btn btn-ghost btn-sm">
-			Back to Scan &amp; identify
-		</a>
+		<Button href={withBasePath('/library/management?tab=scanning')} variant="ghost" size="sm"
+			>Back to Scan &amp; identify</Button
+		>
 	</header>
 
 	{#if progressQuery.isLoading}
@@ -304,25 +303,8 @@
 	{:else if progressQuery.isError}
 		<div class="alert alert-error">Could not load artist reconciliation progress.</div>
 	{:else if progressQuery.data}
-		<section
-			class="rounded-box border border-base-content/10 bg-base-100 p-4"
-			aria-label="Reconciliation progress"
-		>
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<div>
-					<p class="text-xs font-semibold uppercase tracking-wide text-base-content/50">
-						Background reconciliation
-					</p>
-					<p class="mt-1 font-semibold">
-						{progressQuery.data.state.replaceAll('_', ' ')} · {progressQuery.data.completed_count.toLocaleString()}
-						of {progressQuery.data.expected_count.toLocaleString()} albums
-					</p>
-				</div>
-				<span class="font-mono text-sm text-base-content/60">{progressPercent}%</span>
-			</div>
-			<progress class="progress progress-primary mt-3 w-full" value={progressPercent} max="100"
-			></progress>
-			<div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+		<Card as="section" variant="bordered" padding="md" aria-label="Artist identity counts">
+			<div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
 				<div>
 					<span class="block text-xs text-base-content/50">Resolved automatically</span><strong
 						>{progressQuery.data.automatically_resolved_count.toLocaleString()}</strong
@@ -344,34 +326,35 @@
 					>
 				</div>
 			</div>
-		</section>
+		</Card>
 	{/if}
 
-	<form
-		class="flex flex-wrap gap-2 rounded-box border border-base-content/10 bg-base-100 p-3"
-		onsubmit={(event) => {
-			event.preventDefault();
-			applyFilters();
-		}}
-	>
-		<label class="input input-bordered flex min-w-64 flex-1 items-center gap-2">
-			<Search class="h-4 w-4 text-base-content/45" />
-			<input
+	<Card variant="bordered" padding="sm">
+		<form
+			class="flex flex-wrap gap-2"
+			onsubmit={(event) => {
+				event.preventDefault();
+				applyFilters();
+			}}
+		>
+			<Input
+				icon={Search}
+				label="Search artist groups"
+				class="min-w-64 flex-1"
 				bind:value={search}
-				aria-label="Search artist groups"
 				placeholder="Search names or local artists"
 			/>
-		</label>
-		<label class="select select-bordered flex items-center gap-2">
-			<ListFilter class="h-4 w-4 text-base-content/45" />
-			<select bind:value={filterState} aria-label="Evidence state">
-				{#each stateOptions as option (option.value)}
-					<option value={option.value}>{option.label}</option>
-				{/each}
-			</select>
-		</label>
-		<button class="btn btn-primary" type="submit">Apply filters</button>
-	</form>
+			<label class="select flex items-center gap-2">
+				<ListFilter class="h-4 w-4 text-base-content/45" />
+				<select bind:value={filterState} aria-label="Evidence state">
+					{#each stateOptions as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
+				</select>
+			</label>
+			<Button type="submit" variant="primary">Apply filters</Button>
+		</form>
+	</Card>
 
 	{#if groupsQuery.isLoading}
 		<ArtistIdentityDeskSkeleton />
@@ -425,35 +408,36 @@
 					{/if}
 				{/each}
 				{#if groupsQuery.hasNextPage}
-					<button
-						class="btn btn-outline w-full"
+					<Button
+						variant="outline"
+						class="w-full"
 						disabled={groupsQuery.isFetchingNextPage}
 						onclick={() => void groupsQuery.fetchNextPage()}
 					>
 						{groupsQuery.isFetchingNextPage ? 'Loading…' : 'Load more groups'}
-					</button>
+					</Button>
 				{/if}
 			</div>
 
 			{#snippet identityInspector()}
 				<aside class={isWide ? 'sticky top-24' : ''} aria-label="Artist identity inspector">
 					{#if !selectedSummary}
-						<div class="rounded-box border border-base-content/10 bg-base-100 p-6 text-center">
+						<Card variant="bordered" class="text-center">
 							<FingerprintPattern class="mx-auto h-8 w-8 text-base-content/35" />
 							<p class="mt-3 font-semibold">Select a dossier</p>
 							<p class="mt-1 text-sm text-base-content/55">
 								Inspect evidence and persisted references here.
 							</p>
-						</div>
+						</Card>
 					{:else if detailQuery.isLoading}
 						<div class="skeleton h-96 rounded-box"></div>
 					{:else if detailQuery.isError || !detail}
 						<div class="alert alert-error">Could not load this artist dossier.</div>
 					{:else}
-						<div
-							class="rounded-box border border-base-content/10 bg-base-100 {isWide
-								? 'max-h-[calc(100vh-8rem)] overflow-y-auto'
-								: ''}"
+						<Card
+							variant="bordered"
+							padding="none"
+							class={isWide ? 'max-h-[calc(100vh-8rem)] overflow-y-auto' : ''}
 						>
 							<header class="border-b border-base-content/10 p-4">
 								<div class="flex items-start justify-between gap-3">
@@ -467,6 +451,12 @@
 								</div>
 								<p class="mt-2 text-sm text-base-content/70">{detail.reason.message}</p>
 								<p class="mt-1 text-sm text-base-content/50">{detail.reason.action}</p>
+								{#if detail.merge_basis}
+									<p class="mt-2 text-sm">
+										<span class="text-base-content/50">Merged on</span>
+										<strong>{basisLabels[detail.merge_basis]}</strong>
+									</p>
+								{/if}
 							</header>
 
 							<div class="space-y-5 p-4">
@@ -510,7 +500,7 @@
 									<h3 id="references-title" class="font-semibold">References that would move</h3>
 									<dl class="mt-2 grid grid-cols-2 gap-2 text-sm">
 										{#each Object.entries(detail.reference_counts) as [kind, count] (kind)}
-											<div class="rounded-lg bg-base-200 p-2">
+											<div class="rounded-lg bg-base-100 p-2">
 												<dt class="text-xs text-base-content/50">{kind.replaceAll('_', ' ')}</dt>
 												<dd class="font-semibold">{count}</dd>
 											</div>
@@ -525,7 +515,7 @@
 									{#if detail.evidence.length}
 										<ul class="mt-2 space-y-2 text-sm">
 											{#each detail.evidence as item (`${item.subject_kind}:${item.subject_id}:${item.artist_mbid}`)}
-												<li class="rounded-lg bg-base-200 p-2">
+												<li class="rounded-lg bg-base-100 p-2">
 													<strong>{item.subject_name}</strong>
 													<span class="block text-xs text-base-content/55"
 														>{item.subject_kind} credit “{item.credited_name}{item.join_phrase}”</span
@@ -561,12 +551,13 @@
 																: 'Needs release identification'}</span
 														></span
 													>
-													<a
-														class="btn btn-ghost btn-xs"
+													<IconButton
+														size="xs"
+														shape="square"
+														icon={ArrowUpRight}
+														label={`Open ${release.name}`}
 														href={withBasePath(`/album/${release.id}`)}
-														aria-label={`Open ${release.name}`}
-														><ArrowUpRight class="h-3.5 w-3.5" /></a
-													>
+													/>
 												</li>
 											{/each}
 										</ul>
@@ -575,22 +566,22 @@
 
 								{#if detail.state !== 'resolved_automatically'}
 									<div class="grid gap-2">
-										<button
-											class="btn btn-primary"
+										<Button
+											variant="primary"
+											icon={Merge}
 											disabled={!survivingId || previewArtist.isPending}
-											onclick={(event) => void openMerge(event)}
-											><Merge class="h-4 w-4" /> Preview group merge</button
+											onclick={(event) => void openMerge(event)}>Preview group merge</Button
 										>
-										<button
-											class="btn btn-ghost"
+										<Button
+											variant="ghost"
+											icon={Split}
 											disabled={dismissMutation.isPending}
-											onclick={openDismiss}
-											><Split class="h-4 w-4" /> Mark records as distinct</button
+											onclick={openDismiss}>Mark records as distinct</Button
 										>
 									</div>
 								{/if}
 							</div>
-						</div>
+						</Card>
 					{/if}
 				</aside>
 			{/snippet}
@@ -695,11 +686,11 @@
 			>
 		{/if}
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={() => mergeDialog.close()}>Cancel</button>
-			<button
-				class="btn btn-primary"
+			<Button variant="ghost" onclick={() => mergeDialog.close()}>Cancel</Button>
+			<Button
+				variant="primary"
 				disabled={!previewResult || !confirmed || applyArtist.isPending || previewArtist.isPending}
-				onclick={() => void mergeArtists()}>Merge artists</button
+				onclick={() => void mergeArtists()}>Merge artists</Button
 			>
 		</div>
 	</div>
@@ -728,11 +719,11 @@
 			changes, the evidence can be reviewed again.
 		</p>
 		<div class="modal-action">
-			<button class="btn btn-ghost" onclick={() => dismissDialog.close()}>Cancel</button>
-			<button
-				class="btn btn-primary"
+			<Button variant="ghost" onclick={() => dismissDialog.close()}>Cancel</Button>
+			<Button
+				variant="primary"
 				disabled={dismissMutation.isPending}
-				onclick={() => void dismissGroup()}>Mark as distinct</button
+				onclick={() => void dismissGroup()}>Mark as distinct</Button
 			>
 		</div>
 	</div>

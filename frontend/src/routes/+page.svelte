@@ -16,12 +16,16 @@
 	import GenreGrid from '$lib/components/GenreGrid.svelte';
 	import SectionDivider from '$lib/components/SectionDivider.svelte';
 	import type {
-		HomeSection as HomeSectionType,
-		WeeklyExplorationSection as WeeklyExplorationSectionType
-	} from '$lib/types';
+		ChartSection as HomeSectionType,
+		SectionKey,
+		SectionZone,
+		WeeklyExploration as WeeklyExplorationSectionType
+	} from '$lib/queries/discover/types';
+	import { shelfOf, zoneSections } from '$lib/queries/discover/sections';
 	import CarouselSkeleton from '$lib/components/CarouselSkeleton.svelte';
 	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { withBasePath } from '$lib/utils/basePath';
+	import { genreRows } from '$lib/utils/sectionRows';
 	import { getGreeting } from '$lib/utils/homeCache';
 	import { isDismissed } from '$lib/utils/dismissedPrompts';
 	import HomeSectionNowPlaying from '$lib/components/HomeSectionNowPlaying.svelte';
@@ -29,6 +33,9 @@
 	import DiscoverTeaserBand from '$lib/components/discover/DiscoverTeaserBand.svelte';
 	import { getHomeQuery } from '$lib/queries/HomeQuery.svelte';
 	import { useDiscoverActivity } from '$lib/queries/discover/DiscoverDemand.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import CardTitle from '$lib/ui/CardTitle.svelte';
 
 	useDiscoverActivity(() => ({ feature: 'home' }));
 
@@ -38,106 +45,49 @@
 	const isUpdating = $derived(homeQuery.isRefetching);
 	const lastUpdated = $derived(homeQuery.dataUpdatedAt ? new Date(homeQuery.dataUpdatedAt) : null);
 
-	type PreGenreBlock =
+	type Block =
 		| {
-				key: string;
+				key: SectionKey;
 				kind: 'section';
 				section: HomeSectionType;
 				link?: string;
 				showPreview?: boolean;
 		  }
-		| { key: 'weekly_exploration'; kind: 'weekly'; section: WeeklyExplorationSectionType };
+		| { key: SectionKey; kind: 'weekly'; section: WeeklyExplorationSectionType };
 
-	function getPreGenreBlocks(): PreGenreBlock[] {
-		if (!homeData) return [];
-		const blocks: PreGenreBlock[] = [];
-		if (homeData.popular_albums && homeData.popular_albums.items.length > 0) {
-			blocks.push({
-				key: 'popular_albums',
-				kind: 'section',
-				section: homeData.popular_albums,
-				link: withBasePath('/popular')
-			});
-		}
-		if (homeData.trending_artists && homeData.trending_artists.items.length > 0) {
-			blocks.push({
-				key: 'trending_artists',
-				kind: 'section',
-				section: homeData.trending_artists,
-				link: withBasePath('/trending')
-			});
-		}
-		if (homeData.weekly_exploration && homeData.weekly_exploration.tracks.length > 0) {
-			blocks.push({
-				key: 'weekly_exploration',
-				kind: 'weekly',
-				section: homeData.weekly_exploration
-			});
-		}
-		if (homeData.your_top_albums && homeData.your_top_albums.items.length > 0) {
-			blocks.push({
-				key: 'your_top_albums',
-				kind: 'section',
-				section: homeData.your_top_albums,
-				link: withBasePath('/your-top'),
-				showPreview: false
-			});
-		}
-		if (homeData.recently_played && homeData.recently_played.items.length > 0) {
-			blocks.push({
-				key: 'recently_played',
-				kind: 'section',
-				section: homeData.recently_played
-			});
-		}
-		if (homeData.recently_added && homeData.recently_added.items.length > 0) {
-			blocks.push({
-				key: 'recently_added',
-				kind: 'section',
-				section: homeData.recently_added,
-				link: withBasePath('/library/albums'),
-				showPreview: false
-			});
-		}
-		return blocks;
+	// where a shelf's header links to, and which shelves skip the hover preview
+	const SHELF_LINKS: Partial<Record<SectionKey, { link: string; showPreview?: boolean }>> = {
+		popular_albums: { link: '/popular' },
+		trending_artists: { link: '/trending' },
+		your_top_albums: { link: '/your-top', showPreview: false },
+		recently_added: { link: '/library/albums', showPreview: false },
+		library_artists: { link: '/library/artists' },
+		library_albums: { link: '/library/albums' }
+	};
+
+	function blocks(zone: SectionZone): Block[] {
+		return zoneSections(homeData?.sections, zone).flatMap((entry): Block[] => {
+			const { content, key } = entry;
+			if (content.shape === 'weekly') return [{ key, kind: 'weekly', section: content.weekly }];
+			if (content.shape !== 'shelf') return [];
+			const shelf = SHELF_LINKS[key];
+			return [
+				{
+					key,
+					kind: 'section',
+					section: content.shelf,
+					link: shelf ? withBasePath(shelf.link) : undefined,
+					showPreview: shelf?.showPreview
+				}
+			];
+		});
 	}
 
-	function getPostGenreSections(): { key: string; section: HomeSectionType; link?: string }[] {
-		if (!homeData) return [];
-		const sections: { key: string; section: HomeSectionType; link?: string }[] = [];
-		if (homeData.favorite_artists && homeData.favorite_artists.items.length > 0) {
-			sections.push({
-				key: 'favorite_artists',
-				section: homeData.favorite_artists
-			});
-		}
-		if (homeData.library_artists && homeData.library_artists.items.length > 0) {
-			sections.push({
-				key: 'library_artists',
-				section: homeData.library_artists,
-				link: withBasePath('/library/artists')
-			});
-		}
-		if (homeData.library_albums && homeData.library_albums.items.length > 0) {
-			sections.push({
-				key: 'library_albums',
-				section: homeData.library_albums,
-				link: withBasePath('/library/albums')
-			});
-		}
-		return sections;
-	}
-	let preGenreBlocks = $derived(homeData ? getPreGenreBlocks() : []);
-	let postGenreSections = $derived(homeData ? getPostGenreSections() : []);
-
-	const whatsHotKeys = new Set(['popular_albums', 'trending_artists']);
-	let whatsHotBlocks = $derived(preGenreBlocks.filter((b) => whatsHotKeys.has(b.key)));
-	let forYouBlocks = $derived(preGenreBlocks.filter((b) => !whatsHotKeys.has(b.key)));
-	let hasContent = $derived(
-		preGenreBlocks.length > 0 ||
-			postGenreSections.length > 0 ||
-			(homeData?.genre_list?.items?.length ?? 0) > 0
-	);
+	let whatsHotBlocks = $derived(blocks('whats_hot'));
+	let forYouBlocks = $derived(blocks('for_you'));
+	let genreList = $derived(shelfOf(homeData?.sections, 'genre_list'));
+	let postGenreSections = $derived(blocks('your_library'));
+	let hasContent = $derived((homeData?.sections.length ?? 0) > 0);
 	let servicePrompts = $derived(homeData?.service_prompts || []);
 	let downloadClientConfigured = $derived(homeData?.integration_status?.download_client ?? true);
 	let downloadClientPrompt = $derived(servicePrompts.find((p) => p.service === 'download-client'));
@@ -170,14 +120,15 @@
 	</PageHeader>
 
 	<div class="flex justify-end px-4 -mt-4 mb-4 sm:px-6 lg:px-8">
-		<a
+		<Button
+			variant="ghost"
+			size="sm"
+			icon={SlidersHorizontal}
 			href={withBasePath('/settings?tab=home')}
-			class="btn btn-ghost btn-sm gap-2 text-base-content/60 hover:text-base-content"
 			title="Choose which sections appear here"
 		>
-			<SlidersHorizontal class="h-4 w-4" />
 			<span class="hidden sm:inline">Customise</span>
-		</a>
+		</Button>
 	</div>
 
 	<div class="mb-10 px-4 sm:mb-12 sm:px-6 lg:px-8">
@@ -195,32 +146,32 @@
 				class:is-refreshing={homeData?.refreshing}
 			>
 				{#if !downloadClientConfigured && downloadClientPrompt}
-					<div
-						class="card bg-linear-to-br from-accent/20 via-accent/10 to-base-200 border-2 border-accent/40 shadow-xl relative overflow-hidden"
+					<Card
+						class="relative overflow-hidden border-2 border-accent/40 bg-linear-to-br from-accent/20 via-accent/10 to-base-200 shadow-xl"
 					>
-						<div class="card-body items-center text-center py-12 stagger-fade-in">
+						<div class="flex flex-col items-center gap-2 py-6 text-center stagger-fade-in">
 							<Music class="h-16 w-16 mb-4 animate-float text-accent" />
-							<h2 class="card-title text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">
+							<CardTitle class="block text-2xl sm:text-4xl lg:text-5xl font-bold mb-2">
 								Welcome to <span class="text-primary">DroppedNeedle</span>!
-							</h2>
+							</CardTitle>
 							<p class="text-base-content/70 max-w-lg mb-6">
-								Get started by connecting a download client. You need it to request albums and
-								tracks for your library.
+								Connect a download source to fetch your requests. Until then, requests wait.
 							</p>
 							<div class="flex flex-wrap justify-center gap-2 mb-6">
 								{#each downloadClientPrompt.features as feature (feature)}
 									<span class="badge badge-accent badge-lg">{feature}</span>
 								{/each}
 							</div>
-							<a
+							<Button
+								variant="accent"
+								size="lg"
+								icon={Download}
 								href={withBasePath('/settings?tab=download-client')}
-								class="btn btn-accent btn-lg gap-2"
 							>
-								<Download class="h-5 w-5" />
 								Configure Download Client
-							</a>
+							</Button>
 						</div>
-					</div>
+					</Card>
 				{/if}
 
 				{#if otherPrompts.length > 0 && downloadClientConfigured}
@@ -245,13 +196,14 @@
 								{#snippet icon()}<TrendingUp class="w-3.5 h-3.5" />{/snippet}
 							</SectionDivider>
 							<div class="discover-section-enter space-y-2">
-								{#each whatsHotBlocks as block (block.key)}
+								{#each whatsHotBlocks as block, i (block.key)}
 									<div>
 										{#if block.kind === 'section'}
 											<HomeSection
 												section={block.section}
 												headerLink={block.link}
 												showPreview={block.showPreview}
+												eager={i < 2}
 											/>
 										{:else}
 											<WeeklyExploration section={block.section} />
@@ -303,12 +255,12 @@
 							{/each}
 						</div>
 					</section>
-				{:else if homeData?.genre_list && homeData.genre_list.items.length > 0}
+				{:else if genreList}
 					<div class="mt-10 mb-10">
 						<GenreGrid
-							title={homeData.genre_list.title}
-							genres={homeData.genre_list.items}
-							genreArtwork={homeData.genre_artwork}
+							title={genreList.title}
+							genres={genreRows(genreList)}
+							genreArtwork={homeData?.genre_artwork}
 						/>
 					</div>
 				{/if}
@@ -326,10 +278,12 @@
 							{#snippet icon()}<Library class="w-3.5 h-3.5" />{/snippet}
 						</SectionDivider>
 						<div class="discover-section-enter space-y-2">
-							{#each postGenreSections as { key, section, link } (key)}
-								<div>
-									<HomeSection {section} headerLink={link} />
-								</div>
+							{#each postGenreSections as block (block.key)}
+								{#if block.kind === 'section'}
+									<div>
+										<HomeSection section={block.section} headerLink={block.link} />
+									</div>
+								{/if}
 							{/each}
 						</div>
 					</div>
@@ -346,16 +300,16 @@
 								Your library is empty. Add a library path and start a scan to fill it.
 							</p>
 							<div class="flex flex-wrap justify-center gap-2">
-								<a href={withBasePath('/settings?tab=library')} class="btn btn-primary"
-									>Start scan</a
-								>
-								<a href={withBasePath('/library')} class="btn btn-ghost">Go to Library</a>
+								<Button variant="primary" href={withBasePath('/settings?tab=library')}>
+									Start scan
+								</Button>
+								<Button variant="ghost" href={withBasePath('/library')}>Go to Library</Button>
 							</div>
 						{:else}
 							<p class="mb-6 max-w-md px-4 text-center text-sm text-base-content/70 sm:text-base">
 								Your library is being prepared. An admin is setting things up - check back soon.
 							</p>
-							<a href={withBasePath('/library')} class="btn btn-ghost">Go to Library</a>
+							<Button variant="ghost" href={withBasePath('/library')}>Go to Library</Button>
 						{/if}
 					</div>
 				{/if}
@@ -368,7 +322,7 @@
 					<p class="mb-6 max-w-md px-4 text-center text-sm text-base-content/70 sm:text-base">
 						Part of the Home page failed to render. The rest of the app still works.
 					</p>
-					<button class="btn btn-primary" onclick={() => reset()}>Try Again</button>
+					<Button variant="primary" onclick={() => reset()}>Try Again</Button>
 				</div>
 			{/snippet}
 		</svelte:boundary>

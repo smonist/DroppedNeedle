@@ -85,7 +85,6 @@ vi.mock('idb-keyval', () => ({
 vi.mock('$lib/api/client', () => ({
 	api: {
 		global: {
-			put: vi.fn(),
 			v3: { GET: vi.fn(), POST: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() }
 		}
 	}
@@ -103,7 +102,6 @@ import { ConnectionsQueryKeyFactory } from './ConnectionsQueryKeyFactory';
 import { getConnectionsQuery } from './ConnectionsQuery.svelte';
 import { createDisconnectMutation } from './ConnectionsMutations.svelte';
 
-const mockPut = vi.mocked(api.global.put);
 // The typed client's generics resolve mock results to void; loosen to Mock
 // so resolves/implementations typecheck (assertions still pin URLs + bodies).
 const mockV3Get = vi.mocked(api.global.v3.GET) as unknown as Mock;
@@ -125,10 +123,9 @@ beforeEach(() => {
 	mockV3Post.mockResolvedValue({});
 	mockV3Put.mockResolvedValue({});
 	mockV3Delete.mockResolvedValue({});
-	mockPut.mockResolvedValue({});
 });
 
-describe('ConnectionsQueryKeyFactory (AMU-5)', () => {
+describe('ConnectionsQueryKeyFactory', () => {
 	it('scopes the key by userId and normalizes a missing id to null', () => {
 		expect(ConnectionsQueryKeyFactory.list('userA')).toEqual(['me', 'connections', 'userA']);
 		expect(ConnectionsQueryKeyFactory.list(undefined)).toEqual(['me', 'connections', null]);

@@ -2,10 +2,11 @@
 	import { Check } from 'lucide-svelte';
 	import ArtistImage from '$lib/components/ArtistImage.svelte';
 	import ArtistCardDownloadButton from '$lib/components/ArtistCardDownloadButton.svelte';
-	import type { HomeArtist } from '$lib/types';
+	import Card from '$lib/ui/Card.svelte';
+	import type { ArtistRef } from '$lib/queries/discover/types';
 
 	interface Props {
-		artist: HomeArtist;
+		artist: ArtistRef;
 		showLibraryBadge?: boolean;
 		onclick?: () => void;
 		href?: string | null;
@@ -14,31 +15,44 @@
 	let { artist, showLibraryBadge = false, onclick, href = null }: Props = $props();
 </script>
 
-<svelte:element
-	this={href ? 'a' : 'button'}
+<Card
+	padding="none"
 	href={href ?? undefined}
-	type={href ? undefined : 'button'}
 	onclick={href ? undefined : onclick}
-	onkeydown={href || !onclick ? undefined : (e: KeyboardEvent) => e.key === 'Enter' && onclick()}
+	onkeydown={href || !onclick
+		? undefined
+		: (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					onclick();
+				}
+			}}
 	role={href || !onclick ? undefined : 'button'}
 	tabindex={href || !onclick ? undefined : 0}
-	class="card bg-base-200/50 hover:bg-base-200 hover:scale-[1.03] hover:shadow-lg transition-all duration-200 group relative {href ||
-	onclick
-		? 'cursor-pointer'
-		: 'cursor-default'}"
+	class="group {href
+		? ''
+		: onclick
+			? 'cursor-pointer transition-colors hover:bg-base-300 focus-visible:outline-2 focus-visible:outline-primary'
+			: 'cursor-default'}"
 >
-	{#if artist.mbid}
-		<ArtistCardDownloadButton artistName={artist.name} artistMbid={artist.mbid} />
+	{#if artist.musicbrainz_id}
+		<ArtistCardDownloadButton artistName={artist.name} artistMbid={artist.musicbrainz_id} />
 	{/if}
 	<figure class="flex justify-center pt-4 relative">
-		<ArtistImage mbid={artist.mbid || ''} alt={artist.name} size="md" lazy={true} />
+		<ArtistImage
+			mbid={artist.musicbrainz_id || ''}
+			localId={artist.local_id}
+			alt={artist.name}
+			size="md"
+			lazy={true}
+		/>
 		{#if showLibraryBadge || artist.in_library}
 			<div class="absolute top-2 right-2 badge badge-success badge-sm gap-1 opacity-90">
 				<Check class="w-3 h-3" />
 			</div>
 		{/if}
 	</figure>
-	<div class="card-body p-3 items-center text-center">
+	<div class="flex flex-col items-center gap-2 px-3 pt-1 pb-3 text-center">
 		<h3 class="font-semibold text-sm line-clamp-1">{artist.name}</h3>
 		{#if artist.listen_count}
 			<p class="text-xs text-base-content/50">
@@ -46,4 +60,4 @@
 			</p>
 		{/if}
 	</div>
-</svelte:element>
+</Card>

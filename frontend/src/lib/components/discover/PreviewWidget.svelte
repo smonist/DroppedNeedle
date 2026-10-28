@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { Disc3, LoaderCircle, Pause, Play, SkipForward, Volume2, X } from 'lucide-svelte';
+	import { LoaderCircle, Pause, Play, SkipForward, Volume2, X } from 'lucide-svelte';
+	import CoverPlaceholder from '$lib/ui/CoverPlaceholder.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import { deckSampler } from '$lib/stores/deckSampler.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
@@ -34,6 +35,7 @@
 		}
 		wasPlaying = playing;
 	});
+	import IconButton from '$lib/ui/IconButton.svelte';
 </script>
 
 {#if visible && entry}
@@ -65,13 +67,13 @@
 						customUrl={entry.coverUrl || null}
 					/>
 				{:else}
-					<div class="flex h-full w-full items-center justify-center bg-base-100">
-						<Disc3 class="h-7 w-7 text-base-content/30" />
+					<div class="relative h-full w-full overflow-hidden">
+						<CoverPlaceholder id={entry.albumMbid} name={entry.title} />
 					</div>
 				{/if}
 				{#if deckSampler.status === 'loading'}
 					<div class="absolute inset-0 flex items-center justify-center bg-black/40">
-						<LoaderCircle class="h-6 w-6 animate-spin text-white" />
+						<LoaderCircle class="h-6 w-6 animate-spin motion-keep text-white" />
 					</div>
 				{/if}
 			</div>
@@ -113,37 +115,25 @@
 
 			<!-- controls -->
 			<div class="flex shrink-0 items-center gap-0.5">
-				<button
-					class="btn btn-circle btn-secondary btn-sm"
-					onclick={() => deckSampler.togglePlay()}
-					aria-label={deckSampler.status === 'paused' ? 'Resume preview' : 'Pause preview'}
+				<IconButton
+					variant="accent"
+					size="sm"
+					icon={deckSampler.status === 'paused' ? Play : Pause}
+					label={deckSampler.status === 'paused' ? 'Resume preview' : 'Pause preview'}
+					class="[&_svg]:fill-current"
 					disabled={deckSampler.status === 'loading'}
-				>
-					{#if deckSampler.status === 'paused'}
-						<Play class="h-4 w-4" fill="currentColor" />
-					{:else}
-						<Pause class="h-4 w-4" fill="currentColor" />
-					{/if}
-				</button>
+					onclick={() => deckSampler.togglePlay()}
+				/>
 				{#if deckSampler.hasNext}
-					<button
-						class="btn btn-circle btn-ghost btn-sm"
-						onclick={() => deckSampler.next()}
-						aria-label="Skip to next album"
-						title="Skip to next album"
+					<IconButton
+						size="sm"
+						icon={SkipForward}
+						label="Skip to next album"
 						disabled={deckSampler.status === 'loading'}
-					>
-						<SkipForward class="h-4 w-4" />
-					</button>
+						onclick={() => deckSampler.next()}
+					/>
 				{/if}
-				<button
-					class="btn btn-circle btn-ghost btn-sm"
-					onclick={() => deckSampler.stop()}
-					aria-label="Close preview"
-					title="Stop preview"
-				>
-					<X class="h-4 w-4" />
-				</button>
+				<IconButton size="sm" icon={X} label="Close preview" onclick={() => deckSampler.stop()} />
 			</div>
 		</div>
 

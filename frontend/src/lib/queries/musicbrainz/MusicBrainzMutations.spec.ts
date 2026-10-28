@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 vi.mock('@tanstack/svelte-query', () => ({
 	createMutation: vi.fn((factory: () => Record<string, unknown>) => factory())
@@ -6,10 +6,7 @@ vi.mock('@tanstack/svelte-query', () => ({
 
 vi.mock('$lib/api/client', () => ({
 	api: {
-		global: (() => {
-			const g = { post: vi.fn(), put: vi.fn() };
-			return { ...g, v3: { POST: g.post, PUT: g.put } };
-		})()
+		global: { v3: { POST: vi.fn(), PUT: vi.fn() } }
 	}
 }));
 
@@ -26,8 +23,8 @@ import { saveMusicBrainzSettings } from './MusicBrainzMutations.svelte';
 import { getMusicBrainzSourceScope, resetMusicBrainzSourceScope } from './sourceScope.svelte';
 import type { MusicBrainzSettingsResponse, MusicBrainzSettingsUpdate } from './types';
 
-const mockPost = vi.mocked(api.global.post);
-const mockPut = vi.mocked(api.global.put);
+const mockPost = vi.mocked(api.global.v3.POST) as unknown as Mock;
+const mockPut = vi.mocked(api.global.v3.PUT) as unknown as Mock;
 
 const storage = new Map<string, string>();
 
@@ -69,7 +66,6 @@ const settings: MusicBrainzSettingsResponse = {
 	source_mode: 'official',
 	api_url: 'https://musicbrainz.org/ws/2',
 	rate_limit: 1,
-	concurrent_searches: 1,
 	community_acknowledged: null,
 	selected_source_mode: 'brainzmash',
 	source_id: 'official-source',
@@ -81,7 +77,6 @@ const update: MusicBrainzSettingsUpdate = {
 	source_mode: 'brainzmash',
 	api_url: null,
 	rate_limit: 1,
-	concurrent_searches: 1,
 	community_acknowledged: null
 };
 

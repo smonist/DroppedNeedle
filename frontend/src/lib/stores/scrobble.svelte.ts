@@ -24,12 +24,11 @@ export type ScrobbleSubmission = ScrobbleSubmitRequest;
 export type ScrobbleResponse = components['schemas']['ScrobbleResponse'];
 
 // The manager only reads the three forwarding flags out of the full
-// per-user scrobble-preferences DTO.
-export interface ScrobbleSettings {
-	scrobble_to_lastfm?: boolean;
-	scrobble_to_listenbrainz?: boolean;
-	navidrome_handles_external_scrobbles?: boolean;
-}
+// per-user scrobble preferences.
+export type ScrobbleSettings = Pick<
+	components['schemas']['ScrobblePreferences'],
+	'scrobble_to_lastfm' | 'scrobble_to_listenbrainz' | 'navidrome_handles_external_scrobbles'
+>;
 
 type ScrobbleStatus = 'idle' | 'tracking' | 'scrobbled' | 'error';
 
@@ -59,28 +58,49 @@ export function makeNowPlayingSubmission(
 	};
 }
 
+/** The finished play, as the player knew it. */
+export interface CompletedPlay {
+	artistName: string;
+	trackName: string;
+	albumName: string;
+	sourceType: SourceType;
+	trackSourceId?: string;
+	recordingMbid?: string;
+}
+
+/**
+ * A play from the library names its track, which the server files it
+ * under. A play through any other source sends the recording that source
+ * gave for the file, when it gave one.
+ */
 export function makeScrobbleSubmission(
-	artistName: string,
-	trackName: string,
-	albumName: string,
+	play: CompletedPlay,
 	durationMs: number,
-	timestamp: number,
-	source: SourceType
+	timestamp: number
 ): ScrobbleSubmission {
-	return {
-		track_name: trackName,
-		artist_name: artistName,
-		album_name: albumName,
+	const body: ScrobbleSubmission = {
+		track_name: play.trackName,
+		artist_name: play.artistName,
+		album_name: play.albumName,
 		duration_ms: durationMs,
 		timestamp,
-		source
+		source: play.sourceType
 	};
+	if (play.sourceType === 'local') {
+		if (play.trackSourceId) body.track_id = play.trackSourceId;
+	} else if (play.recordingMbid) {
+		body.mbid = play.recordingMbid;
+	}
+	return body;
 }
 
 function createScrobbleManager() {
 	let status = $state<ScrobbleStatus>('idle');
+	// A user is signed in: plays are tracked and recorded in their history.
+	let active = $state(false);
+	// Forwarding to Last.fm or ListenBrainz is on.
 	let enabled = $state(false);
-	let lastServiceDetail = $state<Record<string, { success: boolean }> | null>(null);
+	let lastServiceDetail = $state<Record<string, { queued: boolean }> | null>(null);
 	let track: TrackState | null = null;
 	let settingsCache: ScrobbleSettings | null = null;
 	let lastSettingsFetch = 0;
@@ -90,7 +110,7 @@ function createScrobbleManager() {
 		const now = Date.now();
 		if (settingsCache && now - lastSettingsFetch < 60_000) return settingsCache;
 		try {
-			settingsCache = await api.global.get<ScrobbleSettings>(SCROBBLE_PREFERENCES_ENDPOINTS.get());
+			settingsCache = await api.global.v3.GET(SCROBBLE_PREFERENCES_ENDPOINTS.get());
 			lastSettingsFetch = now;
 			return settingsCache;
 		} catch {
@@ -99,8 +119,17 @@ function createScrobbleManager() {
 	}
 
 	async function init(): Promise<void> {
+		active = true;
 		const settings = await loadSettings();
+		if (!active) return;
 		enabled = !!(settings?.scrobble_to_lastfm || settings?.scrobble_to_listenbrainz);
+	}
+
+	function stopInterval(): void {
+		if (progressInterval) {
+			clearInterval(progressInterval);
+			progressInterval = null;
+		}
 	}
 
 	async function sendNowPlaying(
@@ -119,25 +148,15 @@ function createScrobbleManager() {
 	}
 
 	async function sendScrobble(
-		artistName: string,
-		trackName: string,
-		albumName: string,
+		play: CompletedPlay,
 		durationMs: number,
-		timestamp: number,
-		source: SourceType
+		timestamp: number
 	): Promise<void> {
 		try {
-			const body = makeScrobbleSubmission(
-				artistName,
-				trackName,
-				albumName,
-				durationMs,
-				timestamp,
-				source
-			);
+			const body = makeScrobbleSubmission(play, durationMs, timestamp);
 			const data = await submitScrobble(body);
 			lastServiceDetail = Object.fromEntries(
-				Object.entries(data.services ?? {}).map(([k, v]) => [k, { success: v.success }])
+				Object.entries(data.services ?? {}).map(([k, v]) => [k, { queued: v.queued }])
 			);
 			if (data.accepted) {
 				status = 'scrobbled';
@@ -157,12 +176,10 @@ function createScrobbleManager() {
 			const np = playerStore.nowPlaying;
 			const isPlaying = playerStore.isPlaying;
 
-			if (!enabled) {
+			if (!active) {
+				track = null;
 				if (status !== 'idle') status = 'idle';
-				if (progressInterval) {
-					clearInterval(progressInterval);
-					progressInterval = null;
-				}
+				stopInterval();
 				return;
 			}
 
@@ -251,7 +268,7 @@ function createScrobbleManager() {
 					track.accumulatedMs += deltaS * 1000;
 				}
 
-				if (shouldSendNowPlaying(track.accumulatedMs, track.nowPlayingSent)) {
+				if (enabled && shouldSendNowPlaying(track.accumulatedMs, track.nowPlayingSent)) {
 					track.nowPlayingSent = true;
 					sendNowPlaying(
 						currentNp.artistName,
@@ -266,24 +283,23 @@ function createScrobbleManager() {
 					track.scrobbled = true;
 					const t = track;
 					sendScrobble(
-						currentNp.artistName,
-						currentNp.trackName,
-						currentNp.albumName,
+						{
+							artistName: currentNp.artistName,
+							trackName: currentNp.trackName,
+							albumName: currentNp.albumName,
+							sourceType: currentNp.sourceType,
+							trackSourceId: currentNp.trackSourceId,
+							recordingMbid: currentNp.recordingMbid
+						},
 						t.durationMs,
-						t.startedAt,
-						currentNp.sourceType
+						t.startedAt
 					).catch(() => {
 						t.scrobbled = false;
 					});
 				}
 			}, 1000);
 
-			return () => {
-				if (progressInterval) {
-					clearInterval(progressInterval);
-					progressInterval = null;
-				}
-			};
+			return stopInterval;
 		});
 	});
 
@@ -304,7 +320,11 @@ function createScrobbleManager() {
 		},
 		reset(): void {
 			// clear per-user scrobble state on user switch/logout so the client gate +
-			// tooltip never reflect the wrong user (AMU-5)
+			// tooltip never reflect the wrong user. A play started before
+			// sign-out is dropped, never submitted under the next session.
+			active = false;
+			track = null;
+			stopInterval();
 			enabled = false;
 			status = 'idle';
 			lastServiceDetail = null;

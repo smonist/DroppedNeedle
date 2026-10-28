@@ -9,6 +9,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import AsyncButton from './AsyncButton.svelte';
+	import Button from './Button.svelte';
+	import Input from './Input.svelte';
 	import Modal from './Modal.svelte';
 
 	interface Props {
@@ -23,6 +25,8 @@
 		phrase?: string;
 		/** A mutation's `isPending`, when the caller runs the work itself. */
 		pending?: boolean;
+		/** False when there turns out to be nothing to confirm: only the cancel button shows. */
+		canConfirm?: boolean;
 		onconfirm: () => unknown;
 		oncancel?: () => void;
 		children?: Snippet;
@@ -37,6 +41,7 @@
 		tone = 'primary',
 		phrase,
 		pending = false,
+		canConfirm = true,
 		onconfirm,
 		oncancel,
 		children
@@ -87,9 +92,10 @@
 		<label class="mt-4 block text-sm" for={phraseId}>
 			Type <strong>{phrase}</strong> to continue
 		</label>
-		<input
+		<Input
 			id={phraseId}
-			class="input mt-1 w-full"
+			label="Type {phrase} to continue"
+			class="mt-1 w-full"
 			autocomplete="off"
 			spellcheck="false"
 			bind:value={typed}
@@ -104,16 +110,18 @@
 	{/if}
 
 	{#snippet actions()}
-		<button type="button" class="btn btn-ghost" onclick={() => (open = false)} disabled={busy}>
+		<Button variant="ghost" onclick={() => (open = false)} disabled={busy}>
 			{cancelLabel}
-		</button>
-		<AsyncButton
-			class="btn {tone === 'danger' ? 'btn-error' : 'btn-primary'}"
-			onclick={confirm}
-			pending={busy}
-			disabled={phrase !== undefined && typed !== phrase}
-		>
-			{confirmLabel}
-		</AsyncButton>
+		</Button>
+		{#if canConfirm}
+			<AsyncButton
+				variant={tone === 'danger' ? 'danger' : 'primary'}
+				onclick={confirm}
+				pending={busy}
+				disabled={phrase !== undefined && typed !== phrase}
+			>
+				{confirmLabel}
+			</AsyncButton>
+		{/if}
 	{/snippet}
 </Modal>

@@ -89,7 +89,8 @@ export type SearchSuggestResponse = {
 	remote_status: SearchRemoteStatus;
 };
 
-export type EnrichmentSource = 'listenbrainz' | 'lastfm' | 'none';
+/** The provider behind an enrichment batch; `null` when none answered. */
+export type EnrichmentSource = components['schemas']['ListenSource'] | null;
 
 export type ArtistEnrichment = components['schemas']['ArtistEnrichment'];
 
@@ -102,11 +103,11 @@ export type ArtistEnrichmentRequest = {
 
 export type AlbumEnrichmentRequest = components['schemas']['AlbumEnrichmentRequest'];
 
-export type EnrichmentResponse = {
-	artists: ArtistEnrichment[];
-	albums: AlbumEnrichment[];
-	source: EnrichmentSource;
-};
+export type TopSong = components['schemas']['TopSong'];
+
+export type SimilarAlbumsResponse = components['schemas']['SimilarAlbumsResponse'];
+
+export type MoreByArtistResponse = components['schemas']['MoreByArtistResponse'];
 
 export type ReleaseGroup = {
 	id: string;
@@ -158,7 +159,7 @@ export type ArtistInfoBasic = ArtistImageFields & {
 	// per-user follow state; artist page reads it from the dedicated /follow query
 	followed?: boolean;
 	auto_download?: boolean;
-	auto_download_state?: 'none' | 'pending' | 'approved' | 'rejected' | 'revoked';
+	auto_download_state?: components['schemas']['AutoDownloadState'];
 	release_group_count?: number;
 	service_status?: Record<string, string> | null;
 };
@@ -231,243 +232,11 @@ export type AlbumTracksInfo = {
 	selected_release_mbid?: string | null;
 };
 
-export type JellyfinConnectionSettings = components['schemas']['JellyfinConnection'];
-
 export type OIDCConnectionSettings = components['schemas']['OidcConnection'];
-
-export type HomeArtist = {
-	mbid: string | null;
-	local_id?: string | null;
-	name: string;
-	image_url: string | null;
-	listen_count: number | null;
-	in_library: boolean;
-};
-
-export type HomeAlbum = {
-	mbid: string | null;
-	local_id?: string | null;
-	name: string;
-	artist_name: string | null;
-	artist_mbid: string | null;
-	image_url: string | null;
-	release_date: string | null;
-	listen_count: number | null;
-	in_library: boolean;
-	requested?: boolean;
-};
-
-export type HomeTrack = {
-	mbid: string | null;
-	name: string;
-	artist_name: string | null;
-	artist_mbid: string | null;
-	album_name: string | null;
-	listen_count: number | null;
-	listened_at: string | null;
-	image_url?: string | null;
-};
-
-export type HomeGenre = {
-	name: string;
-	listen_count: number | null;
-	artist_count: number | null;
-	artist_mbid: string | null;
-};
-
-export type HomeSection = {
-	title: string;
-	type: 'artists' | 'albums' | 'tracks' | 'genres';
-	items: (HomeArtist | HomeAlbum | HomeTrack | HomeGenre)[];
-	source: string | null;
-	fallback_message: string | null;
-	connect_service: string | null;
-	radio_seed_type?: string | null;
-	radio_seed_id?: string | null;
-};
-
-export type ServicePrompt = {
-	service: string;
-	title: string;
-	description: string;
-	icon: string;
-	color: string;
-	features: string[];
-};
 
 export type ServiceHealthItem = components['schemas']['ServiceHealthItem'];
 
 export type SystemHealthResponse = components['schemas']['SystemHealthResponse'];
-
-export type HomeResponse = {
-	refreshing?: boolean;
-	recently_added: HomeSection | null;
-	library_artists: HomeSection | null;
-	library_albums: HomeSection | null;
-	recommended_artists: HomeSection | null;
-	trending_artists: HomeSection | null;
-	popular_albums: HomeSection | null;
-	recently_played: HomeSection | null;
-	top_genres: HomeSection | null;
-	genre_list: HomeSection | null;
-	fresh_releases: HomeSection | null;
-	favorite_artists: HomeSection | null;
-	your_top_albums: HomeSection | null;
-	weekly_exploration: WeeklyExplorationSection | null;
-	service_prompts: ServicePrompt[];
-	integration_status: Record<string, boolean>;
-	genre_artwork: Record<string, GenreArtwork>;
-	genre_artwork_schema_version: 'v2';
-	discover_preview: DiscoverPreview | null;
-};
-
-export type DiscoverPreview = {
-	seed_artist: string;
-	seed_artist_mbid: string;
-	items: HomeArtist[];
-};
-
-export type BecauseYouListenTo = {
-	seed_artist: string;
-	seed_artist_mbid: string;
-	listen_count: number;
-	section: HomeSection;
-	banner_url?: string | null;
-	wide_thumb_url?: string | null;
-	fanart_url?: string | null;
-};
-
-export type WeeklyExplorationTrack = {
-	title: string;
-	artist_name: string;
-	album_name: string;
-	recording_mbid: string | null;
-	artist_mbid: string | null;
-	release_group_mbid: string | null;
-	cover_url: string | null;
-	duration_ms: number | null;
-};
-
-export type WeeklyExplorationSection = {
-	title: string;
-	playlist_date: string;
-	tracks: WeeklyExplorationTrack[];
-	source_url: string;
-};
-
-export interface TopPickItem {
-	album: HomeAlbum;
-	match_pct: number;
-	reasons: string[];
-	seed_artist: string | null;
-}
-
-export interface TopPicksSection {
-	title: string;
-	items: TopPickItem[];
-	source: string | null;
-	// still trending-only while personalisation resolves during a ListenBrainz outage
-	personalizing: boolean;
-}
-
-export type DiscoverResponse = {
-	because_you_listen_to: BecauseYouListenTo[];
-	discover_queue_enabled: boolean;
-	fresh_releases: HomeSection | null;
-	missing_essentials: HomeSection | null;
-	rediscover: HomeSection | null;
-	artists_you_might_like: HomeSection | null;
-	popular_in_your_genres: HomeSection | null;
-	genre_list: HomeSection | null;
-	globally_trending: HomeSection | null;
-	weekly_exploration: WeeklyExplorationSection | null;
-	lastfm_weekly_artist_chart: HomeSection | null;
-	lastfm_weekly_album_chart: HomeSection | null;
-	lastfm_recent_scrobbles: HomeSection | null;
-	daily_mixes: HomeSection[];
-	radio_sections: HomeSection[];
-	top_picks: TopPicksSection | null;
-	listeners_like_you: HomeSection | null;
-	anniversaries: HomeSection | null;
-	new_from_followed: HomeSection | null;
-	unexplored_genres: HomeSection | null;
-	generated_at: number | null;
-	refresh_started_at: number | null;
-	section_status: Record<string, string>;
-	genre_artwork: Record<string, GenreArtwork>;
-	genre_artwork_schema_version: 'v2';
-	integration_status: Record<string, boolean>;
-	service_prompts: ServicePrompt[];
-	refreshing: boolean;
-	service_status: Record<string, string> | null;
-};
-
-export type PlaylistProfile = {
-	artist_mbids: string[];
-	genre_distribution: Record<string, string[]>;
-	track_count: number;
-};
-
-export type PlaylistSuggestionsResponse = {
-	suggestions: HomeSection;
-	playlist_id: string;
-	profile: PlaylistProfile;
-};
-
-export type GenreLibrarySection = {
-	artists: HomeArtist[];
-	albums: HomeAlbum[];
-	artist_count: number;
-	album_count: number;
-};
-
-export type GenrePopularSection = {
-	artists: HomeArtist[];
-	albums: HomeAlbum[];
-	has_more_artists: boolean;
-	has_more_albums: boolean;
-};
-
-export type GenreDetailResponse = {
-	genre: string;
-	genre_artwork: GenreArtwork;
-	library: GenreLibrarySection | null;
-	popular: GenrePopularSection | null;
-	artists: HomeArtist[];
-	total_count: number | null;
-};
-
-export type GenreArtworkAlbum = {
-	album_id: string;
-	album_title: string;
-	album_artist_name: string | null;
-	cover_version: number;
-};
-
-export type GenreArtwork = {
-	kind: 'collage' | 'gradient';
-	albums: GenreArtworkAlbum[];
-	version: string;
-};
-
-export type SimilarArtist = {
-	musicbrainz_id: string;
-	name: string;
-	listen_count: number;
-	in_library: boolean;
-};
-
-export type TopSong = {
-	recording_mbid?: string | null;
-	release_group_mbid?: string | null;
-	original_release_mbid?: string | null;
-	title: string;
-	artist_name: string;
-	release_name?: string | null;
-	listen_count: number;
-	disc_number?: number | null;
-	track_number?: number | null;
-};
 
 export type ResolvedTrack = {
 	release_group_mbid?: string | null;
@@ -480,57 +249,6 @@ export type ResolvedTrack = {
 	duration?: number | null;
 };
 
-export type TopAlbum = {
-	release_group_mbid?: string | null;
-	title: string;
-	artist_name: string;
-	year?: number | null;
-	listen_count: number;
-	in_library: boolean;
-	requested?: boolean;
-	cover_url?: string | null;
-};
-
-export type DiscoveryAlbum = {
-	musicbrainz_id: string;
-	title: string;
-	artist_name: string;
-	artist_id?: string | null;
-	year?: number | null;
-	in_library: boolean;
-	requested?: boolean;
-	cover_url?: string | null;
-};
-
-export type SimilarAlbumsResponse = {
-	albums: DiscoveryAlbum[];
-	source: string;
-	configured: boolean;
-};
-
-export type DiscoverQueueItemLight = {
-	release_group_mbid: string;
-	album_name: string;
-	artist_name: string;
-	artist_mbid: string;
-	cover_url: string | null;
-	recommendation_reason: string;
-	is_wildcard: boolean;
-	in_library: boolean;
-};
-
-export type DiscoverQueueEnrichment = {
-	artist_mbid: string | null;
-	release_date: string | null;
-	country: string | null;
-	tags: string[];
-	youtube_url: string | null;
-	youtube_search_url: string;
-	youtube_search_available: boolean;
-	artist_description: string | null;
-	listen_count: number | null;
-};
-
 export type DiscoverActivity = components['schemas']['DiscoverActivityRequest'];
 
 export type YouTubeQuotaStatus = components['schemas']['YouTubeQuotaStatus'];
@@ -539,17 +257,6 @@ export type TrackCacheCheckItem = {
 	artist: string;
 	track: string;
 	cached: boolean;
-};
-
-export type DiscoverQueueItemFull = DiscoverQueueItemLight & {
-	enrichment?: DiscoverQueueEnrichment;
-	// client-side marker set after the user requests the album from the deck
-	requested?: boolean;
-};
-
-export type MoreByArtistResponse = {
-	albums: DiscoveryAlbum[];
-	artist_name: string;
 };
 
 export type YouTubeLink = components['schemas']['YouTubeLink'];
@@ -562,362 +269,7 @@ export type YouTubeTrackLinkResponse = components['schemas']['YouTubeTrackLinkRe
 
 export type YouTubeTrackLinkBatchResponse = components['schemas']['YouTubeTrackLinkBatchResponse'];
 
-export type StatusMessage = {
-	title?: string | null;
-	messages: string[];
-};
-
-export type RequestKind = 'album' | 'track';
-
-export type ActiveRequestItem = {
-	musicbrainz_id: string;
-	artist_name: string;
-	album_title: string;
-	artist_mbid?: string | null;
-	year?: number | null;
-	cover_url?: string | null;
-	requested_at: string;
-	status: string;
-	progress?: number | null;
-	eta?: string | null;
-	size?: number | null;
-	size_remaining?: number | null;
-	download_status?: string | null;
-	download_state?: string | null;
-	status_messages?: StatusMessage[] | null;
-	error_message?: string | null;
-	library_queue_id?: number | null;
-	quality?: string | null;
-	protocol?: string | null;
-	download_client?: string | null;
-	user_id?: string | null;
-	requested_by_name?: string | null;
-	request_kind: RequestKind;
-	track_title?: string | null;
-	duration_seconds?: number | null;
-	track_release_group_mbid?: string | null;
-};
-
-export type RequestHistoryItem = {
-	musicbrainz_id: string;
-	artist_name: string;
-	album_title: string;
-	artist_mbid?: string | null;
-	year?: number | null;
-	cover_url?: string | null;
-	requested_at: string;
-	completed_at?: string | null;
-	status: string;
-	in_library: boolean;
-	user_id?: string | null;
-	requested_by_name?: string | null;
-	reviewed_by_name?: string | null;
-	reviewed_at?: string | null;
-	download_task_id?: string | null;
-	can_reimport?: boolean;
-	request_kind: RequestKind;
-	track_title?: string | null;
-	duration_seconds?: number | null;
-	track_release_group_mbid?: string | null;
-};
-
-export type ActiveRequestsResponse = {
-	items: ActiveRequestItem[];
-	count: number;
-};
-
-export type RequestHistoryResponse = {
-	items: RequestHistoryItem[];
-	total: number;
-	page: number;
-	page_size: number;
-	total_pages: number;
-};
-
-export type JellyfinTrackInfo = {
-	jellyfin_id: string;
-	title: string;
-	track_number: number;
-	disc_number?: number | null;
-	duration_seconds: number;
-	album_name: string;
-	artist_name: string;
-	album_id?: string;
-	codec?: string | null;
-	bitrate?: number | null;
-	image_url?: string | null;
-};
-
-export type JellyfinAlbumMatch = {
-	found: boolean;
-	jellyfin_album_id?: string | null;
-	tracks: JellyfinTrackInfo[];
-};
-
-export type JellyfinAlbumSummary = {
-	jellyfin_id: string;
-	name: string;
-	artist_name: string;
-	year?: number | null;
-	track_count: number;
-	image_url?: string | null;
-	musicbrainz_id?: string | null;
-	artist_musicbrainz_id?: string | null;
-	play_count?: number;
-};
-
-export type JellyfinPaginatedResponse = {
-	items: JellyfinAlbumSummary[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type JellyfinLibraryStats = {
-	total_tracks: number;
-	total_albums: number;
-	total_artists: number;
-};
-
-export type JellyfinArtistSummary = {
-	jellyfin_id: string;
-	name: string;
-	image_url?: string | null;
-	album_count: number;
-	musicbrainz_id?: string | null;
-	play_count?: number;
-};
-
-export type JellyfinArtistPage = {
-	items: JellyfinArtistSummary[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type JellyfinArtistIndexEntry = {
-	name: string;
-	artists: JellyfinArtistSummary[];
-};
-
-export type JellyfinArtistIndexResponse = {
-	index: JellyfinArtistIndexEntry[];
-};
-
-export type JellyfinTrackPage = {
-	items: JellyfinTrackInfo[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-// mirrors backend api/v1/schemas/settings.py (NavidromeConnectionSettings, NavidromePlaylistSyncResult)
-export type NavidromePlaylistSyncScope = 'public' | 'all';
-
-export type NavidromeConnectionSettings = components['schemas']['NavidromeConnection'];
-
 export type NavidromePlaylistSyncResult = components['schemas']['PlaylistSyncResult'];
-
-export type NavidromeTrackInfo = {
-	navidrome_id: string;
-	title: string;
-	track_number: number;
-	disc_number?: number | null;
-	duration_seconds: number;
-	album_name: string;
-	artist_name: string;
-	codec?: string | null;
-	bitrate?: number | null;
-	image_url?: string | null;
-};
-
-export type NavidromeAlbumSummary = {
-	navidrome_id: string;
-	name: string;
-	artist_name: string;
-	year?: number | null;
-	track_count: number;
-	image_url?: string | null;
-	musicbrainz_id?: string | null;
-	artist_musicbrainz_id?: string | null;
-};
-
-export type NavidromeAlbumDetail = NavidromeAlbumSummary & {
-	tracks: NavidromeTrackInfo[];
-};
-
-export type NavidromeAlbumMatch = {
-	found: boolean;
-	navidrome_album_id?: string | null;
-	tracks: NavidromeTrackInfo[];
-};
-
-export type NavidromeArtistSummary = {
-	navidrome_id: string;
-	name: string;
-	image_url?: string | null;
-	album_count: number;
-	musicbrainz_id?: string | null;
-};
-
-export type NavidromeSearchResponse = {
-	albums: NavidromeAlbumSummary[];
-	artists: NavidromeArtistSummary[];
-	tracks: NavidromeTrackInfo[];
-};
-
-export type NavidromeArtistIndexEntry = {
-	name: string;
-	artists: NavidromeArtistSummary[];
-};
-
-export type NavidromeArtistIndexResponse = {
-	index: NavidromeArtistIndexEntry[];
-};
-
-export type NavidromeArtistPage = {
-	items: NavidromeArtistSummary[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type NavidromeTrackPage = {
-	items: NavidromeTrackInfo[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type NavidromeGenreSongsResponse = {
-	songs: NavidromeTrackInfo[];
-	genre: string;
-};
-
-export type NavidromeLibraryStats = {
-	total_tracks: number;
-	total_albums: number;
-	total_artists: number;
-};
-
-export type NavidromeMusicFolder = {
-	id: string;
-	name: string;
-};
-
-export type NavidromeFolderPreferenceMode = 'all' | 'selected';
-
-export type NavidromeFolderPreference = {
-	mode: NavidromeFolderPreferenceMode;
-	selected_folder_ids: string[];
-	available_folders: NavidromeMusicFolder[];
-	stale_folder_ids: string[];
-	source_available: boolean;
-	scope_revision: string;
-};
-
-export type NavidromeFolderPreferenceUpdate = {
-	mode: NavidromeFolderPreferenceMode;
-	selected_folder_ids: string[];
-};
-
-export type NavidromePaginatedResponse = {
-	items: NavidromeAlbumSummary[];
-	total: number;
-};
-
-export type PlexConnectionSettings = components['schemas']['PlexConnection'];
-
-export type PlexTrackInfo = {
-	plex_id: string;
-	title: string;
-	track_number: number;
-	duration_seconds: number;
-	disc_number: number;
-	album_name: string;
-	artist_name: string;
-	codec?: string | null;
-	bitrate?: number | null;
-	audio_channels?: number | null;
-	container?: string | null;
-	part_key?: string | null;
-	image_url?: string | null;
-};
-
-export type PlexAlbumSummary = {
-	plex_id: string;
-	name: string;
-	artist_name: string;
-	year?: number | null;
-	track_count: number;
-	image_url?: string | null;
-	musicbrainz_id?: string | null;
-	artist_musicbrainz_id?: string | null;
-	last_viewed_at?: number;
-};
-
-export type PlexAlbumDetail = PlexAlbumSummary & {
-	tracks: PlexTrackInfo[];
-	genres: string[];
-};
-
-export type PlexAlbumMatch = {
-	found: boolean;
-	plex_album_id?: string | null;
-	tracks: PlexTrackInfo[];
-};
-
-export type PlexArtistSummary = {
-	plex_id: string;
-	name: string;
-	image_url?: string | null;
-	musicbrainz_id?: string | null;
-};
-
-export type PlexSearchResponse = {
-	albums: PlexAlbumSummary[];
-	artists: PlexArtistSummary[];
-	tracks: PlexTrackInfo[];
-};
-
-export type PlexLibraryStats = {
-	total_tracks: number;
-	total_albums: number;
-	total_artists: number;
-};
-
-export type PlexPaginatedResponse = {
-	items: PlexAlbumSummary[];
-	total: number;
-};
-
-export type PlexArtistPage = {
-	items: PlexArtistSummary[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type PlexArtistIndexEntry = {
-	name: string;
-	artists: PlexArtistSummary[];
-};
-
-export type PlexArtistIndexResponse = {
-	index: PlexArtistIndexEntry[];
-};
-
-export type PlexTrackPage = {
-	items: PlexTrackInfo[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
-export type PlexLibrarySection = {
-	key: string;
-	title: string;
-};
 
 export type BrowseHeroCard = {
 	label: string;
@@ -939,53 +291,6 @@ export type ArtistIndexArtist = {
 export type ArtistIndexEntry = {
 	name: string;
 	artists: ArtistIndexArtist[];
-};
-
-export type PlexHubResponse = {
-	stats: PlexLibraryStats | null;
-	recently_played: PlexAlbumSummary[];
-	recently_added: PlexAlbumSummary[];
-	all_albums_preview: PlexAlbumSummary[];
-	genres: string[];
-};
-
-export type PlexDiscoveryAlbum = {
-	plex_id: string;
-	name: string;
-	artist_name: string;
-	year?: number | null;
-	image_url?: string | null;
-};
-
-export type PlexDiscoveryHub = {
-	title: string;
-	hub_type: string;
-	albums: PlexDiscoveryAlbum[];
-};
-
-export type PlexDiscoveryResponse = {
-	hubs: PlexDiscoveryHub[];
-};
-
-export type NavidromeHubResponse = {
-	stats: NavidromeLibraryStats | null;
-	recently_played: NavidromeAlbumSummary[];
-	favorites: NavidromeAlbumSummary[];
-	favorite_artists: NavidromeArtistSummary[];
-	favorite_tracks: NavidromeTrackInfo[];
-	all_albums_preview: NavidromeAlbumSummary[];
-	genres: string[];
-};
-
-export type JellyfinHubResponse = {
-	stats: JellyfinLibraryStats | null;
-	recently_played: JellyfinAlbumSummary[];
-	recently_added: JellyfinAlbumSummary[];
-	favorites: JellyfinAlbumSummary[];
-	most_played_artists: JellyfinArtistSummary[];
-	most_played_albums: JellyfinAlbumSummary[];
-	all_albums_preview: JellyfinAlbumSummary[];
-	genres: string[];
 };
 
 export type LocalTrackInfo = {
@@ -1021,10 +326,6 @@ export type LocalAlbumSummary = {
 	cover_url?: string | null;
 	date_added?: string | null;
 	download_allowed?: boolean;
-};
-
-export type DownloadAccessResponse = {
-	allowed: boolean;
 };
 
 export type CrateReason = 'recent' | 'rediscover' | 'surprise' | 'same_era';
@@ -1084,8 +385,6 @@ export type LocalStorageStats = {
 
 export type LastFmConnectionSettingsResponse = components['schemas']['LastFmSettings'];
 
-export type SpotifySettings = components['schemas']['SpotifySettings'];
-
 // mirrors backend api/v1/schemas/settings.py (GetItSettings)
 export type GetItSettings = components['schemas']['GetIt'];
 
@@ -1098,24 +397,6 @@ export type PurchaseLink = components['schemas']['PurchaseLink'];
 export type EventsSettings = components['schemas']['EventsSettings'];
 
 export type WrappedSettingsResponse = components['schemas']['WrappedSettings'];
-
-export type SpotifyPlaylistItem = {
-	id: string;
-	name: string;
-	description: string;
-	track_count: number;
-	cover_url: string | null;
-	owner: string;
-	imported_playlist_id: string | null;
-};
-
-export type SpotifyPlaylistListResponse = {
-	playlists: SpotifyPlaylistItem[];
-};
-
-export type SpotifyImportResponse = {
-	playlist_id: string;
-};
 
 export type ScrobbleSettings = {
 	scrobble_to_lastfm: boolean;
@@ -1140,16 +421,6 @@ export type ScrobbleSubmission = {
 	duration_ms: number;
 	mbid?: string;
 	source?: string;
-};
-
-export type ServiceResult = {
-	success: boolean;
-	error?: string;
-};
-
-export type ScrobbleResponse = {
-	accepted: boolean;
-	services: Record<string, ServiceResult>;
 };
 
 export type LastFmArtistEnrichment = components['schemas']['LastFmArtistEnrichment'];
@@ -1203,68 +474,6 @@ export type SourcePlaylistDetail = {
 	tracks: SourcePlaylistTrack[];
 };
 
-export type PlexSessionInfo = {
-	session_id: string;
-	user_name: string;
-	track_title: string;
-	artist_name: string;
-	album_name: string;
-	cover_url: string;
-	player_device: string;
-	player_platform: string;
-	player_state: string;
-	is_direct_play: boolean;
-	progress_ms: number;
-	duration_ms: number;
-	audio_codec: string;
-	audio_channels: number;
-	bitrate: number;
-};
-
-export type PlexSessionsResponse = {
-	sessions: PlexSessionInfo[];
-	available: boolean;
-};
-
-export type NavidromeNowPlayingEntry = {
-	user_name: string;
-	minutes_ago: number;
-	player_name: string;
-	track_name: string;
-	artist_name: string;
-	album_name: string;
-	album_id: string;
-	cover_art_id: string;
-	duration_seconds: number;
-	estimated_position_seconds?: number;
-};
-
-export type NavidromeNowPlayingResponse = {
-	entries: NavidromeNowPlayingEntry[];
-};
-
-export type JellyfinSessionInfo = {
-	session_id: string;
-	user_name: string;
-	device_name: string;
-	client_name: string;
-	track_name: string;
-	artist_name: string;
-	album_name: string;
-	album_id: string;
-	cover_url: string;
-	position_seconds: number;
-	duration_seconds: number;
-	is_paused: boolean;
-	play_method: string;
-	audio_codec: string;
-	bitrate: number;
-};
-
-export type JellyfinSessionsResponse = {
-	sessions: JellyfinSessionInfo[];
-};
-
 export type NowPlayingSession = {
 	id: string;
 	user_name: string;
@@ -1286,69 +495,15 @@ export type NowPlayingSession = {
 	redacted?: boolean;
 };
 
-export type NavidromeArtistInfo = {
-	navidrome_id: string;
-	name: string;
-	biography: string;
-	image_url: string;
-	similar_artists: NavidromeArtistSummary[];
-};
-
-export type PlexHistoryEntry = {
-	rating_key: string;
-	track_title: string;
-	artist_name: string;
-	album_name: string;
-	cover_url: string;
-	viewed_at: string;
-	device_name: string;
-};
-
-export type PlexHistoryResponse = {
-	entries: PlexHistoryEntry[];
-	total: number;
-	limit: number;
-	offset: number;
-	available: boolean;
-};
-
 export type LyricLine = {
 	text: string;
 	start_seconds: number | null;
-};
-
-export type NavidromeLyricsResponse = {
-	text: string;
-	is_synced: boolean;
-	lines: LyricLine[];
 };
 
 export type LocalLyricsResponse = {
 	text: string;
 	is_synced: boolean;
 	lines: LyricLine[];
-};
-
-export type JellyfinLyricsLine = {
-	text: string;
-	start_seconds: number | null;
-};
-
-export type JellyfinLyricsResponse = {
-	lines: JellyfinLyricsLine[];
-	is_synced: boolean;
-	lyrics_text: string;
-};
-
-export type JellyfinFavoritesExpanded = {
-	albums: JellyfinAlbumSummary[];
-	artists: JellyfinArtistSummary[];
-};
-
-export type JellyfinFilterFacets = {
-	years: number[];
-	tags: string[];
-	studios: string[];
 };
 
 export type AlbumSort = 'recent' | 'title' | 'artist';
@@ -1392,13 +547,6 @@ export interface TargetNativeTrack {
 
 export type NativeTrackListItem = TargetNativeTrack;
 
-export type NativeTrackPage = {
-	items: NativeTrackListItem[];
-	total: number;
-	offset: number;
-	limit: number;
-};
-
 export interface LibraryAlbumSummary {
 	id: string;
 	title: string;
@@ -1424,6 +572,8 @@ export interface LibraryAlbumSummary {
 }
 
 export interface LibraryAlbumDetail extends LibraryAlbumSummary {
+	// Set when library management leaves the album's files alone.
+	management_hold?: components['schemas']['ManagementHoldView'] | null;
 	row_revision: number;
 	input_revision: string;
 	download_allowed?: boolean;
@@ -1448,9 +598,6 @@ export interface LibraryAlbumDetail extends LibraryAlbumSummary {
 	custom_manifest_track_count: number;
 	custom_manifest_recognized_track_count: number;
 	custom_manifest_stale: boolean;
-	management_excluded: boolean;
-	management_exclusion_revision: number | null;
-	management_excluded_at: number | null;
 	active_edition_conversion: {
 		job_id: string;
 		release_mbid: string;
@@ -1571,20 +718,7 @@ export interface ContributionSourceSelection {
 	alignments: ContributionTrackAlignment[];
 }
 
-export interface DiscogsReleaseCandidate {
-	release_id: string;
-	title: string;
-	artist_name: string;
-	canonical_url: string;
-	year: number | null;
-	country: string | null;
-	label: string | null;
-	catalogue_number: string | null;
-	format_summary: string | null;
-	track_count: number | null;
-	master_id: string | null;
-	fetched_at: number;
-}
+export type DiscogsReleaseCandidate = components['schemas']['DiscogsReleaseCandidate'];
 
 export interface DiscogsArtistCredit {
 	name: string;
@@ -1673,18 +807,9 @@ export interface ContributionDuplicateResult {
 	different_edition_confirmed: boolean;
 }
 
-export interface MusicBrainzSeedField {
-	name: string;
-	value: string;
-}
+export type MusicBrainzSeedField = components['schemas']['MusicBrainzSeedField'];
 
-export interface MusicBrainzSeed {
-	action_url: string;
-	method: 'POST';
-	fields: MusicBrainzSeedField[];
-	contribution_revision: number;
-	expires_at: number;
-}
+export type MusicBrainzSeed = components['schemas']['MusicBrainzSeed'];
 
 export interface ContributionValidationIssue {
 	code: string;
@@ -1761,8 +886,8 @@ export interface LibraryArtistAppearancesResponse {
 	items: LibraryArtistAppearance[];
 	total: number;
 	total_tracks: number;
-	offset: number;
-	limit: number;
+	/** The cursor of the page after this one; null on the last page. */
+	next: string | null;
 }
 
 export interface LibraryTrack {
@@ -1790,7 +915,7 @@ export interface LibraryAlbumStatus {
 	album_id: string;
 	track_count: number;
 	tracks: TargetNativeTrack[];
-	// Coverage vs the release's MB tracklist (P5): expected_tracks === 0 means the
+	// Coverage vs the release's MB tracklist: expected_tracks === 0 means the
 	// tracklist was unavailable and the UI falls back to the presence-only reading.
 	expected_tracks?: number;
 	covered_tracks?: number;
@@ -1816,27 +941,6 @@ export interface TargetCatalogRemovalResponse {
 export type AlbumEditionItem = components['schemas']['AlbumEditionItem'];
 export type AlbumEditionsResponse = components['schemas']['AlbumEditionsResponse'];
 
-export interface CutoffUnmetItem {
-	release_group_mbid: string;
-	current_tier: string;
-	track_count: number;
-	artist_name: string | null;
-	artist_mbid: string | null;
-	album_title: string | null;
-	year: number | null;
-}
-
-export interface CutoffUnmetResponse {
-	items: CutoffUnmetItem[];
-	cutoff: string;
-	upgrade_allowed: boolean;
-}
-
-export interface UpgradeRequestResponse {
-	status: 'queued' | 'satisfied';
-	task_id: string | null;
-}
-
 export interface LibraryStats {
 	total_albums: number;
 	total_artists: number;
@@ -1855,10 +959,10 @@ export interface LibraryScanSchedule {
 	scan_frequency: ScanFrequency;
 	/** HH:MM (server-local) used when scan_frequency is 'daily'. */
 	daily_scan_time: string;
-	last_scan: number | null;
-	last_scan_success: boolean;
 	/** Server timezone label for the daily-time caption; present on reads only. */
 	server_timezone?: string;
+	/** When the last scan finished, unix seconds, from the scan history; reads only. */
+	last_scan_at?: number | null;
 }
 
 export interface LibraryActionResponse {
@@ -1870,225 +974,6 @@ export interface LibraryActionResponse {
 export interface StatusMessageResponse {
 	status: string;
 	message: string;
-}
-
-export interface DownloadClientConfig {
-	enabled: boolean;
-	client_type: string;
-	url: string;
-	api_key: string;
-	verify_downloads: boolean;
-	min_bitrate_kbps: number;
-	quality_min: string;
-	quality_max: string;
-	flac_mp3_only: boolean;
-	downloads_subpath: string;
-	slskd_incomplete_mount: string;
-	preflight_score_auto_accept: number;
-	preflight_score_manual_min: number;
-	download_stall_timeout_minutes: number;
-	download_queued_timeout_minutes: number;
-	preferred_quality_wait_minutes: number;
-	max_failover_attempts: number;
-	max_concurrent_downloads: number;
-}
-
-export interface DownloadsMountStatus {
-	ok: boolean;
-	move_supported: boolean;
-	reason: string;
-	path: string;
-}
-
-export interface DownloadClientHealth {
-	status: 'ok' | 'error';
-	version?: string | null;
-	message?: string | null;
-}
-
-export interface DownloadClientStatus {
-	configured: boolean;
-	client: DownloadClientHealth;
-	mount: DownloadsMountStatus;
-	mount_advisory?: string | null;
-	slskd_downloads_dir?: string | null;
-	effective_downloads_path?: string | null;
-}
-
-export interface HomeIntegrationStatus {
-	listenbrainz: boolean;
-	jellyfin: boolean;
-	download_client: boolean;
-	youtube: boolean;
-	lastfm: boolean;
-	navidrome: boolean;
-	youtube_api: boolean;
-	plex: boolean;
-	library: boolean;
-	localfiles: boolean;
-}
-
-export interface TestConnectionResult {
-	valid: boolean;
-	version?: string | null;
-	message: string;
-}
-
-export interface IndexerSettings {
-	id: string;
-	type: string;
-	name: string;
-	url: string;
-	api_key: string;
-	categories: number[];
-	enabled: boolean;
-	priority: number;
-}
-
-export type IndexerTestResult = components['schemas']['IndexerTestResponse'];
-
-export interface IndexerSavedResponse {
-	id: string;
-}
-
-export interface ProwlarrConnectionSettings {
-	enabled: boolean;
-	url: string;
-	api_key: string;
-}
-
-export type ProwlarrTestResult = components['schemas']['ProwlarrTestResponse'];
-
-export type UsenetSearchBackendName = 'indexers' | 'prowlarr';
-
-export interface UsenetSearchBackend {
-	backend: UsenetSearchBackendName;
-}
-
-export interface OperationResult {
-	success: boolean;
-	message?: string | null;
-}
-
-export interface SabnzbdConnectionSettings {
-	enabled: boolean;
-	client_type: string;
-	url: string;
-	api_key: string;
-	category: string;
-	priority: number;
-	post_processing: number;
-	downloads_mount: string;
-}
-
-export type SabnzbdTestResult = components['schemas']['SabnzbdTestResponse'];
-
-export type QualityRecipeFormat = 'flac' | 'mp3';
-
-export type QualityRecipeQuality =
-	| 'below_192'
-	| '192_255'
-	| '256_319'
-	| '320_plus'
-	| 'cd'
-	| '24_48'
-	| '24_96'
-	| '24_192'
-	| 'hi_res'
-	| 'custom';
-
-export interface QualityRecipeEntry {
-	format: QualityRecipeFormat;
-	quality: QualityRecipeQuality;
-	min_bitrate_kbps?: number | null;
-	target_bitrate_kbps?: number | null;
-	max_bitrate_kbps?: number | null;
-	bit_depth?: number | null;
-	sample_rate_hz?: number | null;
-}
-
-export interface SourcePriority {
-	order: string[];
-}
-export type QualityRecipeStatus = 'v1' | 'v2' | 'non_convertible' | 'invalid';
-
-export interface DownloadPolicySettings {
-	quality_min: string;
-	quality_max: string;
-	flac_mp3_only: boolean;
-	verify_downloads: boolean;
-	preflight_score_auto_accept: number;
-	preflight_score_manual_min: number;
-	download_stall_timeout_minutes: number;
-	download_queued_timeout_minutes: number;
-	preferred_quality_wait_minutes: number;
-	max_failover_attempts: number;
-	max_concurrent_downloads: number;
-	auto_retry_enabled: boolean;
-	auto_retry_max_attempts: number;
-	auto_retry_base_interval_minutes: number;
-	usenet_min_release_age_minutes: number;
-	quality_cutoff: string;
-	upgrade_allowed: boolean;
-	max_library_size_gb: number;
-	default_request_quota_count: number;
-	default_request_quota_days: number;
-	default_storage_quota_gb: number;
-	background_upgrade_scan_enabled: boolean;
-	background_upgrade_scan_interval_hours: number;
-	background_upgrade_max_per_run: number;
-	quality_preference_order?: string[];
-	preferred_lossy_bitrate_kbps?: number | null;
-	lossy_min_bitrate_kbps?: number | null;
-	lossy_max_bitrate_kbps?: number | null;
-	lossless_preference?: string;
-	lossless_max_bit_depth?: number | null;
-	lossless_max_sample_rate_hz?: number | null;
-	unknown_quality_behavior?: string;
-	source_selection_mode?: string;
-	/** when an automatic download waits for a pick: when_unsure, always or off */
-	search_review?: string;
-	quality_recipe?: QualityRecipeEntry[];
-	quality_recipe_status?: QualityRecipeStatus;
-	quality_recipe_error?: string | null;
-}
-
-// Hand-mirrors backend WantedWatcherSettings (api/v1/schemas/settings.py).
-export interface WantedWatcherSettings {
-	enabled: boolean;
-	auto_download_on_find: boolean;
-	watch_partial_albums: boolean;
-	max_checks_per_sweep: number;
-	dormant_after_days: number;
-}
-
-// Hand-mirrors backend PluginSourceInfo (api/v1/schemas/plugins.py).
-export type PluginSourceHealth = 'ok' | 'degraded' | 'error' | 'unknown';
-export interface PluginSourceInfo {
-	key: string;
-	plugin: string;
-	display_name: string;
-	has_client: boolean;
-	has_indexer: boolean;
-	target_source: string;
-	configured: boolean;
-	health: PluginSourceHealth;
-}
-
-// Hand-mirrors backend PluginSourcesResponse (api/v1/schemas/plugins.py).
-export interface PluginSourcesResponse {
-	sources: PluginSourceInfo[];
-}
-// Alias used by acquisition surfaces; same wire shape as PluginSourcesResponse.
-export type PluginSourceListResponse = PluginSourcesResponse;
-
-// Hand-mirrors backend PluginStreamRef (infrastructure/plugins/protocols.py).
-// Exactly one of path/url is set; url may carry transcode hints.
-export interface PluginStreamRef {
-	path: string;
-	url: string;
-	content_type: string;
-	duration_seconds: number | null;
 }
 
 // Hand-mirrors backend PluginRouteRequest/PluginRouteResponse
@@ -2117,273 +1002,46 @@ export interface PluginUiRpcResponse {
 	error: string | null;
 }
 
-export type DownloadStatus =
-	'queued' | 'downloading' | 'processing' | 'completed' | 'partial' | 'failed' | 'cancelled';
+export type DownloadStatus = components['schemas']['TaskStatus'];
 
-// mirrors backend DownloadTaskResponse (api/v1/schemas/download.py)
-export interface DownloadTask {
-	id: string;
-	user_id: string;
-	download_type: string;
-	// "soulseek" | "usenet" - drives the source badge + the "via album NZB" label.
-	// Optional for backward-compat with cached/older responses.
-	source?: string;
-	release_group_mbid: string;
-	release_mbid: string | null;
-	release_track_mbid: string | null;
-	recording_mbid: string | null;
-	// Backfilled from the release group at request time; older tasks predating the
-	// backfill (or one MusicBrainz couldn't resolve) have no artist link.
-	artist_mbid?: string | null;
-	artist_name: string;
-	album_title: string;
-	track_title: string | null;
-	year: number | null;
-	status: DownloadStatus;
-	progress_percent: number;
-	total_size_bytes: number | null;
-	downloaded_bytes: number;
-	files_total: number;
-	files_completed: number;
-	files_failed: number;
-	source_username: string | null;
-	search_job_id: string | null;
-	candidate_index: number | null;
-	preflight_score: number | null;
-	final_path: string | null;
-	error_message: string | null;
-	retry_count: number;
-	created_at: number;
-	updated_at: number;
-	completed_at: number | null;
-	next_retry_at: number | null;
-	retry_max: number;
-	// The full auto-retry backoff schedule in minutes for this task's max attempts, e.g.
-	// [15, 30, 60, 120, 240, 480]. Empty when auto-retry is off. Drives the Wanted ladder.
-	retry_ladder_minutes: number[];
-	acquisition_cleanup_state:
-		'not_tracked' | 'in_use' | 'pending' | 'complete' | 'preserved' | 'needs_attention';
-	quality_format: string | null;
-	quality_bitrate?: number | null;
-	quality_bit_depth: number | null;
-	quality_sample_rate: number | null;
-	/** Acquisition-quality projection (Acquisition plan). */
+// The source status still reads the quality projection and the fallback time,
+// which the server does not send; they stay optional until it does or the
+// screen stops reading them.
+export type DownloadTask = components['schemas']['DownloadTaskResponse'] & {
+	preferred_quality_fallback_at?: number | null;
 	quality_snapshot_summary?: string | null;
-	quality_snapshot_hash?: string | null;
 	quality_preference_step?: number | null;
 	quality_certainty?: string | null;
 	quality_provenance?: string | null;
 	manual_quality_override?: boolean;
-	advertised_queue_depth: number | null;
-	queue_position_start: number | null;
-	queue_position_end: number | null;
-	remote_queued: boolean;
-	preferred_quality_fallback_at: number | null;
-	attempt_number: number;
-	attempt_total: number;
-	has_next_source: boolean;
-	held_for_review: boolean;
-	// Wrong-product verdict (Slice 2). Optional for backward-compat with cached responses.
-	wrong_product_verdict_at?: number | null;
-	wrong_product_detail?: string | null;
-	// Why the task sits where it does: one stable code, one plain sentence and what
-	// to do about it. Shown instead of the raw error_message.
-	reason?: DownloadReason | null;
-	// What the import decided about the newest landing.
-	decision?: DownloadImportDecision | null;
+};
+
+/** Why a download, held file or upload sits where it does. */
+export type Reason = components['schemas']['Reason'];
+
+export type DownloadListResponse = components['schemas']['DownloadListResponse'];
+
+export type DownloadActivitySummary = components['schemas']['DownloadActivitySummaryResponse'];
+
+/** One download or upload whose files wait for a decision. */
+export type HeldEntry = components['schemas']['HeldEntryResponse'];
+
+export type HeldFile = components['schemas']['HeldFileResponse'];
+
+export type HeldFileAction = components['schemas']['HeldFileAction'];
+
+/** A held file with the entry it belongs to, as an album page's track row shows it. */
+export interface HeldFileInEntry {
+	entry: HeldEntry;
+	file: HeldFile;
 }
 
-export interface DownloadReason {
-	code: string;
-	text: string;
-	action: string;
-}
+export type HeldActionResult = components['schemas']['HeldActionResponse'];
 
-export interface DownloadImportDecision {
-	outcome: 'imported' | 'partial' | 'held' | 'rejected' | 'deferred' | string;
-	reason_code: string | null;
-	reason_text: string | null;
-	reason_action: string | null;
-	detail: string | null;
-	files_total: number;
-	files_imported: number;
-	files_held: number;
-	decided_at: number;
-}
-
-export interface DownloadListResponse {
-	items: DownloadTask[];
-	page: number;
-	page_size: number;
-}
-
-// mirrors backend DownloadActivitySummaryResponse (api/v1/schemas/download.py)
-export interface DownloadActivitySummary {
-	revision: number;
-	active_count: number;
-	held_count: number;
-	failed_count: number;
-	landed_release_group_mbids: string[];
-}
-
-// A downloaded track that matched by duration but failed the AcoustID recording-identity
-// check (usually wrong MusicBrainz metadata). Held for a human "import anyway" / "discard"
-// decision instead of being dropped. `evidence_*` is what AcoustID heard.
-export interface HeldImport {
-	id: number;
-	release_group_mbid: string | null;
-	release_mbid: string | null;
-	release_track_mbid: string | null;
-	recording_mbid: string | null;
-	track_number: number | null;
-	disc_number: number | null;
-	track_title: string | null;
-	artist_name: string | null;
-	album_title: string | null;
-	year: number | null;
-	original_filename: string | null;
-	file_format: string | null;
-	duration_seconds: number | null;
-	expected_duration_seconds: number | null;
-	reason: string;
-	/** The reason as one plain sentence, and what to do about it. */
-	reason_text: string | null;
-	reason_action: string | null;
-	reason_detail: string | null;
-	source: string;
-	source_task_id: string | null;
-	/** `upgrade` files replace the library's copy only when better. */
-	origin: string;
-	created_at: number;
-	evidence_title: string | null;
-	evidence_artist: string | null;
-	evidence_score: number | null;
-	management_retry_count: number;
-	management_next_retry_at: number | null;
-}
-
-export interface HeldListResponse {
-	items: HeldImport[];
-}
-
-export interface DownloadSourceUpdate {
-	candidate_index: number | null;
-	source: string | null;
-	quality_format?: string | null;
-	quality_bitrate?: number | null;
-	quality_bit_depth?: number | null;
-	quality_sample_rate: number | null;
-	advertised_queue_depth: number | null;
-	queue_position_start: number | null;
-	queue_position_end: number | null;
-	remote_queued: boolean;
-	preferred_quality_fallback_at: number | null;
-	attempt_number: number;
-	attempt_total: number;
-	has_next_source: boolean;
-}
-
-// SSE payload on the `download:
-
-// ---------------------------------------------------------------------------
-// Acquisition-quality policy (Acquisition plan, 2026-08-27) - hand-mirrored.
-// ---------------------------------------------------------------------------
-
-export type QualityPreferenceOrder = string[];
-
-export interface PolicySummary {
-	summary: string;
-	source_mode: 'source_first' | 'quality_first' | string;
-	legacy_rollback_compatible: boolean;
-	quality_recipe_status: QualityRecipeStatus;
-	quality_recipe_error: string | null;
-}
-
-export type PolicyImpactResponse = components['schemas']['PolicyImpactResponse'];
-
-export interface RestartWithPolicyRequest {
-	expected_snapshot_hash?: string | null;
-}
-
-export interface RestartWithPolicyResponse {
-	accepted: boolean;
-	snapshot_summary: string | null;
-	message?: string | null;
-}
-// SSE payload on the `download:{task_id}` channel `progress` event
-export interface DownloadProgress extends DownloadSourceUpdate {
-	bytes_downloaded: number;
-	bytes_total: number;
-	files_completed: number;
-	files_total: number;
-	progress_percent: number;
-}
-
-// mirrors backend RequestAcceptedResponse (api/v1/schemas/request.py)
-export type RequestAcceptedStatus =
-	'pending' | 'awaiting_approval' | 'queued' | 'downloading' | 'cancelling' | 'failed' | 'imported';
-
-export interface RequestAccepted {
-	success: boolean;
-	message: string;
-	musicbrainz_id: string;
-	status: RequestAcceptedStatus;
-	quality_snapshot_summary?: string | null;
-}
-
-export type TrackRequestStatus = 'awaiting_approval' | 'queued' | 'already_in_library';
-
-export interface TrackRequestResponse {
-	status: TrackRequestStatus;
-	task_id?: string | null;
-}
-
-export interface CancelDownloadResponse {
-	success: boolean;
-	status?: string;
-}
-
-export interface NextSourceResponse {
-	success: boolean;
-	status: string;
-	candidate_index: number;
-}
-
-export interface RetryDownloadResponse {
-	success: boolean;
-	task_id: string;
-}
-
-export interface QuarantineEntry {
-	id: number;
-	source?: string;
-	client_id: string;
-	username: string;
-	filename: string;
-	reason: string;
-	// The reason as a plain sentence.
-	reason_text?: string;
-	quarantined_at: number;
-	release_group_mbid?: string | null;
-}
-
-export interface QuarantineListResponse {
-	items: QuarantineEntry[];
-	page: number;
-}
+export type HeldRecheckAllResult = components['schemas']['HeldRecheckAllResponse'];
 
 // Connect Apps (inbound OpenSubsonic + Jellyfin compatibility)
-export interface ConnectAppsSettings {
-	subsonic_enabled: boolean;
-	jellyfin_enabled: boolean;
-	exact_track_approval_supported: boolean;
-	transcoding_enabled: boolean;
-	transcode_default_format: 'mp3' | 'opus';
-	transcode_max_bitrate_kbps: number;
-	advertise_server_name: string;
-	advertise_server_version: string;
-	discover_mode: 'local-only' | 'lazy-mb' | 'use-scrobble-targets';
-}
+export type ConnectAppsSettings = components['schemas']['ConnectApps'];
 
 export type AppPasswordView = components['schemas']['AppPasswordView'];
 
@@ -2401,39 +1059,4 @@ export interface SectionPrefsUpdate {
 	sections: { key: string; enabled: boolean }[];
 }
 
-export interface PreviewTrackItem {
-	title: string;
-	artist_name: string;
-	preview_url: string;
-	duration_s: number | null;
-	position: number | null;
-}
-
 export type RadioSeedItem = components['schemas']['RadioSeedItem'];
-
-export interface RadioPlanRequest {
-	seed_type: 'artist' | 'album' | 'genre' | 'items';
-	seed_id?: string | null;
-	items?: RadioSeedItem[];
-	mode?: 'library' | 'hybrid';
-	count?: number;
-	exclude_recording_mbids?: string[];
-}
-
-export interface RadioPlanTrack {
-	track_name: string;
-	artist_name: string;
-	artist_mbid: string;
-	recording_mbid: string | null;
-	album_mbid: string | null;
-	album_name: string | null;
-	in_library: boolean;
-	local_file_id: string | null;
-	file_format: string | null;
-	duration_s: number | null;
-}
-
-export interface RadioPlanResponse {
-	title: string;
-	tracks: RadioPlanTrack[];
-}

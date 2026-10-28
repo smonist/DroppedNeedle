@@ -1,7 +1,8 @@
 <script lang="ts">
+	import '$lib/components/now-playing.css';
+	import '$lib/components/local/deck.css';
 	import type { CrateTrack, CrateReason, LocalAlbumSummary } from '$lib/types';
-	import { flip } from 'svelte/animate';
-	import { fly } from 'svelte/transition';
+	import { flip, fly } from '$lib/ui/motion';
 	import { crateCoverUrl } from '$lib/queries/local/LocalV3Adapters';
 	import {
 		Sparkles,
@@ -12,9 +13,11 @@
 		ListPlus,
 		GripVertical,
 		RefreshCw,
-		Disc3,
 		ArrowDownToLine
 	} from 'lucide-svelte';
+	import CoverPlaceholder from '$lib/ui/CoverPlaceholder.svelte';
+	import AlbumImage from '$lib/components/AlbumImage.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 
 	interface Props {
 		tracks: CrateTrack[];
@@ -222,14 +225,13 @@
 					stroke-dashoffset={ringOffset}
 				/>
 			</svg>
-			<button
-				class="btn btn-circle btn-ghost btn-xs"
+			<IconButton
+				size="xs"
+				icon={RefreshCw}
+				label="Shuffle the crate now"
+				loading={isLoading}
 				onclick={onRefresh}
-				aria-label="Shuffle the crate now"
-				title="Shuffle the crate now"
-			>
-				<RefreshCw class="h-3.5 w-3.5 {isLoading ? 'animate-spin' : ''}" />
-			</button>
+			/>
 		</div>
 	</header>
 
@@ -270,15 +272,16 @@
 							class="relative h-12 w-12 shrink-0 overflow-hidden rounded-md ring-1 ring-base-content/10"
 						>
 							{#if cover}
-								<img
-									src={cover}
+								<AlbumImage
+									customUrl={cover}
 									alt={t.album_name}
-									class="h-full w-full object-cover"
-									loading="lazy"
+									size="full"
+									rounded="none"
+									className="h-full w-full"
 								/>
 							{:else}
-								<div class="flex h-full w-full items-center justify-center bg-base-300">
-									<Disc3 class="h-5 w-5 text-base-content/30" />
+								<div class="relative h-full w-full overflow-hidden">
+									<CoverPlaceholder name={t.album_name} />
 								</div>
 							{/if}
 						</div>
@@ -291,24 +294,15 @@
 							</span>
 						</div>
 						<div
-							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+							class="flex shrink-0 flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
 						>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
-								onclick={() => onPlay(t)}
-								aria-label="Play now"
-								title="Play now"
-							>
-								<Play class="h-3.5 w-3.5" />
-							</button>
-							<button
-								class="btn btn-circle btn-ghost btn-xs"
+							<IconButton size="xs" icon={Play} label="Play now" onclick={() => onPlay(t)} />
+							<IconButton
+								size="xs"
+								icon={ListPlus}
+								label="Add to queue"
 								onclick={() => onQueue(t)}
-								aria-label="Add to queue"
-								title="Add to queue"
-							>
-								<ListPlus class="h-3.5 w-3.5" />
-							</button>
+							/>
 						</div>
 					</div>
 				{/each}
@@ -359,3 +353,36 @@
 		{/if}
 	</div>
 </section>
+
+<style>
+	.crate-card {
+		transition:
+			transform 0.2s var(--ease-spring),
+			box-shadow 0.2s var(--ease-spring),
+			border-color 0.2s ease;
+	}
+
+	.crate-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 12px 24px -14px oklch(from var(--color-base-100) l c h / 0.9);
+	}
+
+	.crate-card.is-dragging {
+		opacity: 0.4;
+	}
+
+	/* transition matches the 250ms tick interval that updates it */
+	.countdown-ring {
+		transition: stroke-dashoffset 0.25s linear;
+	}
+
+	.crate-sweep {
+		background: linear-gradient(
+			115deg,
+			transparent 28%,
+			oklch(from var(--color-accent) l c h / 0.18) 50%,
+			transparent 72%
+		);
+		animation: crate-sweep 0.75s ease-out;
+	}
+</style>

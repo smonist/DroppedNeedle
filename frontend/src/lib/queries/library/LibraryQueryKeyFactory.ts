@@ -2,10 +2,10 @@ import { userIdSegment } from '../userKeySegment';
 
 export type LibraryV3UserId = string | null | undefined;
 
+// A long list's params, without its cursor: a list's pages share one key.
 export interface LibraryV3AlbumsParams {
 	limit: number;
-	offset: number;
-	sort: 'name' | 'date_added' | 'year' | 'artist';
+	sort: 'name' | 'date_added' | 'year' | 'artist' | 'random' | 'rediscover';
 	order: 'asc' | 'desc';
 	q?: string;
 	artistId?: string;
@@ -15,7 +15,6 @@ export interface LibraryV3AlbumsParams {
 
 export interface LibraryV3ArtistsParams {
 	limit: number;
-	offset: number;
 	sort: 'name' | 'album_count' | 'appearance_count' | 'date_added';
 	order: 'asc' | 'desc';
 	q?: string;
@@ -24,8 +23,7 @@ export interface LibraryV3ArtistsParams {
 
 export interface LibraryV3TracksParams {
 	limit: number;
-	offset: number;
-	sort: 'title' | 'date_added';
+	sort: 'title' | 'date_added' | 'artist' | 'album' | 'random';
 	order: 'asc' | 'desc';
 	q?: string;
 	albumId?: string;
@@ -58,6 +56,12 @@ export interface LibraryV3PageParams {
 	offset?: number;
 }
 
+/** A page of a list read by cursor: the size, and the `next` it follows. */
+export interface LibraryV3CursorParams {
+	limit?: number;
+	after?: string | null;
+}
+
 export const LibraryQueryKeyFactory = {
 	all: ['library'] as const,
 	// Catalog keys. Album and artist views carry per-caller favorite flags, so
@@ -68,8 +72,13 @@ export const LibraryQueryKeyFactory = {
 			[...LibraryQueryKeyFactory.all, 'catalog', userIdSegment(userId)] as const,
 		albums: (userId: LibraryV3UserId, params: LibraryV3AlbumsParams) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'albums', params] as const,
+		// The album list's pages, read on by cursor: apart from one page's key.
+		albumPages: (userId: LibraryV3UserId, params: LibraryV3AlbumsParams) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-pages', params] as const,
 		artists: (userId: LibraryV3UserId, params: LibraryV3ArtistsParams) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'artists', params] as const,
+		tracks: (userId: LibraryV3UserId, params: LibraryV3TracksParams) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'tracks', params] as const,
 		artistThumbs: (userId: LibraryV3UserId) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'artist-thumbs'] as const,
 		albumDetail: (userId: LibraryV3UserId, albumId: string) =>
@@ -80,9 +89,9 @@ export const LibraryQueryKeyFactory = {
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-tracks', albumId, params] as const,
 		artistDetail: (userId: LibraryV3UserId, artistId: string) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'artist-detail', artistId] as const,
-		artistAlbums: (userId: LibraryV3UserId, artistId: string, params: LibraryV3PageParams) =>
+		artistAlbums: (userId: LibraryV3UserId, artistId: string, params: LibraryV3CursorParams) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'artist-albums', artistId, params] as const,
-		artistAppearances: (userId: LibraryV3UserId, artistId: string, params: LibraryV3PageParams) =>
+		artistAppearances: (userId: LibraryV3UserId, artistId: string, params: LibraryV3CursorParams) =>
 			[
 				...LibraryQueryKeyFactory.catalog.root(userId),
 				'artist-appearances',
@@ -101,6 +110,39 @@ export const LibraryQueryKeyFactory = {
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'stats'] as const,
 		edition: (userId: LibraryV3UserId, albumId: string) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'edition', albumId] as const,
+		editionPlanPrefix: (userId: LibraryV3UserId, albumId: string) =>
+			[...LibraryQueryKeyFactory.catalog.edition(userId, albumId), 'plan'] as const,
+		// A null release is the album's own edition, the plan the album page shows.
+		editionPlan: (userId: LibraryV3UserId, albumId: string, release: string | null) =>
+			[...LibraryQueryKeyFactory.catalog.editionPlanPrefix(userId, albumId), release] as const,
+		// One tag write of the edition's tags, or its undo, by job. Outside the
+		// edition prefix: a finished write refreshes that prefix, which must
+		// not cancel the read that saw it finish.
+		editionTagWrite: (userId: LibraryV3UserId, albumId: string, jobId: string) =>
+			[
+				...LibraryQueryKeyFactory.catalog.root(userId),
+				'edition-tag-write',
+				albumId,
+				jobId
+			] as const,
+		albumTracksPrefix: (userId: LibraryV3UserId, albumId: string) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-tracks', albumId] as const,
+		albumCopiesPrefix: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-copies'] as const,
+		albumHistory: (userId: LibraryV3UserId, albumId: string) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-history', albumId] as const,
+		albumRemovalsPrefix: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'album-removals'] as const,
+		albumRemovals: (userId: LibraryV3UserId, albumId: string) =>
+			[...LibraryQueryKeyFactory.catalog.albumRemovalsPrefix(userId), albumId] as const,
+		recycleBinPrefix: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.root(userId), 'recycle-bin'] as const,
+		recycleBinPages: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.recycleBinPrefix(userId), 'pages'] as const,
+		recycleBinSummary: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.recycleBinPrefix(userId), 'summary'] as const,
+		recycleBinStatus: (userId: LibraryV3UserId) =>
+			[...LibraryQueryKeyFactory.catalog.recycleBinPrefix(userId), 'status'] as const,
 		unconfirmed: (userId: LibraryV3UserId, state: string, offset: number) =>
 			[...LibraryQueryKeyFactory.catalog.root(userId), 'unconfirmed', state, offset] as const
 	},
@@ -177,6 +219,7 @@ export const LibraryQueryKeyFactory = {
 			findingCategory,
 			cursor ?? 'first'
 		] as const,
+	albumPrefix: () => [...LibraryQueryKeyFactory.all, 'album'] as const,
 	album: (mbid: string) => [...LibraryQueryKeyFactory.all, 'album', mbid] as const,
 	reidentificationReleases: (
 		userId: LibraryV3UserId,
@@ -194,5 +237,7 @@ export const LibraryQueryKeyFactory = {
 			artist,
 			offset
 		] as const,
-	scanSchedule: () => [...LibraryQueryKeyFactory.all, 'scan-schedule'] as const
+	scanSchedule: () => [...LibraryQueryKeyFactory.all, 'scan-schedule'] as const,
+	// Admin-only and the same for every admin, so no user segment.
+	retagPairs: () => [...LibraryQueryKeyFactory.all, 'retag-pairs'] as const
 };

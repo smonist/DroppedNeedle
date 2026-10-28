@@ -1,4 +1,4 @@
-import { v3, type V3Query } from '$lib/api/v3/endpoint';
+import { v3 } from '$lib/api/v3/endpoint';
 import type { RemoteSource } from './types';
 
 // v3 remote-adapter URLs, built through the typed registry: every template
@@ -44,6 +44,12 @@ export interface RemoteSearchParams {
 	limit?: number;
 }
 
+/** The album's title and artist, so Plex and Navidrome can match by name. */
+export interface RemoteMatchHints {
+	title?: string;
+	artist?: string;
+}
+
 export interface RemoteLyricsParams {
 	artist?: string;
 	title?: string;
@@ -59,16 +65,15 @@ export interface RemoteRandomParams {
 	genre?: string;
 }
 
-// The param interfaces carry no index signature, so the builder takes a
-// plain object and narrows each entry (every adapter param is a string or
-// number today). Unset and empty values stay out of the query string.
-function query(params: object): V3Query {
-	const out: V3Query = {};
+// Unset and empty values stay out of the query string (every adapter param
+// is a string or number).
+function query<P extends object>(params: P): P {
+	const out: Record<string, string | number> = {};
 	for (const [key, value] of Object.entries(params)) {
 		if (typeof value !== 'string' && typeof value !== 'number') continue;
 		if (value !== '') out[key] = value;
 	}
-	return out;
+	return out as P;
 }
 
 export const REMOTE_ENDPOINTS = {
@@ -77,11 +82,8 @@ export const REMOTE_ENDPOINTS = {
 		v3('/api/v3/remotes/{source}/connection', { path: { source } }),
 	albums: (source: RemoteSource, params: RemoteAlbumParams = {}) =>
 		v3('/api/v3/remotes/{source}/albums', { path: { source }, query: query(params) }),
-	albumTracks: (source: RemoteSource, id: string, params: RemotePageParams = {}) =>
-		v3('/api/v3/remotes/{source}/albums/{id}/tracks', {
-			path: { source, id },
-			query: query(params)
-		}),
+	albumTracks: (source: RemoteSource, id: string) =>
+		v3('/api/v3/remotes/{source}/albums/{id}/tracks', { path: { source, id } }),
 	artists: (source: RemoteSource, params: RemoteArtistParams = {}) =>
 		v3('/api/v3/remotes/{source}/artists', { path: { source }, query: query(params) }),
 	artistIndex: (source: RemoteSource) =>
@@ -113,8 +115,8 @@ export const REMOTE_ENDPOINTS = {
 			path: { source },
 			query: query({ genre, ...params })
 		}),
-	playlists: (source: RemoteSource, params: RemotePageParams = {}) =>
-		v3('/api/v3/remotes/{source}/playlists', { path: { source }, query: query(params) }),
+	playlists: (source: RemoteSource) =>
+		v3('/api/v3/remotes/{source}/playlists', { path: { source } }),
 	playlist: (source: RemoteSource, id: string) =>
 		v3('/api/v3/remotes/{source}/playlists/{id}', { path: { source, id } }),
 	importPlaylist: (source: RemoteSource, id: string) =>
@@ -128,8 +130,8 @@ export const REMOTE_ENDPOINTS = {
 			path: { source, id },
 			query: query(params)
 		}),
-	match: (source: RemoteSource, mbid: string) =>
-		v3('/api/v3/remotes/{source}/match', { path: { source }, query: query({ mbid }) }),
+	match: (source: RemoteSource, mbid: string, hints: RemoteMatchHints = {}) =>
+		v3('/api/v3/remotes/{source}/match', { path: { source }, query: query({ mbid, ...hints }) }),
 	mix: (source: RemoteSource, id: string, params: RemoteMixParams = {}) =>
 		v3('/api/v3/remotes/{source}/mix/{id}', {
 			path: { source, id },

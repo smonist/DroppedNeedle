@@ -1,27 +1,32 @@
 <script lang="ts">
-	import { Check, Search } from 'lucide-svelte';
-	import type { HomeAlbum, HomeArtist } from '$lib/types';
+	import { Check, Headphones, Search } from 'lucide-svelte';
+	import type { AlbumRef, ArtistRef } from '$lib/queries/discover/types';
 	import { formatListenCount } from '$lib/utils/formatting';
 	import AlbumImage from './AlbumImage.svelte';
 	import ArtistImage from './ArtistImage.svelte';
 	import AlbumCardOverlay from './AlbumCardOverlay.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import CardTitle from '$lib/ui/CardTitle.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 
 	type ItemType = 'album' | 'artist';
 	type TimeRangeCardVariant = 'featured' | 'overview' | 'expanded';
 
 	interface Props {
-		item: HomeAlbum | HomeArtist;
+		item: AlbumRef | ArtistRef;
 		itemType: ItemType;
 		href?: string | null;
 		rank: number;
 		variant: TimeRangeCardVariant;
 		className: string;
-		onFallbackClick: (item: HomeAlbum | HomeArtist) => void;
+		onFallbackClick: (item: AlbumRef | ArtistRef) => void;
 	}
 
 	let { item, itemType, href = null, rank, variant, className, onFallbackClick }: Props = $props();
 
-	function isAlbum(_value: HomeAlbum | HomeArtist): _value is HomeAlbum {
+	const itemName = $derived('title' in item ? item.title : item.name);
+
+	function isAlbum(_value: AlbumRef | ArtistRef): _value is AlbumRef {
 		return itemType === 'album';
 	}
 
@@ -30,7 +35,8 @@
 	}
 
 	function handleCardKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
 			onFallbackClick(item);
 		}
 	}
@@ -41,10 +47,13 @@
 	}
 </script>
 
-<svelte:element
-	this={href ? 'a' : 'div'}
+<Card
+	variant="raised"
+	padding="none"
 	href={href ?? undefined}
-	class={`card ${className} group ${href ? 'cursor-pointer' : 'cursor-default'}`}
+	class="group {className} {href
+		? ''
+		: 'cursor-pointer transition hover:shadow-md motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-primary'}"
 	onclick={href ? undefined : handleCardClick}
 	onkeydown={href ? undefined : handleCardKeydown}
 	role={href ? undefined : 'button'}
@@ -54,18 +63,18 @@
 		<figure class="relative aspect-square w-full">
 			{#if itemType === 'album'}
 				<AlbumImage
-					mbid={item.mbid || ''}
-					alt={item.name}
+					mbid={item.musicbrainz_id || ''}
+					alt={itemName}
 					size="xl"
 					requestSize={250}
 					rounded="none"
 					className="w-full h-full"
-					customUrl={(item as HomeAlbum).image_url || null}
+					customUrl={(item as AlbumRef).cover_url || null}
 				/>
 			{:else}
 				<ArtistImage
-					mbid={item.mbid || ''}
-					alt={item.name}
+					mbid={item.musicbrainz_id || ''}
+					alt={itemName}
 					size="full"
 					requestSize={250}
 					rounded="none"
@@ -86,56 +95,59 @@
 					</div>
 				{/if}
 			</div>
-			{#if isAlbum(item) && item.mbid && item.in_library}
+			{#if isAlbum(item) && item.musicbrainz_id && item.in_library}
 				<AlbumCardOverlay
-					mbid={item.mbid}
-					albumName={item.name}
-					artistName={(item as HomeAlbum).artist_name || 'Unknown'}
-					coverUrl={(item as HomeAlbum).image_url || null}
+					mbid={item.musicbrainz_id}
+					albumName={itemName}
+					artistName={(item as AlbumRef).artist_name || 'Unknown'}
+					coverUrl={(item as AlbumRef).cover_url || null}
 				/>
 			{/if}
 			<div class="absolute inset-x-0 bottom-0 p-4 text-white">
-				<h3 class="line-clamp-2 text-lg font-bold sm:text-xl">{item.name}</h3>
+				<h3 class="line-clamp-2 text-lg font-bold sm:text-xl">{itemName}</h3>
 				{#if isAlbum(item) && item.artist_name}
 					<p class="line-clamp-1 text-sm text-white/80">{item.artist_name}</p>
 				{/if}
 				{#if item.listen_count !== null && item.listen_count !== undefined}
-					<p class="mt-1 text-sm text-white/60">🎧 {formatListenCount(item.listen_count)}</p>
+					<p class="mt-1 flex items-center gap-1 text-sm text-white/60">
+						<Headphones class="h-3.5 w-3.5" aria-hidden="true" />
+						{formatListenCount(item.listen_count)}
+					</p>
 				{/if}
 			</div>
-			{#if !item.mbid}
-				<button
-					type="button"
-					class="btn btn-ghost btn-xs btn-circle absolute bottom-3 right-3 text-white"
-					title={itemType === 'album' ? 'Search album' : 'Search artist'}
+			{#if !item.musicbrainz_id}
+				<IconButton
+					variant="neutral"
+					size="xs"
+					icon={Search}
+					label={itemType === 'album' ? 'Search album' : 'Search artist'}
+					class="absolute bottom-3 right-3"
 					onclick={handleSearchClick}
-				>
-					<Search class="h-3 w-3" />
-				</button>
+				/>
 			{/if}
 		</figure>
 	{:else}
 		{#if itemType === 'album'}
 			<figure class="relative aspect-square overflow-hidden">
 				<AlbumImage
-					mbid={item.mbid || ''}
-					alt={item.name}
+					mbid={item.musicbrainz_id || ''}
+					alt={itemName}
 					size="md"
 					rounded="none"
 					className="w-full h-full"
-					customUrl={(item as HomeAlbum).image_url || null}
+					customUrl={(item as AlbumRef).cover_url || null}
 				/>
 				{#if item.in_library}
 					<div class="badge badge-success badge-sm absolute left-1 top-1 z-20">
 						<Check class="h-3 w-3" />
 					</div>
 				{/if}
-				{#if item.mbid && item.in_library}
+				{#if item.musicbrainz_id && item.in_library}
 					<AlbumCardOverlay
-						mbid={item.mbid}
-						albumName={item.name}
-						artistName={(item as HomeAlbum).artist_name || 'Unknown'}
-						coverUrl={(item as HomeAlbum).image_url || null}
+						mbid={item.musicbrainz_id}
+						albumName={itemName}
+						artistName={(item as AlbumRef).artist_name || 'Unknown'}
+						coverUrl={(item as AlbumRef).cover_url || null}
 						size="sm"
 					/>
 				{/if}
@@ -147,15 +159,14 @@
 				>
 					#{rank}
 				</div>
-				{#if !item.mbid}
-					<button
-						type="button"
-						class="btn btn-ghost btn-xs btn-circle absolute bottom-1 right-1"
-						title="Search album"
+				{#if !item.musicbrainz_id}
+					<IconButton
+						size="xs"
+						icon={Search}
+						label="Search album"
+						class="absolute bottom-1 right-1"
 						onclick={handleSearchClick}
-					>
-						<Search class="h-3 w-3" />
-					</button>
+					/>
 				{/if}
 			</figure>
 		{:else}
@@ -165,8 +176,8 @@
 					: 'relative aspect-square overflow-hidden'}
 			>
 				<ArtistImage
-					mbid={item.mbid || ''}
-					alt={item.name}
+					mbid={item.musicbrainz_id || ''}
+					alt={itemName}
 					size={variant === 'overview' ? 'md' : 'full'}
 					rounded={variant === 'overview' ? undefined : 'none'}
 					className={variant === 'overview' ? undefined : 'w-full h-full'}
@@ -185,26 +196,28 @@
 				>
 					#{rank}
 				</div>
-				{#if !item.mbid}
-					<button
-						type="button"
-						class="btn btn-ghost btn-xs btn-circle absolute bottom-1 right-1"
-						title="Search artist"
+				{#if !item.musicbrainz_id}
+					<IconButton
+						size="xs"
+						icon={Search}
+						label="Search artist"
+						class="absolute bottom-1 right-1"
 						onclick={handleSearchClick}
-					>
-						<Search class="h-3 w-3" />
-					</button>
+					/>
 				{/if}
 			</figure>
 		{/if}
-		<div class={variant === 'expanded' ? 'card-body p-2 sm:p-3' : 'card-body p-2'}>
-			<h3
-				class={variant === 'expanded'
-					? 'card-title line-clamp-1 text-xs sm:text-sm'
-					: 'card-title line-clamp-1 text-xs'}
+		<div
+			class={variant === 'expanded'
+				? 'flex flex-col gap-2 px-2 pb-2 sm:px-3 sm:pb-3'
+				: 'flex flex-col gap-2 px-2 pb-2'}
+		>
+			<CardTitle
+				as="h3"
+				class={variant === 'expanded' ? 'line-clamp-1 text-xs sm:text-sm' : 'line-clamp-1 text-xs'}
 			>
-				{item.name}
-			</h3>
+				{itemName}
+			</CardTitle>
 			{#if isAlbum(item) && item.artist_name}
 				<p class="line-clamp-1 text-xs text-base-content/50">{item.artist_name}</p>
 			{/if}
@@ -213,4 +226,4 @@
 			{/if}
 		</div>
 	{/if}
-</svelte:element>
+</Card>

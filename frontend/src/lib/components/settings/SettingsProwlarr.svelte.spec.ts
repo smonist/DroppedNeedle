@@ -1,8 +1,8 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
-const saveMutate = vi.fn().mockResolvedValue({ success: true });
+const saveMutate = vi.fn(async (connection: Record<string, unknown>) => ({ ...connection }));
 const testMutate = vi.fn().mockResolvedValue({
 	valid: true,
 	version: '1.32.2.4987',
@@ -12,7 +12,7 @@ const testMutate = vi.fn().mockResolvedValue({
 
 vi.mock('$lib/queries/downloads/ProwlarrQueries.svelte', () => ({
 	getProwlarrConfigQuery: () => ({
-		data: { enabled: false, url: 'http://prowlarr:9696', api_key: 'prowlarr****' },
+		data: { enabled: false, url: 'http://prowlarr:9696', api_key: '********' },
 		isLoading: false,
 		isError: false
 	}),
@@ -31,14 +31,17 @@ describe('SettingsProwlarr.svelte', () => {
 		await expect.element(page.getByLabelText('Enabled')).toBeInTheDocument();
 		const url = page.getByLabelText('URL');
 		await expect.element(url).toHaveValue('http://prowlarr:9696');
-		const key = page.getByLabelText('API key');
-		await expect.element(key).toHaveValue('prowlarr****');
+		const key = page.getByLabelText('API key', { exact: true });
+		await expect.element(key).toHaveValue('********');
 	});
 
 	it('shows the untouched masked sentinel is preserved (save sends the sentinel back)', async () => {
 		await render(SettingsProwlarr);
+		await page.getByLabelText('URL').fill('http://prowlarr.lan:9696');
 		await page.getByRole('button', { name: 'Save' }).click();
-		expect(saveMutate).toHaveBeenCalledWith(expect.objectContaining({ api_key: 'prowlarr****' }));
+		expect(saveMutate).toHaveBeenCalledWith(
+			expect.objectContaining({ url: 'http://prowlarr.lan:9696', api_key: '********' })
+		);
 	});
 
 	it('runs Test pre-save and renders the indexer count', async () => {

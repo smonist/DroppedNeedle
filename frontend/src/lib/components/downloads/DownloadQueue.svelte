@@ -1,25 +1,24 @@
 <script lang="ts">
 	import { ChevronDown, Download, RotateCcw, TimerOff, Trash2 } from 'lucide-svelte';
-	import { SvelteMap } from 'svelte/reactivity';
 
 	import EmptyState from '$lib/components/EmptyState.svelte';
 	import {
 		clearFinished,
 		retryAllFailed,
-		reverifyHeldBulk,
 		stopAllRetries
 	} from '$lib/queries/downloads/DownloadMutations.svelte';
 	import { getDownloadsQuery } from '$lib/queries/downloads/DownloadQueries.svelte';
-	import { getHeldImportsQuery } from '$lib/queries/downloads/HeldQueries.svelte';
+	import {
+		getHeldEntriesQuery,
+		recheckAllHeldMutation
+	} from '$lib/queries/downloads/HeldQueries.svelte';
 	import { getQuarantineQuery } from '$lib/queries/downloads/QuarantineQueries.svelte';
 	import { bucketSections, collapseRetryChains } from '$lib/queries/downloads/downloadStatus';
 	import { authStore } from '$lib/stores/authStore.svelte';
-	import type { DownloadTask, HeldImport } from '$lib/types';
+	import Button from '$lib/ui/Button.svelte';
 
 	import DownloadItem from './DownloadItem.svelte';
-	import HeldTrackCard from './HeldTrackCard.svelte';
-	import HeldVerdictCard from './HeldVerdictCard.svelte';
-	import ManagementHoldCard from './ManagementHoldCard.svelte';
+	import HeldEntryCard from './HeldEntryCard.svelte';
 	import NowPressingHero from './NowPressingHero.svelte';
 	import QuarantinePanel from './QuarantinePanel.svelte';
 	import WantedCard from './WantedCard.svelte';
@@ -27,46 +26,41 @@
 	const query = getDownloadsQuery();
 	const isAdmin = $derived(authStore.isAdmin);
 	const quarantineQuery = getQuarantineQuery(() => isAdmin);
-	const heldQuery = getHeldImportsQuery();
-	const held = $derived(heldQuery.data?.items ?? []);
-	const managementHeld = $derived(held.filter((item) => item.reason.startsWith('management:')));
-	const verificationHeld = $derived(held.filter((item) => !item.reason.startsWith('management:')));
-	const verificationHeldIds = $derived(verificationHeld.map((item) => item.id));
-	const managementGroups = $derived.by(() => {
-		const groups = new SvelteMap<string, typeof managementHeld>();
-		for (const item of managementHeld) {
-			const key =
-				item.source_task_id ?? `${item.release_group_mbid ?? 'unknown'}:${item.created_at}`;
-			groups.set(key, [...(groups.get(key) ?? []), item]);
-		}
-		return [...groups.values()];
-	});
+	// Every download and upload whose files wait for a decision, one entry each.
+	const heldQuery = getHeldEntriesQuery();
+	const held = $derived(heldQuery.data?.entries ?? []);
 	const heldTaskIds = $derived(
-		new Set(held.flatMap((item) => (item.source_task_id ? [item.source_task_id] : [])))
+		new Set(
+			held.flatMap((entry) =>
+				entry.files.flatMap((file) => (file.source_task_id ? [file.source_task_id] : []))
+			)
+		)
 	);
-	// Wrong-product verdicts: tasks whose import proved the grabbed folder is a different
-	// product collapse to one card with their member tracks (members must still be held -
-	// a verdict whose rows were all individually resolved shows nothing).
-	const verdictGroups = $derived.by(() => {
-		const groups: { task: DownloadTask; items: HeldImport[] }[] = [];
-		for (const task of query.data?.items ?? []) {
-			if (task.wrong_product_verdict_at == null) continue;
-			const items = verificationHeld.filter((item) => item.source_task_id === task.id);
-			if (items.length > 0) groups.push({ task, items });
-		}
-		return groups;
-	});
-	const verdictMemberIds = $derived(
-		new Set(verdictGroups.flatMap((group) => group.items.map((item) => item.id)))
+	// A download that grabbed the wrong edition can hunt again from its entry.
+	const verdictTaskIds = $derived(
+		new Set(
+			(query.data?.items ?? [])
+				.filter((task) => task.wrong_product_verdict_at != null)
+				.map((task) => task.id)
+		)
 	);
-	const loneVerificationHeld = $derived(
-		verificationHeld.filter((item) => !verdictMemberIds.has(item.id))
+	function verdictTaskOf(entry: (typeof held)[number]): string | null {
+		if (entry.origin !== 'download') return null;
+		return (
+			entry.files.find((file) => file.source_task_id && verdictTaskIds.has(file.source_task_id))
+				?.source_task_id ?? null
+		);
+	}
+	const recheckEntryIds = $derived(
+		held
+			.filter((entry) => entry.files.some((file) => file.actions.includes('recheck')))
+			.map((entry) => entry.id)
 	);
 
 	const clear = clearFinished();
 	const stopAll = stopAllRetries();
 	const retryAll = retryAllFailed();
-	const reverifyBulk = reverifyHeldBulk();
+	const recheckAll = recheckAllHeldMutation();
 
 	// collapse auto-retry chains so each album is one row (latest attempt), then group into
 	// the dashboard's stacked sections
@@ -96,8 +90,7 @@
 			{ n: sections.now_spinning.length, label: 'spinning', cls: 'text-primary' },
 			{ n: sections.wanted.length, label: 'still hunting', cls: 'text-warning' },
 			{ n: sections.needs_you.length, label: 'needs you', cls: 'text-info' },
-			{ n: managementGroups.length, label: 'organizer paused', cls: 'text-warning' },
-			{ n: verificationHeld.length, label: 'to verify', cls: 'text-warning' },
+			{ n: held.length, label: 'to decide', cls: 'text-warning' },
 			{ n: sections.cueing.length, label: 'cueing up', cls: 'text-base-content/70' },
 			{ n: crateCount, label: 'in your crate', cls: 'text-success' }
 		].filter((p) => p.n > 0)
@@ -155,14 +148,16 @@
 						Still hunting <span class="text-base-content/35">· auto-retrying</span>
 						<span class="dl-count">{sections.wanted.length}</span>
 					</h2>
-					<button
-						class="btn btn-ghost btn-xs text-base-content/60 hover:text-error"
+					<Button
+						variant="ghost"
+						size="xs"
+						icon={TimerOff}
 						onclick={() => stopAll.mutate()}
 						disabled={stopAll.isPending}
 						title="Stop auto-retrying every still-hunting album - they won't be watched for later either"
 					>
-						<TimerOff class="h-3.5 w-3.5" /> Stop all
-					</button>
+						Stop all
+					</Button>
 				</div>
 				<div class="space-y-3">
 					{#each sections.wanted as task (task.id)}
@@ -185,45 +180,30 @@
 			</section>
 		{/if}
 
-		{#if managementGroups.length > 0}
-			<section class="space-y-3">
-				<h2 class="dl-eyebrow">
-					Organizer needs attention <span class="text-base-content/35">· files secured</span>
-					<span class="dl-count">{managementGroups.length}</span>
-				</h2>
-				<div class="space-y-3">
-					{#each managementGroups as items (items[0]?.source_task_id ?? items[0]?.id)}
-						<ManagementHoldCard {items} />
-					{/each}
-				</div>
-			</section>
-		{/if}
-		{#if verificationHeld.length > 0}
+		<!-- HELD: files waiting for a decision -->
+		{#if held.length > 0}
 			<section class="space-y-3">
 				<div class="flex items-center justify-between gap-2">
 					<h2 class="dl-eyebrow">
-						Couldn't verify <span class="text-base-content/35">· your call</span>
-						<span class="dl-count">{verificationHeld.length}</span>
+						To decide <span class="text-base-content/35">· files kept</span>
+						<span class="dl-count">{held.length}</span>
 					</h2>
-					<button
-						class="btn btn-ghost btn-primary btn-xs"
-						onclick={() => reverifyBulk.mutate({ held_ids: verificationHeldIds })}
-						disabled={reverifyBulk.isPending}
-						title="Run the fingerprint check again on these tracks. Confident matches import automatically"
-					>
-						{#if reverifyBulk.isPending}
-							<span class="loading loading-spinner loading-xs" aria-hidden="true"></span> Checking...
-						{:else}
-							<RotateCcw class="h-3.5 w-3.5" /> Re-check all
-						{/if}
-					</button>
+					{#if recheckEntryIds.length > 0}
+						<Button
+							variant="ghost"
+							size="xs"
+							icon={RotateCcw}
+							loading={recheckAll.isPending}
+							onclick={() => recheckAll.mutate(recheckEntryIds)}
+							title="Ask AcoustID again. Files it now confirms are imported"
+						>
+							{recheckAll.isPending ? 'Checking...' : 'Re-check all'}
+						</Button>
+					{/if}
 				</div>
 				<div class="space-y-3">
-					{#each verdictGroups as group (group.task.id)}
-						<HeldVerdictCard task={group.task} items={group.items} />
-					{/each}
-					{#each loneVerificationHeld as item (item.id)}
-						<HeldTrackCard held={item} />
+					{#each held as entry (entry.id)}
+						<HeldEntryCard {entry} retryTaskId={verdictTaskOf(entry)} />
 					{/each}
 				</div>
 			</section>
@@ -261,23 +241,27 @@
 					{#if historyOpen}
 						<div class="flex items-center gap-1">
 							{#if hasFailed}
-								<button
-									class="btn btn-ghost btn-primary btn-xs"
+								<Button
+									variant="ghost"
+									size="xs"
+									icon={RotateCcw}
 									onclick={() => retryAll.mutate()}
 									disabled={retryAll.isPending}
 									title="Retry every failed download"
 								>
-									<RotateCcw class="h-3.5 w-3.5" /> Retry all failed
-								</button>
+									Retry all failed
+								</Button>
 							{/if}
-							<button
-								class="btn btn-ghost btn-xs text-base-content/60 hover:text-error"
+							<Button
+								variant="ghost"
+								size="xs"
+								icon={Trash2}
 								onclick={() => clear.mutate()}
 								disabled={clear.isPending}
 								title="Remove completed and cancelled downloads from this list"
 							>
-								<Trash2 class="h-3.5 w-3.5" /> Clear
-							</button>
+								Clear
+							</Button>
 						</div>
 					{/if}
 				</div>

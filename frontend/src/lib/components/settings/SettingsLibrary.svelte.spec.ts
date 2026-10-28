@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -13,7 +13,7 @@ const baseSettings = {
 		}
 	],
 	staging_path: '/staging',
-	naming_template: '{albumartist}/{album}/{track} {title}',
+	naming_script: '{albumartist}/{album}/{track} {title}.{ext}',
 	acoustid_api_key: '••••',
 	enabled: true,
 	policy_revision: 'policy-1',
@@ -22,7 +22,8 @@ const baseSettings = {
 	pending_policy_revision: null,
 	affected_scope_ids: [],
 	actions_applied: [],
-	warnings: []
+	warnings: [],
+	naming_example: 'Radiohead/OK Computer/2 Paranoid Android.flac'
 };
 
 const h = vi.hoisted(() => ({
@@ -125,6 +126,10 @@ vi.mock('$lib/queries/downloads/DownloadClientsQueries.svelte', () => ({
 	getDownloadPolicyQuery: () => ({ data: { max_library_size_gb: 0 } }),
 	saveDownloadPolicy: () => ({ mutateAsync: vi.fn(), isPending: false })
 }));
+vi.mock('$lib/queries/settings/LyricsSettingsQueries.svelte', () => ({
+	getLyricsSettingsQuery: () => ({ data: { enabled: true }, isPending: false, isError: false }),
+	createSaveLyricsSettingsMutation: () => ({ mutateAsync: vi.fn(), isPending: false })
+}));
 import SettingsLibrary from './SettingsLibrary.svelte';
 
 beforeEach(() => {
@@ -183,6 +188,9 @@ describe('SettingsLibrary target policy UI', () => {
 
 	it('previews consequences, saves without starting work, and leaves reconciliation explicit', async () => {
 		await render(SettingsLibrary);
+		await expect
+			.element(page.getByText('Radiohead/OK Computer/2 Paranoid Android.flac'))
+			.toBeVisible();
 		await page.getByRole('combobox').first().selectOptions('excluded');
 		const opener = page.getByRole('button', { name: 'Preview and save settings' });
 		await opener.click();
@@ -237,6 +245,7 @@ describe('SettingsLibrary target policy UI', () => {
 		h.impactResult = { ...h.impactResult, stale: true };
 		h.impact.mockResolvedValue(h.impactResult);
 		await render(SettingsLibrary);
+		await page.getByRole('combobox').first().selectOptions('excluded');
 		await page.getByRole('button', { name: 'Preview and save settings' }).click();
 		expect(h.save).not.toHaveBeenCalled();
 		expect(h.requestRun).not.toHaveBeenCalled();
@@ -245,12 +254,12 @@ describe('SettingsLibrary target policy UI', () => {
 		);
 	});
 
-	it('keeps saving disabled until the settings have loaded and seeded', async () => {
-		h.settings = { data: undefined, isLoading: false, isError: false };
+	it('offers no save until the settings have loaded', async () => {
+		h.settings = { data: undefined, isPending: true, isError: false };
 		await render(SettingsLibrary);
 		await expect
 			.element(page.getByRole('button', { name: 'Preview and save settings' }))
-			.toBeDisabled();
+			.not.toBeInTheDocument();
 		expect(h.impact).not.toHaveBeenCalled();
 		expect(h.save).not.toHaveBeenCalled();
 	});
@@ -296,7 +305,7 @@ describe('SettingsLibrary target policy UI', () => {
 			.toBeVisible();
 		await expect
 			.element(page.getByRole('button', { name: 'Preview and save settings' }))
-			.toBeDisabled();
+			.not.toBeInTheDocument();
 		expect(h.impact).not.toHaveBeenCalled();
 	});
 });

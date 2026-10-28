@@ -5,14 +5,14 @@
       "AlbumArtist": "Massive Attack",
       "AlbumArtists": [
         {
-          "Id": "<id-6>",
+          "Id": "<id-8>",
           "Name": "Massive Attack"
         }
       ],
-      "AlbumId": "<id-7>",
+      "AlbumId": "<id-9>",
       "ArtistItems": [
         {
-          "Id": "<id-6>",
+          "Id": "<id-8>",
           "Name": "Massive Attack"
         }
       ],
@@ -23,7 +23,8 @@
       "Container": "m4a",
       "DateCreated": "0000-00-00T00:00:00.0000000Z",
       "Genres": [],
-      "Id": "<id-14>",
+      "HasLyrics": false,
+      "Id": "<id-18>",
       "ImageBlurHashes": {},
       "ImageTags": {},
       "IndexNumber": 4,
@@ -31,9 +32,10 @@
       "LocationType": "FileSystem",
       "MediaType": "Audio",
       "Name": "Teardrop",
-      "ParentId": "<id-7>",
+      "ParentId": "<id-9>",
       "ParentIndexNumber": 1,
-      "PlaylistItemId": "<id-17>",
+      "PlaylistItemId": "<id-22>",
+      "PremiereDate": "0000-00-00T00:00:00.0000000Z",
       "ProductionYear": 1998,
       "ProviderIds": {
         "MusicBrainzTrack": "rec-teardrop-0004"
@@ -44,8 +46,8 @@
       "Type": "Audio",
       "UserData": {
         "IsFavorite": false,
-        "ItemId": "<id-14>",
-        "Key": "<id-14>",
+        "ItemId": "<id-18>",
+        "Key": "<id-18>",
         "PlayCount": 0,
         "PlaybackPositionTicks": 0,
         "Played": false

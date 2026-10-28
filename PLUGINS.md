@@ -25,6 +25,8 @@ What DroppedNeedle does to keep a plugin in its lane:
   it. The install screen shows that commit, the plugin's version, and what it
   asks to do, before anything is written. If the repository changes between
   the preview and the install, the install stops and asks you to look again.
+  An update stays the kind of install you chose, and stops if the
+  repository at that address was deleted and created again.
 - **Each plugin is its own process.** If it crashes, only that plugin stops;
   DroppedNeedle restarts it after a short wait (1 second, doubling up to 5
   minutes). If it hangs, its calls time out and the rest of the server
@@ -67,9 +69,12 @@ disabled; enable it, fill in its settings, and save.
 To update later, press **Update** on the plugin. What moves depends on how
 it was installed:
 
-- From releases (a plain repository URL): to the newest release.
+- From releases (a plain repository URL): to the newest release. If the
+  repository has no releases any more, the update stops; install it again
+  from a `/tree/` or `/commit/` URL to pick a branch, tag or commit.
 - From a branch (a `/tree/` URL, or the default branch of a repository with
   no releases): to the branch's newest commit, only when you press Update.
+  It stays on the branch even if the repository has releases now.
 - From a tag or a commit: nowhere. Those pins stay until you install a
   different version.
 
@@ -84,6 +89,10 @@ Plugins:
 ```bash
 cp -r examples/plugins/webhook-scrobbler /path/to/app/plugins/
 ```
+
+If you edit a running plugin's files in place, it starts again with the new
+code the next time plugins reload: a settings save, an install, an update or
+a server restart.
 
 Under Docker the plugins directory is `/app/plugins`. **Mount it as a
 volume**, or installed plugins disappear when the container is recreated.
@@ -126,7 +135,7 @@ silently ignored.
 name = "acme-music"                 # lowercase letters, digits and dashes, up to 32
 display_name = "Acme Music"
 version = "1.0.0"
-api_version = 1
+api_version = 2                     # the plugin API this host reads
 entrypoint = "plugin:AcmeMusic"     # <python module>:<class>
 capabilities = ["download_client", "indexer", "scheduler"]
 description = "One line about what it does."
@@ -164,16 +173,24 @@ pages = ["panel"]
 # external_url = "https://acme-music.test/setup"   # or a link instead
 ```
 
-`api_version = 0` is the older, frozen contract: only `scrobbler` and
-`purchase_links`, no `[schedule]`, `[[route]]` or `[plugin_ui]`. Manifests
-from DroppedNeedle v2 load unchanged.
+`plugin.toml` is ordinary TOML: arrays may span lines, and strings may use
+single quotes. A capability not in the table below is an error, and so is
+a `homepage` that is not an `http` or `https` address.
+
+This DroppedNeedle reads plugin API version 2 only. A manifest with any
+other `api_version`, including 0 and 1 from DroppedNeedle v2, is refused
+before its code runs:
+
+```
+acme-music: written for api_version 1; this DroppedNeedle reads api_version 2; see Porting a v2 plugin in PLUGINS.md
+```
 
 ### Settings
 
 Settings are what the admin types into the plugin's card. The plugin gets the
 current values when it starts and again every time they are saved, secrets
-decrypted. Secret values are encrypted in the config file and shown as
-`plugin****`; saving the mask back keeps the stored value.
+decrypted. Secret values are encrypted in the settings database and shown as
+`********`; saving the mask back keeps the stored value.
 
 ### Running something other than Python
 
@@ -198,13 +215,18 @@ server carries on as if the plugin had said nothing.
 | `publisher` | `handle_route(method, subpath, query, body)` for `[[route]]`s; `await ctx.publish(kind, payload)` | 5 s | the route answers 502 |
 | `metadata_provider` | `enrich_artist(...)`, `enrich_album(...)` | 15 s | nothing is filled in |
 | `scheduler` | `on_tick()` | the interval | the next tick runs as normal |
-| `library_writer` | none; allows `await ctx.write_library_file(rel_path, data)` | 30 s per write | the call fails with the reason |
+| `library_writer` | none; allows `await ctx.write_library_file(rel_path, data)` | 8 s per write | the call fails with the reason |
 | `streaming_source` | `resolve_stream(recording_mbid, user_id)` | 5 s | the next plugin is asked |
 | `indexer` | `search_album(...)`, `search_track(...)` | 35 s | no results from it |
 | `download_client` | `enqueue`, `get_status`, `inspect_materialization`, `discard_client_artifacts`, `abort` | 120 s enqueue, 30 s others | the download fails over |
 
-Every plugin may also have `is_configured()` and `health_check()`; they feed
-the plugin's health in Settings and the source list.
+Every plugin may also have `is_configured()` and `health_check()`. The server
+asks for them once the plugin is running, after every settings save, and
+again when Settings or a source list is opened and the last answer is over a
+minute old. The answer (status, message, and whether it is configured) shows
+on the plugin's card in Settings > Plugins and in the source lists. A plugin
+without them counts as healthy and configured; one that fails or does not
+answer within 10 seconds shows as an error.
 
 ### scrobbler
 
@@ -245,6 +267,12 @@ also read with dots, like `event.payload.task_id`):
 Each plugin handles one event at a time. An event that arrives while the
 plugin is still busy with the last one is skipped and counted in the plugin's
 health as a dropped event. Events never wait on plugins.
+
+`request_fulfilled` fires once per request, when its download, a drop
+import or a library check brings its album into the library. A track
+request, or a failed request whose download still exists, is not settled
+when its files arrive some other way, and an event is lost if the server
+stops between saving the change and sending it.
 
 `scrobble` and `playback_started` fire together, where scrobbling happens, so
 very short tracks and Navidrome-handled plays raise neither.
@@ -321,12 +349,38 @@ To put a file into the music library itself, declare the `library_writer`
 capability and use `await ctx.write_library_file(rel_path, data)`. It adds
 one new file under your first library folder and answers the full path. The path is relative,
 in lowercase letters, digits, `_`, `-`, `.` and `/`, without hidden or `..`
-parts. A file that already exists is never replaced: the call fails
-instead. Each plugin may write 100 MiB a day; past that the call fails until
-older writes are a day old, and one file may be at most 6 MiB. The write
-waits for the library folder to be free (no scan or move running in it) and
-gives up after 30 seconds. Files a plugin adds, audio included, are picked
-up by the next library scan like any other file.
+parts. A file that already exists is never replaced, nor is a file whose
+name differs only in letter case: the call fails instead. A first library
+folder set to Excluded, or one on a disk that can only add a file by
+checking first and then renaming, takes no plugin files. Each plugin may
+write 100 MiB and 1000 files a day; past either the call fails until older
+writes are a day old. The allowance is kept in the database, so a restart
+does not reset it, and a write that failed or was undone by itself does not
+count. One file may be at most 6,288,384 bytes (just under 6 MiB, so its
+base64 text fits one 8 MiB message); the helper raises `ValueError` for a
+larger one before sending anything, and the host refuses one sent anyway.
+The write has 8 seconds: it waits for the library to be free (no move or
+other change running) and then fails, and a file not in place by
+then, or that the server stopped waiting for, is never put there. In rare
+cases a `host request timed out` answer means the file did land; a retry
+then answers that it already exists. After each write the library folder
+is scanned again, so the file, audio included, shows up like any other.
+
+Each write is a recorded library change, made the way the server makes its
+own: the file is written beside its destination under a hidden name and
+put in place only if the name is still free, so after a crash it is either
+in place whole or not there at all. The server log line `plugin added a
+library file` names the plugin, the path and the change's `bundle_id`
+(the low-level answer carries the same id). An administrator sees every
+file a plugin added under **Library files** on the plugin's card in
+Settings > Plugins (path, when, size, and whether it was undone) and can
+undo one there, or with `POST /api/v3/library/manage/undo` and
+`{"bundle_id": "..."}`. The list is
+`GET /api/v3/library/manage/plugin-files?plugin=<name>`. Undo removes the
+file only while it still holds the bytes the plugin wrote; when it was
+changed since, or its folder takes no changes now, the undo says so and
+leaves the file. Each write can be undone once, and the folder is scanned
+again afterwards, so a track made from the file goes missing.
 
 Example: `examples/plugins/http-catalog`.
 
@@ -388,10 +442,15 @@ PluginSearchResult(
 ```
 
 You rank your source; DroppedNeedle applies its rules on top, the same as
-for every other source: quarantined releases, ignored and required terms, the
-size limit and the quality range drop results. A score of 0.70 or more
-downloads automatically; 0.50 to 0.70 is kept back for a person to pick;
-lower is dropped. When a download fails, the next result is tried.
+for every other source. Quarantined releases are dropped. A score of
+`preflight_score_auto_accept` (0.70 by default) or more downloads
+automatically. A score from `preflight_score_manual_min` (0.50 by default) up
+to that is kept back for a person to pick. Both cut-offs are download policy
+settings. A result with a lower score, an ignored term, a missing required
+term, a size over the limit or a quality outside the range never downloads by
+itself: a person searching by hand sees it last, with the reason, and can
+still pick it after confirming. When a download fails, the next result is
+tried.
 
 The client then gets `enqueue(request)` with `task_id`, `source`, `files`,
 `payload`, `job_name` and `download_type`, and returns a `TaskHandle`. Every
@@ -400,6 +459,23 @@ later call (`get_status`, `inspect_materialization`, `discard_client_artifacts`,
 `payload`. `get_status` returns a `DownloadTaskStatus` (`status` is `queued`,
 `downloading`, `completed` or `failed`); `inspect_materialization` returns a
 `DownloadMaterialization` with the finished files in `file_paths`.
+
+When `enqueue` or `get_status` fails, say whose fault it was by raising
+`DownloadFailure(message, fault=...)`:
+
+| `fault` | Means | Failed `enqueue` | Failed `get_status` |
+|---|---|---|---|
+| `local` | this machine: a full disk, a folder it cannot write, a lost mount | tried again later | the download moves to the next result; this release is not blamed |
+| `source` | the release, the peer or the service it came from | the next source is tried; with none left, the download ends with nothing found | the release is blamed: the next result is tried and this one is skipped for 7 days |
+| `unknown` | you can't tell | the same as `source` | the same as `source` |
+
+Any other exception counts as `unknown`. Don't guess `local`: a release
+that really is broken would be tried again and again. For a local problem
+in `get_status`, raise `DownloadFailure(..., fault="local")`; don't return
+`status: "failed"`, which always blames the release. A failed
+`inspect_materialization` is handled the same way whatever the fault: the
+import waits a few passes for the files to be listed, then fails with the
+files kept.
 
 Finished files must be inside the plugin's data folder (`ctx.data_dir`) or
 the folder in the plugin's `downloads_dir` setting, if its manifest declares
@@ -419,11 +495,31 @@ mode, two plugins paired).
 ### Settings panel
 
 With `[plugin_ui] entry`, the admin's plugin card shows the plugin's own
-script in a locked-down frame: no access to the page, its cookies or the
-network. It can talk to the page only through `postMessage`, with four
+script in a locked-down frame: no access to the page or its cookies, and no
+requests of its own. It can talk to the page only through `postMessage`, with four
 read-only requests: `sources.list`, `search.preview`, `get_settings` (its own,
-secrets masked) and `health.get` (its own). The script is served to admins
-only, from inside the plugin folder. `external_url` shows a link instead.
+secrets masked) and `health.get` (its own). `search.preview` with `{query}`
+calls the plugin's own `search` route
+(`GET /api/v3/plugins/ext/<plugin>/search?query=...`), so a panel that uses
+it needs the `publisher` capability and a `[[route]] path = "search"`.
+`external_url` shows a link instead.
+
+The server reads the script from inside the plugin folder and serves it to
+admins only, inlined into a small page of its own with an empty
+`<div id="panel-root">` to draw into. The script is not served as a file:
+there is no address to load it from. Inline script and style run, pictures
+load from `data:` and `blob:` addresses only, and nothing else loads or
+connects. Because the script is inlined, every `</script` in the file is sent
+as `<\/script`, which reads the same inside a JavaScript string. One pair
+is not handled: a file holding `<!--` and, anywhere after it, `<script` gives
+a panel that never runs. If your bundle has both, write one of them another
+way, for example `'<' + '!--'` or `'<' + 'script'`.
+
+One thing the panel page cannot stop by itself: its script sending its own
+frame to another address, with whatever it writes into that address. The
+web UI's content-security policy holds the frame to DroppedNeedle's own
+address, so this is closed only while that policy is enforced (Settings >
+Security), not while it only reports or is off.
 
 ## The Python helper
 
@@ -449,7 +545,12 @@ too, one entry per line.
 
 ### Porting a v2 plugin
 
-1. Change the imports. Everything v2 plugins imported from
+1. Set `api_version = 2` in `plugin.toml`. The rest of a v2 manifest
+   reads as it is, as long as `name` uses only lowercase letters, digits
+   and dashes, `homepage`, if set, is an `http` or `https` address, and
+   each value has its proper type (text quoted, `secret` `true` or
+   `false`).
+2. Change the imports. Everything v2 plugins imported from
    `infrastructure.plugins.protocols`, `models.common` and
    `repositories.protocols.*` now comes from `droppedneedle_plugin`:
 
@@ -457,17 +558,18 @@ too, one entry per line.
    from droppedneedle_plugin import PluginRouteResponse, ServiceStatus, TaskHandle
    ```
 
-2. If you used `ctx.http` like `httpx`, it keeps working for the common calls
+3. If you used `ctx.http` like `httpx`, it keeps working for the common calls
    above. Streaming responses and client options are not there.
-3. Anything that reached into the server's own Python code no longer exists;
+4. Anything that reached into the server's own Python code no longer exists;
    use `ctx` instead. `plugin_write_library_file(plugin_name=..., rel_path=...,
    data=...)` becomes `await ctx.write_library_file(rel_path, data)`. Paths may
    now contain dots, and an existing file is never replaced (v2 replaced it).
-4. State you kept in memory is lost when the plugin restarts (it is a separate
+5. State you kept in memory is lost when the plugin restarts (it is a separate
    process now). Keep anything important in `ctx.state_set` or in files under
    `ctx.data_dir`.
 
-`plugin.toml` stays as it was.
+A v2 plugin's settings come across in an upgrade, switched off. Once the
+ported plugin is installed, switch it on in Settings > Plugins.
 
 ## The protocol
 
@@ -485,7 +587,7 @@ of this; you need it only for a plugin in another language.
    {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
      "protocol_version": 1,
      "host": {"name": "droppedneedle", "version": "3.0.0"},
-     "plugin": {"name": "acme-music", "version": "1.0.0", "api_version": 1,
+     "plugin": {"name": "acme-music", "version": "1.0.0", "api_version": 2,
                 "entrypoint": "plugin:AcmeMusic", "capabilities": ["indexer"]},
      "settings": {"api_key": "..."},
      "plugin_dir": "/app/plugins/acme-music",
@@ -531,7 +633,11 @@ Notifications (no answer): `settings.update` with `{settings}` when the admin
 saves, and `$/cancel` with `{id}` when the server stops waiting for a request.
 
 Answer an unknown method with error code `-32601`; the server treats that as
-"not implemented". Use `-32000` for your own failures.
+"not implemented". Use `-32000` for your own failures. Any error except
+`-32601` may say whose fault it was in its `data`:
+`{"fault": "local" | "source" | "unknown"}`. Only `download_client.enqueue`
+and `download_client.status` act on it. A missing `data`, or a value the
+server does not know, reads as `unknown`.
 
 ### Plugin to server
 
@@ -540,7 +646,7 @@ Answer an unknown method with error code `-32601`; the server treats that as
 | `host.publish` | `{kind, payload, causation_id?}` | `{ok, status, retry_after, error}` |
 | `host.state.get` | `{key}` | `{value}` (`null` when unset) |
 | `host.state.set` | `{key, value}` | `{}` |
-| `host.library.write` | `{rel_path, data_base64}` | `{path}`; refused (-32001) for a bad path, an existing file or over the daily allowance |
+| `host.library.write` | `{rel_path, data_base64}` | `{path, bundle_id}`; refused (-32001) for a bad path, a file over 6,288,384 bytes, an existing file, a library that stays busy for 8 s or over the daily allowance |
 
 State keys are 1-64 lowercase letters, digits, `_`, `-` or `/`, starting
 with a letter or digit; values are strings up to 1 MiB. One plugin may keep
@@ -551,7 +657,7 @@ at most 1000 keys and 64 MiB in total. `host.log` is a notification with `{level
 
 All in `examples/plugins/`, all using fictional hosts:
 
-- `webhook-scrobbler`: `scrobbler`, the smallest plugin (v0 manifest).
+- `webhook-scrobbler`: `scrobbler`, the smallest plugin.
 - `metadata-joke-toy`: `metadata_provider` and `purchase_links`.
 - `events-echo-toy`: `subscriber`, `publisher` and routes.
 - `stream-toy`: `streaming_source` with a file in its own folder.

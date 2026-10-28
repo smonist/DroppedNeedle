@@ -36,8 +36,9 @@ with the same ids, and v3 checks it against your files on its first scan.
    ```
 
 The upgrade prints what it is doing, then a summary: how many of each kind
-of record moved, what stayed behind, which settings are back at their
-defaults, and where your v2 files are now. The full report is saved as
+of record moved, what stayed behind, anything worth a look (such as an
+artist kept under its v2 id), which settings are back at their defaults,
+and where your v2 files are now. The full report is saved as
 `upgrade-report.json` in your cache folder.
 
 Upgrade before anyone uses v3. If you start v3 on a v2 data directory by
@@ -121,10 +122,20 @@ many. Nothing else in the v2 database is changed.
 - Small per-user preferences: scrobble targets, home page sections,
   Navidrome folders, personal-mix approvals, and profile pictures.
 - Saved play queues and bookmarks of Subsonic and Jellyfin apps.
-- Your library: every artist, album and song with the id v2 gave it. Apps
-  like Symfonium, Feishin or Finamp keep their stars, downloads and queues,
-  because the ids they know do not change. Playlists, favorites, history,
-  queues and bookmarks find their songs again.
+- Your library: every album and song with the id v2 gave it. Most
+  artists get a new id once, the one v3 finds them by when it scans, so
+  each artist keeps its songs; the id v2 gave an artist still opens it.
+  An artist that can't take that id (Various Artists, one with no songs,
+  or one whose name another artist already holds) keeps its v2 id, and
+  the summary names any kept apart by name.
+  Playlists, favorites, history, queues and bookmarks find their songs and
+  artists again. Subsonic apps like Symfonium or Feishin keep everything:
+  song and album ids do not change, and an artist they know by its v2 id
+  still opens. In Jellyfin apps like Finamp, stars,
+  play counts and playlists are kept and downloaded music stays matched,
+  but album and artist ids change once, so that nobody without an account
+  can work one out. An album or artist marked to keep offline has to be
+  marked again once; the music already on the device stays.
 - Matches you made by hand (and v2's own matches), retired ids that still
   point at the album or artist that replaced them, "keep as tagged" and
   "exclude" decisions, edition pins and custom editions, albums you kept
@@ -132,8 +143,13 @@ many. Nothing else in the v2 database is changed.
 - The original of every file Library Management changed. "Restore original"
   in v3 puts such a file back where it was and gives it back the tags it had
   before v2 first touched it.
-- Downloads held back for review, with their files. They land in
-  the `held` folder of your v3 cache.
+- Downloads held back for review, with their files and the reason
+  they were held. They land in the `held` folder of your v3 cache and
+  join the list of held files on the Downloads page, one entry per album.
+  v2's "waiting on the library" holds read as a file already in the way;
+  a reason v3 does not use reads as held by an earlier version. Held
+  files and uploads waiting for you are kept at least 90 days after the
+  upgrade.
 - MusicBrainz contributions you had in progress, with their verification
   and the return link MusicBrainz calls when you save the release.
 - YouTube links you found or set for albums and tracks.
@@ -151,8 +167,25 @@ Upgrading an existing v3 install does the same with any pins it holds.
 Albums that were waiting on a review question in v2 go back on v3's
 identify queue, so v3 asks again with its own candidates.
 
+Four passes run in the background after an upgrade: an album v2 matched only
+to a release group is identified once more to find its edition, unless a
+person chose that group; an album matched by itself on a release outside
+the group all its files name is checked once more; an album matched by
+itself on an edition whose barcode or catalog number differs from its
+files', with no MusicBrainz release ID in them, is checked once more after
+its files' edition tags are read; and the artist MusicBrainz links v2 made stay in
+place until each album's release details arrive and are checked. See
+[Your library](library.md#album-organization).
+
 A song that points at something v2 itself no longer had (say a queued song
 you deleted in v2) keeps its title and is left as it is.
+
+Plays that name no song in the library (older ones, or all of them if you
+scan your music again instead of carrying the v2 library) are matched to
+your songs in the background after the first start and after each scan, and
+then count in "recently played", "most played" and the play counts of your
+apps. A play is matched only when it fits exactly one song; the rest stay in
+your history by name.
 
 ## What stays behind
 
@@ -173,34 +206,32 @@ report lists it too (`left_behind`). In short:
 - MusicBrainz contributions that were already linked, cancelled or out of
   date. A linked album keeps its match.
 - Caches, which v3 fills again on its own.
-- Plugins. Install them again from Settings > Plugins; their settings come
-  across.
+- Plugins. Their settings come across, switched off, and the report lists
+  each one as needing porting. Port it, install it again from Settings >
+  Plugins, then switch it on.
 
 ## What changed from v2
 
 Things v2 did that v3 does differently or no longer does. Read this before
-you upgrade: the first entry needs a change on your side first.
+you upgrade.
 
-### Do this before you upgrade
+### Before you upgrade
 
 - **Callback addresses.** v2 was called back on three `/api/v1` addresses.
-  v3 answers only on its own, so the old ones stop working with the
+  v3 still answers on all three, so nothing has to change with the
   upgrade:
-  - Single sign-on (OIDC): in your provider, change the redirect URI from
-    `/api/v1/auth/oidc/callback` to `/api/v3/auth/oidc/callback`, and check
-    that the redirect URI under Settings > Security matches. Until both
-    are changed, single sign-on fails.
+  - Single sign-on (OIDC): the redirect URI `/api/v1/auth/oidc/callback`
+    keeps working. To move to `/api/v3/auth/oidc/callback`, change it in
+    your provider and under Settings > Security together.
     Check before you upgrade that at least one admin can also sign in with
     a username and password. If single sign-on breaks and nobody can sign
     in, see [Locked out](#locked-out) below.
-  - Spotify playlist import: in the Spotify developer dashboard, add the
-    redirect URI ending in `/api/v3/acquire/spotify/auth/callback` to your
-    app. Until it is there, Connect on the Spotify card fails.
-  - MusicBrainz contributions: nothing is registered anywhere, but a
-    release editor tab opened from v2 returns to
-    `/api/v1/library/contributions/musicbrainz/callback`. Save or close
-    those tabs before you upgrade. Contributions started in v3 use the v3
-    address.
+  - Spotify playlist import: v3 goes on sending the redirect address v2
+    registered, so the Spotify dashboard needs no change (see
+    [After the upgrade](#after-the-upgrade)).
+  - MusicBrainz contributions: a release editor tab opened from v2 returns
+    to `/api/v1/library/contributions/musicbrainz/callback`, which v3 still
+    answers. Contributions started in v3 use the v3 address.
 
 ### Locked out
 
@@ -243,16 +274,19 @@ machine and its data folders can run it.
   your library. If Free Music was your only source, set up slskd, Usenet or
   a plugin source.
 - **v2 plugins.** v2 plugins do not load in v3. Only plugins written for
-  the current plugin API are accepted. Port yours first ("Porting a v2
-  plugin" in [PLUGINS.md](../PLUGINS.md)), or ask its author to, then
-  install it again from Settings > Plugins.
+  plugin API version 2 are accepted, and a manifest with `api_version` 0
+  or 1 is refused. Port yours first ("Porting a v2 plugin" in
+  [PLUGINS.md](../PLUGINS.md)), or ask its author to, then install it
+  again from Settings > Plugins.
 - **v2 profile share codes.** A Library Management profile share code made
   in v2 does not import into v3. Share the profile again from v3 to get a
   code v3 reads.
 - **Wanted watches going dormant.** v2 stopped checking a watch once it was
   older than "Go dormant after (days)", 365 by default, until someone
   resumed it. v3 keeps checking a watch until the album arrives or someone
-  stops it, and the setting is gone. Stop the watches you no longer want.
+  stops it, and the setting is gone. A watch that was dormant starts
+  watching again and is checked on the first pass. Stop the watches you no
+  longer want.
 - **"Restart under current policy".** v2 saved the quality policy each
   download started with and could restart a download under the policy in
   force now (`POST /api/v1/downloads/<id>/restart-with-current-policy`). v3
@@ -278,8 +312,38 @@ machine and its data folders can run it.
 - **Cache tab buttons and tiles.** v2's cache was split into memory, disk
   metadata and library parts, each with its own count and its own clear
   button. Those parts no longer exist. Settings > Cache in v3 counts cached
-  provider responses and cached images, and clears one provider, the
-  images, or everything.
+  provider answers and cached images, and clears the images or everything.
+  Provider answers are kept in `metadata-cache.db` and survive a restart;
+  saving a setting never clears them.
+- **Settings nothing used, and the cache and pacing knobs.** These v2
+  settings are gone. Most were never read; the cache lifetimes and the
+  library image pacing now use fixed values equal to v2's defaults. An
+  import of a v2 export carrying them goes ahead, and its report lists
+  each one as `dropped_setting`.
+  - Settings > Advanced: every server and browser cache lifetime
+    (including TheAudioDB's), the memory and disk cache limits, the HTTP
+    timeouts and pool size, the library image batch sizes, delays and
+    workers, the image refresh's stall and run timeouts, the Discover
+    queue's lifetime, card details cache and status polling interval, the
+    genre section lifetime, request concurrency and the orphan cover
+    cadence.
+  - Settings > Download Client: slskd's own copies of the quality,
+    verification, scoring, timeout, retry and concurrency settings (the
+    download policy's are the ones that apply), and SABnzbd's client type
+    and post-processing level.
+  - Download policy: "Verify downloads", the Usenet release age before
+    blocklisting, the source selection mode, the legacy quality order,
+    lossy bounds and lossless preferences, the unknown-quality choice, and
+    the target bitrate of a custom MP3 recipe step.
+  - The server-wide scrobble targets (each user's own scrobble switches
+    stay), the server-wide home page section settings (each user's own
+    section choices stay), "Scrobble to Plex" (a Plex track
+    that ends is always reported), Connect Apps' exact-track approval flag,
+    MusicBrainz's concurrent searches, and the scan schedule's stored "last
+    scan" (it now comes from the scan history).
+
+  The outbound HTTP timeouts are environment variables, `HTTP_TIMEOUT` and
+  `HTTP_CONNECT_TIMEOUT`, as before.
 - **Max connections.** v2 had a "max connections" setting for outbound HTTP,
   also read from `HTTP_MAX_CONNECTIONS`. v3 has neither. The nearest is the
   `HTTP_MAX_KEEPALIVE` environment variable, the number of idle connections
@@ -300,11 +364,42 @@ machine and its data folders can run it.
   `Host` header as the browser sent it, port included: in nginx,
   `proxy_set_header Host $http_host;` rather than `$host`. If saving
   anything in the web UI answers `403 Origin not allowed` after the
-  upgrade, this is why. When only the port or the scheme differ, the log
-  names both addresses; a proxy that replaces `Host` with another name
-  leaves no log line. Either way the fix is the same: pass the browser's
-  `Host` (or send it as `X-Forwarded-Host`) and `X-Forwarded-Proto`
-  through.
+  upgrade, this is why, and the log names both addresses the first time.
+  The fix is to pass the browser's `Host` (or send it as
+  `X-Forwarded-Host`) and `X-Forwarded-Proto` through. If you cannot
+  change the proxy, state the address under Settings > Security > Public
+  address, or on the host with `droppedneedle-tool public-address`:
+  [Reverse proxy and security](reverse-proxy-and-security.md#public-address)
+  has the steps.
+- **Content-security policy.** v2 sent none. v3 tells the browser what
+  the web UI may load and run, and enforces it. You may notice it in two
+  places: a dashboard that shows DroppedNeedle in a frame (below), and a
+  reverse proxy that rewrites the page or injects a script, such as
+  Cloudflare's Rocket Loader, which leaves a blank page whose browser
+  console names the policy. The switch is under Settings > Security >
+  Content-security policy, and on the host with `droppedneedle-tool
+  content-security-policy` when the page is blank:
+  [Reverse proxy and security](reverse-proxy-and-security.md#content-security-policy)
+  has the steps.
+- **Showing DroppedNeedle in a dashboard.** v2 could be shown in a frame
+  by any page. v3 refuses that by default. If you open DroppedNeedle inside
+  a dashboard such as Homarr or Organizr, add the dashboard's address under
+  Settings > Security > Content-security policy > "Allowed to frame
+  DroppedNeedle" after upgrading. A dashboard on another site (not a
+  subdomain of the same domain, nor the same host on another port) shows
+  the sign-in page even then, because the browser does not send the
+  sign-in cookie to a frame there.
+- **Performer tags.** v3 writes performer credits the way Picard does:
+  "Name (instrument)", and an instrument list in ID3. The first time v3
+  writes performer credits to an album v2 managed, it rewrites the ones v2
+  wrote in that form. Like every managed change, the run can be undone.
+- **MP3 tags that mix ID3v2.3 and v2.4.** An MP3 keeps its ID3 version,
+  except an ID3v2.3 tag that also holds ID3v2.4 frames. Picard and iTunes
+  write sort names that way, so most MP3s they tagged count as mixed. The
+  first time v3 writes such a file it saves the whole tag as ID3v2.4, so
+  every tag keeps its own frame; the preview says so for each file. There
+  is no switch to keep ID3v2.3, and a few old players read only ID3v2.3.
+  Undo and "Restore originals" put the values back; the tag stays ID3v2.4.
 
 ### Moved
 
@@ -328,9 +423,15 @@ upgrade again.
 The upgrade copies these saved originals while it runs, so it needs more
 free space if v2 managed a big library.
 
+v3 recognises the files v2 tagged and goes on managing them. A file you
+moved or renamed by hand after v2 last wrote it cannot be recognised, so
+its album may show as left unmanaged after the upgrade. "Manage it again"
+on the album page hands it back.
+
 ## After the upgrade
 
-Run one v3 container per data directory, never two.
+Run one v3 container per data directory, never two. A second server on the
+same data folder refuses to start.
 
 If your reverse proxy has a special rule for v2's live update stream at
 `/api/v1/events/stream` (no buffering, long read timeout), move it to
@@ -341,7 +442,9 @@ progress over that same single stream, so a rule for those can go.
 Then check:
 
 - You can log in with your v2 password.
-- Your Subsonic or Jellyfin app still connects with its app password.
+- Your Subsonic or Jellyfin app still connects with its app password. For
+  the first moments after each start, while the server records its
+  Jellyfin ids, Jellyfin apps are told the server is busy and try again.
 - Settings > Download Client and Settings > Indexers / Prowlarr look right.
 - Your library folders are listed under Settings > Library. They come across
   with your settings, so check them rather than adding them again: a folder
@@ -349,6 +452,14 @@ Then check:
   the old one. Mount your music at the same path v2 used. Then let the first
   scan run. Files that did not change since v2 last saw them are not even
   read again, and a song keeps its album while its tags still name it.
+- Your v2 naming template becomes the import naming script under
+  Settings > Library, rewritten so new downloads land where v2 put them,
+  and the example under it shows where a track goes. Names are now cut at
+  240 bytes rather than 252. A template with a folder made only of a value
+  that can be missing, such as `{year}/`, now stops an import for an album
+  without that value instead of leaving the folder out: the upgrade
+  report names any such folder. See
+  [Import naming script](downloads.md#import-naming-script).
 - If you import Spotify playlists: your Spotify app keeps working with no
   change in the Spotify dashboard. v3 goes on sending the redirect address
   v2 registered (Settings > Spotify shows it). Linked Spotify accounts carry
@@ -518,6 +629,45 @@ many name something v2 had already lost.
 Settings the export could not carry are listed under `settings_defaulted`
 in `WORK/import.json`. Check that list for anything you expected to keep.
 
+v3 keeps its settings in the database, beside the accounts, so the import
+writes no `config.json`. `V3_ROOT/config` holds the key file
+`data_enc.key`, which seals every stored password and API key.
+
+### Backups and restore
+
+A backup of the v3 database (the ones in `cache/backups`, or a copy that
+`droppedneedle-tool restore` puts back) holds the settings as well. Keep
+`config/data_enc.key` with it, and put it back beside a restored database:
+without it, v3 refuses to start on that database rather than lose the
+stored secrets. The database remembers which key it belongs to, so a key
+file from another instance or another backup is refused as well.
+
+The copies Undo and "Restore originals" need live in the `undo` folder
+beside the database, and each backup copies the ones it names into
+`cache/backups/undo`, which all kept backups share. Copy the whole
+`backups` folder when you move backups elsewhere, not only the `.db`
+files: `droppedneedle-tool restore` reads the copies from the `undo`
+folder next to the backup and puts them back beside the restored
+database. A copy that is missing there does not stop the restore; it is
+listed, and Undo then leaves out only the file that needed it.
+
+Backups leave out `metadata-cache.db` on purpose: it holds only provider
+answers that are fetched again when needed.
+
+If that key is lost for good, stop the server and run
+`droppedneedle-tool reset-key --yes`. It gives the instance a new key and
+clears every stored password and API key: the secrets in Settings, every
+app password, and every user's link to Plex, Jellyfin, Navidrome, Spotify,
+ListenBrainz and Last.fm. It prints the settings it cleared so you know
+what to enter again. It replaces a lost key and does not change the
+Jellyfin ids of what you already have: stored album and artist ids survive
+the reset, so Finamp and Jellify keep their pins and downloads, and only
+items added afterwards get ids under the new key. Whoever holds the old key
+can still work out the picture ids of albums and artists stored before the
+reset.
+The replaced key is kept as `config/data_enc.key.old`. The command refuses,
+changing nothing, while the key file still belongs to the database.
+
 ### 7. Start v3
 
 Point your compose file's `/app/config` and `/app/cache` volumes at
@@ -570,3 +720,5 @@ import leaves their v2 version out.
 | `BUNDLE_SECTION_MISSING` | The bundle lacks a part the export says it holds | Export again; do not edit the bundle |
 | `BUNDLE_COLUMN_MISSING` | Your v2 is too old to have a value v3 needs for some data | Update v2 to its last release, start and stop it once, then upgrade again |
 | `target database is locked` | A server has the v3 database open | Stop it and re-run |
+| `the key file ... is missing` or `does not belong to the database` | The database's `data_enc.key` is not in the config folder | Nothing was changed. Put back the `data_enc.key` saved with the database, or set `CONFIG_DIR` to its folder. Only if it is lost for good: `reset-key --yes` (see "Backups and restore") |
+| `a reset-key did not finish` | `reset-key` was stopped partway | Run `reset-key --yes` again to finish it |

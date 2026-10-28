@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -14,13 +14,8 @@ vi.mock('$lib/queries/downloads/DownloadClientQueries.svelte', () => ({
 	getDownloadClientConfigQuery: () => ({
 		data: {
 			enabled: false,
-			client_type: 'slskd',
 			url: 'http://slskd:5030',
-			api_key: 'slskd****',
-			verify_downloads: true,
-			min_bitrate_kbps: 128,
-			preflight_score_auto_accept: 0.7,
-			preflight_score_manual_min: 0.5,
+			api_key: '********',
 			downloads_subpath: '',
 			slskd_incomplete_mount: ''
 		},
@@ -31,7 +26,9 @@ vi.mock('$lib/queries/downloads/DownloadClientQueries.svelte', () => ({
 		data: {
 			// Non-"Connected" status header so the only /Connected/ match is the test result line below.
 			configured: true,
-			client: { status: 'error', version: null, message: 'Not reachable' },
+			reachable: false,
+			version: null,
+			message: 'Not reachable',
 			mount: { ok: true, move_supported: true, reason: 'ok', path: '/data/downloads/slskd' },
 			// Mount passes but nothing resolves, so the subfolder box renders.
 			mount_advisory: 'slskd has 5 finished downloads but nothing is visible.',
@@ -70,7 +67,7 @@ describe('SettingsDownloadClient.svelte', () => {
 		await page.getByRole('button', { name: 'Test connection' }).click();
 		// Test sends the form config, not an empty body, so the backend validates what's typed.
 		expect(testMutate).toHaveBeenCalledWith(
-			expect.objectContaining({ url: 'http://slskd:5030', api_key: 'slskd****' })
+			expect.objectContaining({ url: 'http://slskd:5030', api_key: '********' })
 		);
 		await expect.element(page.getByText(/Connected/)).toBeInTheDocument();
 	});

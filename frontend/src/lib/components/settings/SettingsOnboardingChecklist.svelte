@@ -13,6 +13,7 @@
 	import { getProwlarrConfigQuery } from '$lib/queries/downloads/ProwlarrQueries.svelte';
 	import { getLibraryRunHistoryQuery } from '$lib/queries/library/LibraryOperationQueries.svelte';
 	import { getTargetLibrarySettingsQuery } from '$lib/queries/library/LibraryPolicyQueries.svelte';
+	import Card from '$lib/ui/Card.svelte';
 
 	const libQuery = getTargetLibrarySettingsQuery();
 	const runHistoryQuery = getLibraryRunHistoryQuery();
@@ -37,9 +38,9 @@
 	);
 	const mountOk = $derived(statusQuery.data?.mount?.ok === true);
 	const hasAcoustid = $derived(Boolean(libQuery.data?.acoustid_api_key));
-	// F-08: done once ANY scan run has terminalized (completed, cancelled,
+	// Done once ANY scan run has terminalized (completed, cancelled,
 	// superseded, or failed all count - the scan ran). Derived from run
-	// history, never from last_scan (no server scan-path writer exists).
+	// history.
 	const hasTerminalScanRun = $derived(
 		(runHistoryQuery.data?.pages ?? []).some((page) =>
 			(page.items ?? []).some(
@@ -98,7 +99,7 @@
 	const expanded = $derived(manualToggle ?? !requiredDone);
 </script>
 
-<div class="card border border-base-300 bg-base-200">
+<Card variant="bordered" padding="none">
 	<button
 		type="button"
 		class="flex w-full items-center justify-between px-6 py-4 text-left"
@@ -127,4 +128,4 @@
 			{/each}
 		</ul>
 	{/if}
-</div>
+</Card>

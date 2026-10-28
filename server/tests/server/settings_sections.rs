@@ -1,0 +1,1244 @@
+//! Settings sections: the masked secret round trip over HTTP (read masked,
+//! a re-saved mask keeps the secret, verify tests the stored secret), unit
+//! scaling, revision checks, the admin gate, the BrainzMash ceremony, the
+//! live probes against a loopback stub, and the cache sweep after a save.
+
+use crate::common::auth::{AuthRig, test_principal, with_test_principal};
+use crate::common::{self, ScratchDir};
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::Ordering;
+
+use axum::Router;
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use common::{FIXED_ID, FixedIdGenerator};
+use droppedneedle::settings::effects::{Effects, SaveEffects};
+use droppedneedle::settings::models::LibrarySettingsSaveRequest;
+use droppedneedle::settings::musicbrainz::BRAINZMASH_DISCLOSURE_VERSION;
+use droppedneedle::settings::services::SettingsService;
+use droppedneedle::settings::verify::{
+    JellyfinVerdict, ListenBrainzVerdict, LiveProbes, NewznabVerdict, PlexVerdict, ProbeVerdict,
+    ProwlarrVerdict, SabnzbdMountDiagnosis, SabnzbdVerdict, VerifyProbes, VersionVerdict,
+};
+use droppedneedle::settings::wiring::SettingsSetup;
+use droppedneedle_auth::users::roles::{Role, SessionKind};
+use droppedneedle_kernel::runtime_config::effects::Effect;
+use droppedneedle_kernel::runtime_config::mask::SECRET_MASK;
+use droppedneedle_kernel::runtime_config::secret_sections::{JellyfinConnection, TypedLibrary};
+use droppedneedle_kernel::runtime_config::{ConfigStore, Crypto};
+use futures_util::future::BoxFuture;
+use serde_json::{Value, json};
+use tower::ServiceExt as _;
+
+/// Post-save fan-out recorder: which sections fired, in order.
+#[derive(Default)]
+struct RecorderEffects {
+    calls: Mutex<Vec<Effect>>,
+}
+
+impl RecorderEffects {
+    fn calls(&self) -> Vec<Effect> {
+        self.calls.lock().expect("recorder reads").clone()
+    }
+}
+
+impl SaveEffects for RecorderEffects {
+    fn run(&self, effect: Effect) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            self.calls.lock().expect("recorder writes").push(effect);
+        })
+    }
+}
+
+/// Scratch service with a recording fan-out.
+fn scratch_service() -> (SettingsService, Arc<RecorderEffects>, ScratchDir) {
+    let dir = ScratchDir::new("settings-sections");
+    let crypto = Crypto::from_key_bytes(&[7u8; 32]).expect("test crypto builds");
+    let store = Arc::new(ConfigStore::scratch(&dir, crypto).expect("store opens"));
+    let effects = Arc::new(RecorderEffects::default());
+    let (settled, runner) = Effects::new(store.clone(), effects.clone());
+    tokio::spawn(runner.run(droppedneedle_kernel::jobs::CancellationToken::new()));
+    let ids = Arc::new(FixedIdGenerator::new(FIXED_ID));
+    (
+        SettingsService::new(
+            store,
+            settled,
+            ids,
+            Arc::new(FakeProbes::passing()),
+            Arc::new(droppedneedle_kernel::clock::SystemClock),
+        ),
+        effects,
+        dir,
+    )
+}
+
+/// Scripted verify probes: canned verdicts plus a call log. HTTP
+/// tests run against this, never the network.
+struct FakeProbes {
+    calls: Mutex<Vec<String>>,
+    valid: bool,
+    rate_limited: bool,
+}
+
+impl FakeProbes {
+    fn passing() -> Self {
+        Self {
+            calls: Mutex::new(Vec::new()),
+            valid: true,
+            rate_limited: false,
+        }
+    }
+
+    fn failing() -> Self {
+        Self {
+            calls: Mutex::new(Vec::new()),
+            valid: false,
+            rate_limited: false,
+        }
+    }
+
+    fn recorded(&self, name: &str, args: &[&str]) {
+        let mut calls = self.calls.lock().expect("fake log writes");
+        calls.push(format!("{name}({})", args.join(",")));
+    }
+
+    fn calls(&self) -> Vec<String> {
+        self.calls.lock().expect("fake log reads").clone()
+    }
+
+    fn verdict(&self, name: &str) -> ProbeVerdict {
+        if self.valid {
+            ProbeVerdict::ok(format!("fake {name} ok"))
+        } else {
+            ProbeVerdict::failed(format!("fake {name} failed"))
+        }
+    }
+}
+
+impl VerifyProbes for FakeProbes {
+    fn jellyfin<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, JellyfinVerdict> {
+        Box::pin(async move {
+            self.recorded("jellyfin", &[url, key]);
+            let base = self.verdict("jellyfin");
+            JellyfinVerdict {
+                valid: base.valid,
+                message: base.message,
+                users: vec![("u1".to_owned(), "Ada".to_owned())],
+            }
+        })
+    }
+
+    fn navidrome<'a>(
+        &'a self,
+        url: &'a str,
+        username: &'a str,
+        password: &'a str,
+    ) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("navidrome", &[url, username, password]);
+            self.verdict("navidrome")
+        })
+    }
+
+    fn plex<'a>(&'a self, url: &'a str, token: &'a str) -> BoxFuture<'a, PlexVerdict> {
+        Box::pin(async move {
+            self.recorded("plex", &[url, token]);
+            let base = self.verdict("plex");
+            PlexVerdict {
+                valid: base.valid,
+                message: base.message,
+                libraries: vec![("1".to_owned(), "Music".to_owned())],
+            }
+        })
+    }
+
+    fn plex_libraries<'a>(
+        &'a self,
+        url: &'a str,
+        token: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<(String, String)>, String>> {
+        Box::pin(async move {
+            self.recorded("plex_libraries", &[url, token]);
+            Ok(vec![("1".to_owned(), "Music".to_owned())])
+        })
+    }
+
+    fn listenbrainz<'a>(
+        &'a self,
+        username: &'a str,
+        token: &'a str,
+    ) -> BoxFuture<'a, ListenBrainzVerdict> {
+        Box::pin(async move {
+            self.recorded("listenbrainz", &[username, token]);
+            ListenBrainzVerdict {
+                valid: self.valid,
+                message: "fake listenbrainz".to_owned(),
+                rate_limited: self.rate_limited,
+            }
+        })
+    }
+
+    fn youtube<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("youtube", &[key]);
+            self.verdict("youtube")
+        })
+    }
+
+    fn ticketmaster<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("ticketmaster", &[key]);
+            self.verdict("ticketmaster")
+        })
+    }
+
+    fn skiddle<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("skiddle", &[key]);
+            self.verdict("skiddle")
+        })
+    }
+
+    fn slskd<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, VersionVerdict> {
+        Box::pin(async move {
+            self.recorded("slskd", &[url, key]);
+            VersionVerdict {
+                valid: self.valid,
+                version: Some("9.9".to_owned()),
+                message: "fake slskd".to_owned(),
+            }
+        })
+    }
+
+    fn sabnzbd<'a>(
+        &'a self,
+        url: &'a str,
+        key: &'a str,
+        downloads_mount: &'a str,
+    ) -> BoxFuture<'a, SabnzbdVerdict> {
+        Box::pin(async move {
+            self.recorded("sabnzbd", &[url, key, downloads_mount]);
+            SabnzbdVerdict {
+                valid: self.valid,
+                version: Some("9.9".to_owned()),
+                message: "fake sabnzbd".to_owned(),
+                categories: vec!["music".to_owned()],
+                complete_dir: Some("/complete".to_owned()),
+                diagnosis: Some(SabnzbdMountDiagnosis {
+                    mount_has_files: true,
+                    resolvable_downloads: 1,
+                    sampled_downloads: 1,
+                    mount_message: None,
+                }),
+            }
+        })
+    }
+
+    fn prowlarr<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, ProwlarrVerdict> {
+        Box::pin(async move {
+            self.recorded("prowlarr", &[url, key]);
+            ProwlarrVerdict {
+                valid: self.valid,
+                version: Some("9.9".to_owned()),
+                message: "fake prowlarr".to_owned(),
+                indexer_count: Some(2),
+            }
+        })
+    }
+
+    fn newznab<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, NewznabVerdict> {
+        Box::pin(async move {
+            self.recorded("newznab", &[url, key]);
+            NewznabVerdict {
+                valid: self.valid,
+                version: Some("9.9".to_owned()),
+                message: "fake newznab".to_owned(),
+                supports_audio_search: true,
+                category_count: 3,
+                suggested_url: None,
+            }
+        })
+    }
+
+    fn musicbrainz<'a>(
+        &'a self,
+        source: &'a droppedneedle_providers::musicbrainz::MbSource,
+    ) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("musicbrainz", &[source.base_url()]);
+            self.verdict("musicbrainz")
+        })
+    }
+
+    fn oidc<'a>(&'a self, issuer: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            self.recorded("oidc", &[issuer]);
+            self.verdict("oidc")
+        })
+    }
+}
+
+// --- service round-trips -----------------------------------------------------
+
+/// Advanced tunables save, mask the AudioDB key, and fire the Advanced
+/// fan-out.
+#[tokio::test]
+async fn advanced_round_trip_masks() {
+    use droppedneedle_kernel::runtime_config::secret_sections::AdvancedSettings;
+    use droppedneedle_kernel::runtime_config::{Masked, Section as _};
+
+    let (service, effects, _scratch) = scratch_service();
+    let body: Masked<AdvancedSettings> = serde_json::from_value(json!({
+        "discover_queue_size": 15,
+        "discover_queue_auto_generate": false,
+        "audiodb_api_key": "audiodb-secret",
+    }))
+    .expect("decodes");
+    let echoed = service.save_masked(body).await.expect("saves");
+    assert_eq!(echoed.discover_queue_size, 15);
+    assert_eq!(echoed.audiodb_api_key.expose(), SECRET_MASK);
+    assert!(effects.calls().is_empty(), "a save clears no cache");
+
+    let stored = service
+        .store
+        .get_raw::<AdvancedSettings>()
+        .expect("raw reads");
+    assert_eq!(stored.discover_queue_size, 15);
+    assert_eq!(stored.audiodb_api_key.expose(), "audiodb-secret");
+
+    // The echo re-saves cleanly: the mask keeps the stored key, the row is
+    // left as it was, and the save still runs the section's effects.
+    let revision = service.store.revision(AdvancedSettings::KEY);
+    service.save_masked(echoed).await.expect("resaves");
+    assert_eq!(service.store.revision(AdvancedSettings::KEY), revision);
+    assert!(effects.calls().is_empty());
+    let stored = service
+        .store
+        .get_raw::<AdvancedSettings>()
+        .expect("raw reads");
+    assert_eq!(stored.audiodb_api_key.expose(), "audiodb-secret");
+
+    let ttls = service.get_cache_ttls().expect("reads ttls");
+    assert!(!ttls.discover_queue_auto_generate);
+}
+
+/// Library settings round-trip with CAS: a stale token is a 409, and
+/// path add/remove normalize through the same save.
+#[tokio::test]
+async fn library_round_trip_cas_and_paths() {
+    let (service, effects, _scratch) = scratch_service();
+    let view = service.get_library().await.expect("reads default");
+    assert!(!view.policy_revision.is_empty());
+
+    // Requests decode the way a client body would.
+    let request = |settings: Value, revision: &str| -> LibrarySettingsSaveRequest {
+        serde_json::from_value(json!({
+            "settings": settings,
+            "expected_policy_revision": revision,
+        }))
+        .expect("request decodes")
+    };
+
+    // Stale token rejected before anything persists.
+    let stale = request(json!({}), "wrong");
+    let error = service
+        .save_library(stale, false)
+        .await
+        .expect_err("stale fails");
+    assert!(matches!(
+        error,
+        droppedneedle_kernel::runtime_config::settings_error::SettingsError::StaleRevision { .. }
+    ));
+
+    let dir = ScratchDir::new("settings-library");
+    std::fs::create_dir_all(dir.join("music")).expect("fixture dir builds");
+    let root = dir.join("music").to_string_lossy().into_owned();
+
+    let saved = service
+        .save_library(
+            request(
+                json!({"acoustid_api_key": "acoustid-secret"}),
+                &view.policy_revision,
+            ),
+            false,
+        )
+        .await
+        .expect("saves");
+    assert_eq!(saved.settings.acoustid_api_key.expose(), SECRET_MASK);
+    assert_eq!(
+        effects.calls(),
+        [Effect::RefreshLibraryRoots],
+        "a save takes the roots in and clears no cache"
+    );
+    let stored = service.store.get_raw::<TypedLibrary>().expect("raw reads");
+    assert_eq!(stored.acoustid_api_key.expose(), "acoustid-secret");
+
+    let added = service.add_library_path(&root).await.expect("adds path");
+    assert_eq!(added.settings.library_roots.len(), 1);
+    assert_eq!(added.settings.library_roots[0].path, root);
+    // Re-adding is a silent no-op; the key survives path edits.
+    let again = service.add_library_path(&root).await.expect("re-adds");
+    assert_eq!(again.settings.library_roots.len(), 1);
+    assert_eq!(again.settings.acoustid_api_key.expose(), SECRET_MASK);
+    let stored = service.store.get_raw::<TypedLibrary>().expect("raw reads");
+    assert_eq!(stored.acoustid_api_key.expose(), "acoustid-secret");
+
+    let missing = service.add_library_path("").await.expect_err("blank fails");
+    assert!(format!("{missing:?}").contains("required"));
+
+    let removed = service
+        .remove_library_path(&root, false)
+        .await
+        .expect("removes");
+    assert!(removed.settings.library_roots.is_empty());
+    service
+        .remove_library_path("/nothing/here", false)
+        .await
+        .expect("unknown remove is silent");
+}
+
+/// Two saves holding the same revision: exactly one lands, the other is
+/// a stale-revision 409 instead of silently overwriting the first.
+#[tokio::test]
+async fn concurrent_library_saves_cannot_both_pass_the_revision_check() {
+    let (service, _effects, _scratch) = scratch_service();
+    let revision = service
+        .get_library()
+        .await
+        .expect("reads default")
+        .policy_revision;
+    let request = |id: &str| -> LibrarySettingsSaveRequest {
+        serde_json::from_value(json!({
+            "settings": {"library_roots": [
+                {"id": id, "path": format!("/music/{id}"), "label": id}
+            ]},
+            "expected_policy_revision": revision,
+        }))
+        .expect("request decodes")
+    };
+    let (first, second) = tokio::join!(
+        service.save_library(request("a"), false),
+        service.save_library(request("b"), false)
+    );
+    let stale = [&first, &second]
+        .iter()
+        .filter(|result| {
+            matches!(
+                result,
+                Err(droppedneedle_kernel::runtime_config::settings_error::SettingsError::StaleRevision { .. })
+            )
+        })
+        .count();
+    assert_eq!((first.is_ok() as u8 + second.is_ok() as u8, stale), (1, 1));
+}
+
+// --- HTTP journeys -----------------------------------------------------------
+
+/// One scratch deployment: the auth rig, scripted probes, wired settings.
+struct Rig {
+    settings: SettingsSetup,
+    #[allow(dead_code)]
+    auth: AuthRig,
+    admin_id: String,
+    user_id: String,
+    probes: Arc<FakeProbes>,
+}
+
+impl Rig {
+    async fn open(passing: bool) -> Self {
+        let rig = AuthRig::new("settings").await;
+        let admin = rig.seed_user("brenda", Role::Admin).await;
+        let user = rig.seed_user("molly", Role::User).await;
+        let probes = Arc::new(if passing {
+            FakeProbes::passing()
+        } else {
+            FakeProbes::failing()
+        });
+        let settings = SettingsSetup::for_tests_with_probes(
+            Arc::new(FixedIdGenerator::new(FIXED_ID)),
+            probes.clone(),
+        )
+        .expect("settings bundle builds");
+        Self {
+            settings,
+            auth: rig,
+            admin_id: admin.id,
+            user_id: user.id,
+            probes,
+        }
+    }
+
+    /// Both routers signed in as `user_id` with `role`, or anonymous.
+    fn app(&self, caller: Option<(&str, Role)>) -> Router {
+        let router = droppedneedle::settings::wiring::routes()
+            .with_state(self.settings.clone())
+            .into_router();
+        match caller {
+            Some((user_id, role)) => with_test_principal(
+                router,
+                test_principal(user_id, role, "sess-1", SessionKind::Standard),
+            ),
+            None => router,
+        }
+    }
+
+    fn admin_app(&self) -> Router {
+        self.app(Some((&self.admin_id, Role::Admin)))
+    }
+
+    fn user_app(&self) -> Router {
+        self.app(Some((&self.user_id, Role::User)))
+    }
+}
+
+async fn call(app: Router, method: &str, uri: &str, body: Option<Value>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if body.is_some() {
+        builder = builder.header("content-type", "application/json");
+    }
+    let request = builder
+        .body(body.map_or_else(Body::empty, |json| {
+            Body::from(serde_json::to_vec(&json).expect("body serializes"))
+        }))
+        .expect("request builds");
+    let response = app.oneshot(request).await.expect("router answers");
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body reads");
+    let json: Value = serde_json::from_slice(&bytes).expect("body is json");
+    (status, json)
+}
+
+/// Anonymous callers get 401, signed-in non-admins get 403, admins pass.
+#[tokio::test]
+async fn settings_routes_are_admin_gated() {
+    let rig = Rig::open(true).await;
+    for (method, uri) in [
+        ("GET", "/api/v3/settings/preferences"),
+        ("PUT", "/api/v3/settings/preferences"),
+        ("GET", "/api/v3/settings/jellyfin"),
+        ("POST", "/api/v3/settings/jellyfin/verify"),
+        ("GET", "/api/v3/settings/indexers"),
+        ("POST", "/api/v3/settings/indexers/test"),
+        ("GET", "/api/v3/settings/musicbrainz"),
+        ("POST", "/api/v3/settings/musicbrainz/brainzmash/stage"),
+        ("GET", "/api/v3/settings/library/sync"),
+        ("GET", "/api/v3/settings/library-management"),
+        (
+            "POST",
+            "/api/v3/settings/library-management/profile-imports/preview",
+        ),
+    ] {
+        let body = (method == "PUT" || method == "POST").then(|| json!({}));
+        let (status, _) = call(rig.app(None), method, uri, body.clone()).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri} anon");
+        let (status, denied) = call(rig.user_app(), method, uri, body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri} user");
+        assert_eq!(denied["error"]["code"], "FORBIDDEN");
+    }
+    // Section prefs are per-user: a plain user passes.
+    let (status, _) = call(rig.user_app(), "GET", "/api/v3/me/section-prefs", None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(rig.app(None), "GET", "/api/v3/me/section-prefs", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+/// Verify endpoints resolve masked secrets to the stored ones before
+/// probing, and map verdicts into the shared shapes.
+#[tokio::test]
+async fn verify_resolves_masks_and_maps_verdicts() {
+    let rig = Rig::open(true).await;
+
+    // Seed a real Jellyfin key, then verify the masked echo: the fake
+    // must observe the stored key, not the sentinel.
+    let (status, saved) = call(
+        rig.admin_app(),
+        "PUT",
+        "/api/v3/settings/jellyfin",
+        Some(json!({
+            "jellyfin_url": "http://jellyfin:8096",
+            "api_key": "jellyfin-live",
+            "user_id": "",
+            "enabled": true,
+            "login_enabled": false,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["api_key"], SECRET_MASK);
+    let (status, read) = call(rig.admin_app(), "GET", "/api/v3/settings/jellyfin", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["api_key"], SECRET_MASK);
+    // Re-saving the masked read keeps the stored key.
+    let (status, _) = call(
+        rig.admin_app(),
+        "PUT",
+        "/api/v3/settings/jellyfin",
+        Some(read),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let stored = rig
+        .settings
+        .service()
+        .store
+        .get_raw::<JellyfinConnection>()
+        .expect("raw reads");
+    assert_eq!(stored.api_key.expose(), "jellyfin-live");
+    let (status, verdict) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/jellyfin/verify",
+        Some(saved.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(verdict["success"], true);
+    assert_eq!(verdict["users"][0]["name"], "Ada");
+    assert!(
+        rig.probes
+            .calls()
+            .iter()
+            .any(|call| call == "jellyfin(http://jellyfin:8096,jellyfin-live)"),
+        "probe saw the resolved key: {:?}",
+        rig.probes.calls()
+    );
+
+    // Indexers resolve a masked key by id the same way.
+    let (status, created) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/indexers",
+        Some(json!({"name": "Stub", "url": "http://stub:8080/api", "api_key": "indexer-live"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, listed) = call(rig.admin_app(), "GET", "/api/v3/settings/indexers", None).await;
+    assert_eq!(listed[0]["id"], created["id"]);
+    assert_eq!(listed[0]["api_key"], SECRET_MASK);
+    let (status, _) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/indexers/test",
+        Some(listed[0].clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        rig.probes
+            .calls()
+            .iter()
+            .any(|call| call == "newznab(http://stub:8080/api,indexer-live)"),
+        "probe saw the stored indexer key: {:?}",
+        rig.probes.calls()
+    );
+
+    // A failing probe maps to a body verdict, never an error status.
+    let rig = Rig::open(false).await;
+    let (status, verdict) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/navidrome/verify",
+        Some(json!({
+            "navidrome_url": "http://navidrome:4533",
+            "username": "ada",
+            "password": "wrong",
+            "enabled": true,
+            "playlist_sync_enabled": false,
+            "playlist_sync_path": "",
+            "playlist_sync_scope": "public",
+            "playlist_sync_remove_deleted": true,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(verdict["valid"], false);
+
+    // ListenBrainz rate limiting answers 429.
+    let rig = AuthRig::new("settings").await;
+    let admin = rig.seed_user("brenda", Role::Admin).await;
+    let probes = Arc::new(FakeProbes {
+        calls: Mutex::new(Vec::new()),
+        valid: false,
+        rate_limited: true,
+    });
+    let settings =
+        SettingsSetup::for_tests_with_probes(Arc::new(FixedIdGenerator::new(FIXED_ID)), probes)
+            .expect("settings bundle builds");
+    let app = with_test_principal(
+        droppedneedle::settings::wiring::routes()
+            .with_state(settings)
+            .into_router(),
+        test_principal(&admin.id, Role::Admin, "sess-1", SessionKind::Standard),
+    );
+    let (status, limited) = call(
+        app,
+        "POST",
+        "/api/v3/settings/listenbrainz/verify",
+        Some(json!({"username": "ada", "user_token": "tok", "enabled": true})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(limited["error"]["code"], "RATE_LIMITED");
+}
+
+/// The scan cadence keeps v2's wire values: `manual` saves and reads
+/// back as `manual` (the v2 importer writes that value too).
+#[tokio::test]
+async fn schedule_manual_round_trips() {
+    let rig = Rig::open(true).await;
+    let (status, saved) = call(
+        rig.admin_app(),
+        "PUT",
+        "/api/v3/settings/library/schedule",
+        Some(json!({"scan_frequency": "manual", "daily_scan_time": "03:00"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["scan_frequency"], "manual");
+    let (status, read) = call(
+        rig.admin_app(),
+        "GET",
+        "/api/v3/settings/library/schedule",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["scan_frequency"], "manual");
+}
+
+/// The online lyrics lookup is on until an admin turns it off, and a
+/// saved "off" stays off.
+#[tokio::test]
+async fn lyrics_lookup_on_by_default_off_stays_off() {
+    let rig = Rig::open(true).await;
+    let (status, read) = call(rig.admin_app(), "GET", "/api/v3/settings/lyrics", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["enabled"], true);
+    let (status, saved) = call(
+        rig.admin_app(),
+        "PUT",
+        "/api/v3/settings/lyrics",
+        Some(json!({"enabled": false})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    assert_eq!(saved["enabled"], false);
+    let (status, read) = call(rig.admin_app(), "GET", "/api/v3/settings/lyrics", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["enabled"], false);
+}
+
+/// The dropped catalog-sync section answers 410 on both methods.
+#[tokio::test]
+async fn dropped_routes_answer_gone() {
+    let rig = Rig::open(true).await;
+    for (method, uri) in [
+        ("GET", "/api/v3/settings/library/sync"),
+        ("PUT", "/api/v3/settings/library/sync"),
+    ] {
+        let body = (method == "PUT").then(|| json!({}));
+        let (status, gone) = call(rig.admin_app(), method, uri, body).await;
+        assert_eq!(status, StatusCode::GONE, "{method} {uri}");
+        assert_eq!(gone["error"]["code"], "SECTION_DROPPED");
+    }
+}
+
+/// The BrainzMash ceremony runs over HTTP: stage, consent, verify the
+/// binding, activate. A stale binding is a 409.
+#[tokio::test]
+async fn brainzmash_ceremony_http() {
+    let rig = Rig::open(true).await;
+    let (status, staged) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/musicbrainz/brainzmash/stage",
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let pending = staged["pending_brainzmash"].clone();
+    assert!(pending.is_object());
+    let binding = json!({
+        "access_revision": pending["access_revision"],
+        "source_id": pending["source_id"],
+        "generation": pending["generation"],
+        "disclosure_version": pending["disclosure_version"],
+    });
+
+    let (status, _) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/musicbrainz/brainzmash/consent",
+        Some(binding.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, verified) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/musicbrainz/verify",
+        Some(binding.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(verified["pending_brainzmash"]["verified"], true);
+
+    let (status, active) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/musicbrainz/activate",
+        Some(binding),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(active["source_mode"], "brainzmash");
+    assert!(active["active_brainzmash"].is_object());
+
+    // A stale binding no longer matches anything.
+    let (status, stale) = call(
+        rig.admin_app(),
+        "POST",
+        "/api/v3/settings/musicbrainz/activate",
+        Some(json!({
+            "access_revision": "stale",
+            "source_id": "stale",
+            "generation": 1,
+            "disclosure_version": BRAINZMASH_DISCLOSURE_VERSION,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["error"]["code"], "CONFLICT");
+}
+
+/// Section prefs round-trip per user; unknown pages and keys are 400s.
+#[tokio::test]
+async fn section_prefs_http() {
+    let rig = Rig::open(true).await;
+    let (status, full) = call(rig.user_app(), "GET", "/api/v3/me/section-prefs", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(full["pages"]["home"].is_array());
+    assert!(full["pages"]["discover"].is_array());
+    assert!(full["pages"]["sidebar"].is_array());
+
+    let (status, updated) = call(
+        rig.user_app(),
+        "PUT",
+        "/api/v3/me/section-prefs",
+        Some(json!({
+            "page": "home",
+            "sections": [{"key": "trending_artists", "enabled": false}],
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(updated["pages"]["home"].is_array());
+    assert!(
+        updated
+            .get("pages")
+            .expect("pages")
+            .get("discover")
+            .is_none()
+    );
+    let toggled = updated["pages"]["home"]
+        .as_array()
+        .expect("page reads")
+        .iter()
+        .find(|item| item["key"] == "trending_artists")
+        .expect("finds key");
+    assert_eq!(toggled["enabled"], false);
+
+    let (status, _) = call(
+        rig.user_app(),
+        "PUT",
+        "/api/v3/me/section-prefs",
+        Some(json!({"page": "nope", "sections": []})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, bad) = call(
+        rig.user_app(),
+        "PUT",
+        "/api/v3/me/section-prefs",
+        Some(json!({
+            "page": "home",
+            "sections": [{"key": "bogus", "enabled": false}],
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        bad["error"]["message"]
+            .as_str()
+            .expect("message")
+            .contains("bogus")
+    );
+}
+
+// --- probe helpers ---------------------------------------------------------------
+
+// --- live probes against loopback stubs --------------------------------------
+
+/// One stub origin answering every upstream shape the probes speak.
+/// Query-driven dispatch keeps Plex `/` and the Newznab homepage apart
+/// on the same root.
+fn stub_app() -> Router {
+    use axum::Json;
+    use axum::extract::Query;
+    use axum::http::HeaderMap;
+    use axum::response::{Html, IntoResponse};
+
+    async fn root(Query(query): Query<HashMap<String, String>>) -> impl IntoResponse {
+        if query.contains_key("t") {
+            // A bare indexer URL answers its homepage, not caps.
+            return Html("<html>homepage</html>").into_response();
+        }
+        Json(json!({"MediaContainer": {"friendlyName": "StubPlex", "version": "1.40"}}))
+            .into_response()
+    }
+
+    async fn api(Query(query): Query<HashMap<String, String>>) -> impl IntoResponse {
+        if query.contains_key("t") {
+            let caps = r#"<?xml version="1.0" encoding="UTF-8"?>
+<caps><server title="Stub" version="2.0"/>
+<limits max="100" default="50"/>
+<searching><search available="yes"/><audio-search available="yes"/></searching>
+<categories><category id="3000" name="Audio"><subcat id="3040" name="MP3"/></category></categories>
+</caps>"#;
+            return (
+                [(axum::http::header::CONTENT_TYPE, "text/xml")],
+                caps.to_owned(),
+            )
+                .into_response();
+        }
+        match query.get("mode").map(String::as_str) {
+            Some("version") => Json(json!({"version": "4.3.0"})).into_response(),
+            Some("get_cats") => Json(json!({"categories": ["movies", "music"]})).into_response(),
+            Some("get_config") => Json(json!({
+                "config": {"misc": {"complete_dir": "/downloads/complete"}}
+            }))
+            .into_response(),
+            Some("history") => Json(json!({"history": {"slots": []}})).into_response(),
+            _ => Json(json!({})).into_response(),
+        }
+    }
+
+    Router::new()
+        .route("/", axum::routing::get(root))
+        .route("/api", axum::routing::get(api))
+        .route(
+            "/System/Info",
+            axum::routing::get(|| async {
+                Json(json!({"ServerName": "Stub", "Version": "10.11.0"}))
+            }),
+        )
+        .route(
+            "/Users",
+            axum::routing::get(|| async { Json(json!([{"Id": "u1", "Name": "Ada"}])) }),
+        )
+        .route(
+            "/rest/ping",
+            axum::routing::get(|| async {
+                Json(json!({"subsonic-response": {"status": "ok", "version": "1.16.1"}}))
+            }),
+        )
+        .route(
+            "/library/sections",
+            axum::routing::get(|| async {
+                Json(json!({"MediaContainer": {"Directory": [
+                    {"key": "1", "title": "Music", "type": "artist"},
+                    {"key": "2", "title": "TV", "type": "show"},
+                ]}}))
+            }),
+        )
+        .route(
+            "/1/validate-token",
+            axum::routing::get(|headers: HeaderMap| async move {
+                match headers
+                    .get("authorization")
+                    .and_then(|value| value.to_str().ok())
+                {
+                    Some("Token bad") => StatusCode::UNAUTHORIZED.into_response(),
+                    // A long wait, so the check answers at once instead of
+                    // trying again.
+                    Some("Token limited") => {
+                        (StatusCode::TOO_MANY_REQUESTS, [("retry-after", "60")]).into_response()
+                    }
+                    _ => Json(json!({"valid": true, "user_name": "ada"})).into_response(),
+                }
+            }),
+        )
+        .route(
+            "/1/user/{name}/listen-count",
+            axum::routing::get(|| async { Json(json!({"payload": {"count": 7}})) }),
+        )
+        .route(
+            "/youtube/v3/videos",
+            axum::routing::get(|Query(query): Query<HashMap<String, String>>| async move {
+                if query.get("key").map(String::as_str) == Some("bad") {
+                    StatusCode::FORBIDDEN.into_response()
+                } else {
+                    Json(json!({"items": []})).into_response()
+                }
+            }),
+        )
+        .route(
+            "/attractions.json",
+            axum::routing::get(|Query(query): Query<HashMap<String, String>>| async move {
+                if query.get("apikey").map(String::as_str) == Some("limited") {
+                    (StatusCode::TOO_MANY_REQUESTS, [("retry-after", "120")]).into_response()
+                } else {
+                    Json(json!({"_embedded": {}})).into_response()
+                }
+            }),
+        )
+        .route(
+            "/events/search/",
+            axum::routing::get(|Query(query): Query<HashMap<String, String>>| async move {
+                if query.get("api_key").map(String::as_str) == Some("bad") {
+                    Json(json!({"error": 1, "errormessage": "bad key"}))
+                } else {
+                    Json(json!({"error": 0, "results": []}))
+                }
+            }),
+        )
+        .route(
+            "/api/v0/application",
+            axum::routing::get(|headers: HeaderMap| async move {
+                if headers
+                    .get("x-api-key")
+                    .and_then(|value| value.to_str().ok())
+                    == Some("bad")
+                {
+                    StatusCode::UNAUTHORIZED.into_response()
+                } else {
+                    Json(json!({"version": {"current": "0.21.0"}})).into_response()
+                }
+            }),
+        )
+        .route(
+            "/api/v1/system/status",
+            axum::routing::get(|| async { Json(json!({"version": "1.2.3"})) }),
+        )
+        .route(
+            "/api/v1/indexer",
+            axum::routing::get(|| async {
+                Json(json!([
+                    {"id": 1, "name": "A", "protocol": "usenet", "enable": true},
+                    {"id": 2, "name": "B", "protocol": "usenet", "enable": false},
+                ]))
+            }),
+        )
+        .route(
+            "/artist",
+            axum::routing::get(|| async { Json(json!({"artists": []})) }),
+        )
+        .route(
+            "/boom/artist",
+            axum::routing::get(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        )
+        .route(
+            "/.well-known/openid-configuration",
+            axum::routing::get(|| async { Json(json!({"issuer": "https://stub.example"})) }),
+        )
+}
+
+/// Serve the stub on a loopback port; returns the base URL.
+async fn serve_stub() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("stub binds");
+    let base = format!("http://{}", listener.local_addr().expect("addr reads"));
+    tokio::spawn(async move {
+        axum::serve(listener, stub_app())
+            .await
+            .expect("stub serves");
+    });
+    base
+}
+
+/// A server address that does not parse names no server: the media
+/// server checks say they could not connect, never that the server has
+/// no such item.
+#[tokio::test]
+async fn unparseable_server_address_cannot_connect() {
+    let probes = LiveProbes::new(
+        reqwest::Client::new(),
+        &droppedneedle_providers::Providers::closed(),
+    );
+    let address = "http://not a host";
+    for message in [
+        probes.jellyfin(address, "key").await.message,
+        probes.navidrome(address, "ada", "pw").await.message,
+        probes.plex(address, "token").await.message,
+    ] {
+        assert!(message.starts_with("Could not connect"), "{message}");
+    }
+}
+
+/// Every live probe passes against the stub and fails honestly: bad
+/// credentials, rate limits, and dead upstreams are verdicts with the
+/// v2-shaped messages.
+#[tokio::test]
+async fn live_probes_hit_stubs() {
+    let base = serve_stub().await;
+    let http = droppedneedle_kernel::http_client::HttpClientFactory::new().expect("http");
+    let probes = LiveProbes::new(
+        reqwest::Client::new(),
+        &droppedneedle_providers::Providers::unpaced_at(
+            Arc::new(droppedneedle_providers::ReqwestWire::new(&http)),
+            droppedneedle_providers::ProviderEndpoints {
+                listenbrainz: base.clone(),
+                youtube: base.clone(),
+                ticketmaster: base.clone(),
+                skiddle: base.clone(),
+                ..droppedneedle_providers::ProviderEndpoints::closed()
+            },
+        ),
+    );
+    let dead = "http://127.0.0.1:9";
+    let unreachable = LiveProbes::new(
+        reqwest::Client::new(),
+        &droppedneedle_providers::Providers::closed(),
+    );
+
+    let jellyfin = probes.jellyfin(&base, "key").await;
+    assert!(jellyfin.valid);
+    assert_eq!(jellyfin.users, vec![("u1".to_owned(), "Ada".to_owned())]);
+    let jellyfin = probes.jellyfin(dead, "key").await;
+    assert!(!jellyfin.valid);
+    assert!(jellyfin.message.contains("Could not connect"));
+
+    let navidrome = probes.navidrome(&base, "ada", "pw").await;
+    assert!(navidrome.valid, "{}", navidrome.message);
+    assert!(!probes.navidrome(dead, "ada", "pw").await.valid);
+
+    let plex = probes.plex(&base, "token").await;
+    assert!(plex.valid, "{}", plex.message);
+    assert_eq!(plex.libraries, vec![("1".to_owned(), "Music".to_owned())]);
+    assert!(!probes.plex(dead, "token").await.valid);
+    let libraries = probes.plex_libraries(&base, "token").await.expect("lists");
+    assert_eq!(libraries.len(), 1);
+
+    let lb = probes.listenbrainz("ada", "tok").await;
+    assert!(lb.valid);
+    assert!(!lb.rate_limited);
+    let lb = probes.listenbrainz("ada", "bad").await;
+    assert!(!lb.valid);
+    let lb = probes.listenbrainz("ada", "limited").await;
+    assert!(lb.rate_limited);
+
+    let youtube = probes.youtube("key").await;
+    assert!(youtube.valid);
+    let youtube = probes.youtube("bad").await;
+    assert!(!youtube.valid);
+    assert_eq!(
+        youtube.message,
+        "API key is invalid or YouTube Data API is not enabled."
+    );
+
+    assert!(probes.ticketmaster("key").await.valid);
+    assert!(!unreachable.ticketmaster("key").await.valid);
+    // A rate limit says to wait, not that the key is bad; while the row
+    // rests, a check of another key gets the same answer without sending.
+    for key in ["limited", "key"] {
+        let resting = probes.ticketmaster(key).await;
+        assert!(!resting.valid);
+        assert_eq!(
+            resting.message,
+            "Ticketmaster asked us to wait; try again in about 2 minutes."
+        );
+    }
+    assert!(probes.skiddle("key").await.valid);
+    assert!(!probes.skiddle("bad").await.valid);
+
+    let slskd = probes.slskd(&base, "key").await;
+    assert!(slskd.valid, "{}", slskd.message);
+    assert_eq!(slskd.version.as_deref(), Some("0.21.0"));
+    assert!(!probes.slskd(&base, "bad").await.valid);
+
+    let sabnzbd = probes.sabnzbd(&base, "key", "/mnt/downloads").await;
+    assert!(sabnzbd.valid, "{}", sabnzbd.message);
+    assert_eq!(sabnzbd.version.as_deref(), Some("4.3.0"));
+    assert_eq!(
+        sabnzbd.categories,
+        vec!["movies".to_owned(), "music".to_owned()]
+    );
+    assert_eq!(sabnzbd.complete_dir.as_deref(), Some("/downloads/complete"));
+    assert!(!probes.sabnzbd(dead, "key", "/mnt/downloads").await.valid);
+
+    let prowlarr = probes.prowlarr(&base, "key").await;
+    assert!(prowlarr.valid, "{}", prowlarr.message);
+    assert_eq!(prowlarr.version.as_deref(), Some("1.2.3"));
+    assert_eq!(prowlarr.indexer_count, Some(1));
+    assert!(!probes.prowlarr(dead, "key").await.valid);
+
+    let newznab = probes.newznab(&format!("{base}/api"), "key").await;
+    assert!(newznab.valid, "{}", newznab.message);
+    assert!(newznab.supports_audio_search);
+    assert_eq!(newznab.category_count, 1);
+    // A bare site URL fails with the one-click /api fix.
+    let homepage = probes.newznab(&base, "key").await;
+    assert!(!homepage.valid);
+    assert_eq!(
+        homepage.suggested_url.as_deref(),
+        Some(format!("{base}/api").as_str())
+    );
+
+    let mirror = |base_url: String| droppedneedle_providers::musicbrainz::MbSource::Mirror {
+        base_url,
+        rate_per_sec: 0.0,
+    };
+    assert!(probes.musicbrainz(&mirror(base.clone())).await.valid);
+    let boom = probes.musicbrainz(&mirror(format!("{base}/boom"))).await;
+    assert!(!boom.valid);
+    assert_eq!(boom.message, "MusicBrainz verification returned HTTP 500.");
+
+    let oidc = probes.oidc(&base).await;
+    assert!(oidc.valid);
+    assert!(!probes.oidc(&format!("{base}/noidc")).await.valid);
+    assert!(!probes.oidc("  ").await.valid);
+}
+
+/// Live fan-out kicks the events sweep only for the Events section.
+#[tokio::test]
+async fn live_save_effects_kick_only_for_events() {
+    use std::sync::atomic::AtomicBool;
+
+    use droppedneedle::settings::effects::LiveSaveEffects;
+    use droppedneedle_kernel::jobs::events_kick::FnKick;
+    use droppedneedle_kernel::runtime_config::Section;
+    use droppedneedle_kernel::runtime_config::secret_sections::{
+        AdvancedSettings, EventsSettings, ListenBrainzConnection,
+    };
+    use droppedneedle_kernel::runtime_config::sections::{MusicBrainzSettings, UserPreferences};
+
+    let kicked = Arc::new(AtomicBool::new(false));
+    let kick_flag = kicked.clone();
+    let effects = LiveSaveEffects::new(Arc::new(FnKick {
+        kick_fn: move || kick_flag.store(true, Ordering::SeqCst),
+    }));
+
+    async fn saved<S: Section>(effects: &LiveSaveEffects) {
+        for effect in S::EFFECTS {
+            effects.run(*effect).await;
+        }
+    }
+
+    saved::<MusicBrainzSettings>(&effects).await;
+    saved::<ListenBrainzConnection>(&effects).await;
+    saved::<AdvancedSettings>(&effects).await;
+    saved::<TypedLibrary>(&effects).await;
+    saved::<UserPreferences>(&effects).await;
+    assert!(!kicked.load(Ordering::SeqCst));
+
+    saved::<EventsSettings>(&effects).await;
+    assert!(kicked.load(Ordering::SeqCst));
+}

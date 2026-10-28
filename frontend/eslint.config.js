@@ -82,6 +82,66 @@ const transportRules = [
 	}
 ];
 
+// The page's content-security policy (server/src/security_headers.rs) refuses
+// a style attribute written into markup, so a static style="..." on an element
+// is refused in every browser while vite dev and the specs, which send no
+// policy, show nothing. A style attribute with an expression in it, style={x}
+// and style: directives are set through the style object, which the policy
+// does not govern, and stay allowed. eslint-plugin-svelte 3.23.0's
+// svelte/no-inline-styles cannot tell the two apart (its one option is
+// allowTransitions), hence a selector.
+const markupRules = [
+	{
+		selector:
+			"SvelteElement[kind='html'] > SvelteStartTag > SvelteAttribute[key.name='style'][value.length=1][value.0.type='SvelteLiteral']",
+		message:
+			'The content-security policy refuses a static style attribute. Use a class, or style: directives.'
+	}
+];
+
+// Buttons, cards and text inputs come from the kit in src/lib/ui, so their
+// look is defined in one place. Outside the kit a DaisyUI btn or card class
+// (bare or with one of its modifiers) is refused wherever a class can come
+// from: a class attribute, a class: directive, or a string or template
+// literal. Only whole class tokens match, optionally behind variant prefixes
+// such as md:, so names like crate-card, tab-btn or group/card do not.
+const BTN_CLASS =
+	'btn(-(xs|sm|md|lg|xl|primary|secondary|accent|neutral|ghost|outline|link|error|warning|success|info|circle|square|wide|block|active|soft|dash))?';
+const CARD_CLASS = 'card(-(body|title|actions|xs|sm|md|lg|xl|side|border|dash))?';
+const kitClassRules = (name, message) => {
+	const token = `/(^|\\s)([^\\s:]+:)*${name}(\\s|$)/`;
+	return [
+		{ selector: `SvelteAttribute[key.name='class'] > SvelteLiteral[value=${token}]`, message },
+		{ selector: `SvelteDirective[kind='Class'][key.name.name=/^${name}$/]`, message },
+		{ selector: `Literal[value=${token}]`, message },
+		{ selector: `TemplateElement[value.raw=${token}]`, message }
+	];
+};
+// Checkboxes, radios, ranges, file inputs, selects and textareas stay plain.
+const TEXT_INPUT_TYPE = '/^(text|search|url|email|password|number|date|time|tel)$/';
+const TEXT_INPUT_MESSAGE =
+	'Text inputs come from the kit: use Input, or TextField, NumberField or SecretField for a labelled row, from $lib/ui.';
+const INPUT_TAG = "SvelteElement[kind='html'][name.name='input'] > SvelteStartTag";
+const kitRules = [
+	...kitClassRules(
+		BTN_CLASS,
+		'Buttons come from the kit: use Button, IconButton or AsyncButton from $lib/ui.'
+	),
+	...kitClassRules(
+		CARD_CLASS,
+		'Cards come from the kit: use Card from $lib/ui, with its title, header and actions.'
+	),
+	{
+		selector: `${INPUT_TAG}:not(:has(SvelteAttribute[key.name='type']))`,
+		message: TEXT_INPUT_MESSAGE
+	},
+	{
+		// type="text", or type={...} that can evaluate to a text-like type
+		selector: `${INPUT_TAG} > SvelteAttribute[key.name='type'] :matches(SvelteLiteral, Literal)[value=${TEXT_INPUT_TYPE}]`,
+		message: TEXT_INPUT_MESSAGE
+	}
+];
+
 // The transport itself: the api client and the page-scoped fetch it wraps.
 const TRANSPORT = ['src/lib/api/**', 'src/lib/utils/navigationAbort.ts'];
 
@@ -123,7 +183,7 @@ export default defineConfig(
 	},
 	{
 		rules: {
-			'no-restricted-syntax': ['error', ...queryClientRules]
+			'no-restricted-syntax': ['error', ...queryClientRules, ...markupRules]
 		}
 	},
 	{
@@ -138,7 +198,20 @@ export default defineConfig(
 		files: ['src/**/*.ts', 'src/**/*.js', 'src/**/*.svelte'],
 		ignores: [...TRANSPORT, 'src/**/*.spec.ts', 'src/**/*.test.ts', 'src/**/*.d.ts'],
 		rules: {
-			'no-restricted-syntax': ['error', ...queryClientRules, ...transportRules]
+			'no-restricted-syntax': ['error', ...queryClientRules, ...transportRules, ...markupRules]
+		}
+	},
+	{
+		files: ['src/**/*.svelte'],
+		ignores: [...TRANSPORT, 'src/lib/ui/**'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				...queryClientRules,
+				...transportRules,
+				...markupRules,
+				...kitRules
+			]
 		}
 	}
 );

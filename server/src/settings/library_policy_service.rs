@@ -14,17 +14,21 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use super::error::SettingsError;
-use super::library_policy::{self, LibraryPolicyCatalog, ResolvedLibraryPolicy};
 use super::models::{
-    LibraryPathMappingReport, LibraryPolicyApplyPreviewResponse, LibraryPolicyApplyRequest,
-    LibraryPolicyImpactRequest, LibraryPolicyImpactResponse, LibraryPolicyTreeResponse,
-    LibraryRestorableRootsResponse, LibraryRestoreRootsRequest, LibrarySettingsResponse,
-    LibrarySettingsSaveRequest,
+    LibraryPolicyApplyRequest, LibraryPolicyImpactRequest, LibraryRestorableRootsResponse,
+    LibraryRestoreRootsRequest, LibrarySettingsSaveRequest,
 };
 use super::services::SettingsService;
-use crate::runtime_config::Masked;
-use crate::runtime_config::secret_sections::TypedLibrary;
+use droppedneedle_kernel::runtime_config::Masked;
+use droppedneedle_kernel::runtime_config::secret_sections::TypedLibrary;
+use droppedneedle_kernel::runtime_config::settings_error::SettingsError;
+use droppedneedle_library::policy::{
+    self as library_policy, LibraryPolicyCatalog, ResolvedLibraryPolicy,
+};
+use droppedneedle_library::settings_models::{
+    LibraryPathMappingReport, LibraryPolicyApplyPreviewResponse, LibraryPolicyImpactResponse,
+    LibraryPolicyTreeResponse, LibrarySettingsResponse,
+};
 
 /// Library policy reads, previews, and the guarded saves.
 pub struct LibraryPolicyService {
@@ -45,12 +49,12 @@ impl LibraryPolicyService {
         self.catalog
             .as_deref()
             .ok_or_else(|| SettingsError::Unavailable {
-                message: "Library policy previews need the catalog database.".to_owned(),
+                cause: "Library policy previews need the catalog database.".to_owned(),
             })
     }
 
     fn catalog_error(&self, cause: String) -> SettingsError {
-        SettingsError::internal(&cause, self.settings.ids.as_ref())
+        SettingsError::internal(&cause)
     }
 
     /// Run `op` on the blocking pool with the saved settings normalized.
@@ -66,10 +70,9 @@ impl LibraryPolicyService {
         });
         match task.await {
             Ok(result) => result,
-            Err(cause) => Err(SettingsError::internal(
-                &format!("library policy task failed: {cause}"),
-                self.settings.ids.as_ref(),
-            )),
+            Err(cause) => Err(SettingsError::internal(&format!(
+                "library policy task failed: {cause}"
+            ))),
         }
     }
 
@@ -180,7 +183,7 @@ impl LibraryPolicyService {
                 library_policy::check_revision(&stored, &expected)?;
                 let restorable = library_policy::restorable_roots(&stored, &roots);
                 let restored = library_policy::with_restored_roots(stored, &restorable, &paths)?;
-                Ok(library_policy::resolve(&restored)?.settings)
+                library_policy::normalize(&restored)
             })
             .await
     }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { invalidateMusicBrainzProviderQueries } from '$lib/queries/QueryClient';
 	import {
 		activateBrainzMash,
@@ -15,7 +16,13 @@
 		MusicBrainzSettingsUpdate,
 		MusicBrainzSourceMode
 	} from '$lib/queries/musicbrainz/types';
-	import { clearMusicBrainzProviderCaches } from '$lib/utils/albumDetailCache';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import NumberField from '$lib/ui/NumberField.svelte';
+	import QueryBoundary from '$lib/ui/QueryBoundary.svelte';
+	import SaveBar from '$lib/ui/SaveBar.svelte';
+	import TextField from '$lib/ui/TextField.svelte';
+	import { createSettingsSection } from '$lib/ui/settingsSection.svelte';
 	import {
 		CircleAlert,
 		ExternalLink,
@@ -56,6 +63,13 @@
 		message: string;
 	}
 
+	interface SourceForm {
+		source_mode: MusicBrainzSourceMode;
+		api_url: string;
+		rate_limit: number;
+		community_acknowledged: boolean;
+	}
+
 	const settingsQuery = getMusicBrainzSettingsQuery();
 	const saveMutation = saveMusicBrainzSettings();
 	const consentMutation = consentBrainzMash();
@@ -70,17 +84,52 @@
 		community: Users
 	};
 
-	let settings = $state<MusicBrainzSettingsResponse | null>(null);
-	let selectedMode = $state<MusicBrainzSourceMode>('brainzmash');
-	let apiUrl = $state('');
-	let rateLimit = $state(1);
-	let concurrentSearches = $state(1);
-	let communityAcknowledged = $state(false);
+	// The server's latest answer: the query, or a save or lifecycle action's reply.
+	let settings = $state.raw<MusicBrainzSettingsResponse | null>(null);
 	let testResult = $state<MusicBrainzTestResult | null>(null);
 	let actionError = $state('');
 	let actionNotice = $state('');
-	let seeded = $state(false);
 	let providerSweepPending = $state(false);
+
+	$effect.pre(() => {
+		const data = settingsQuery.data;
+		if (data) settings = data;
+	});
+
+	const section = createSettingsSection<SourceForm>(
+		{
+			get data() {
+				return settings ? toForm(settings) : undefined;
+			},
+			get isPending() {
+				return settingsQuery.isPending;
+			},
+			get isError() {
+				return settingsQuery.isError;
+			},
+			get error() {
+				return settingsQuery.error;
+			},
+			refetch: () => settingsQuery.refetch()
+		},
+		{
+			mutateAsync: async (form) => {
+				actionError = '';
+				actionNotice = '';
+				const previous = settings;
+				const next = await saveMutation.mutateAsync(toUpdate(form));
+				await syncResponse(previous, next);
+				return toForm(next);
+			},
+			get isPending() {
+				return saveMutation.isPending;
+			}
+		},
+		{ savedMessage: 'MusicBrainz settings saved.' }
+	);
+
+	let selectedMode = $derived(section.draft?.source_mode ?? 'brainzmash');
+	let apiUrl = $derived(section.draft?.api_url ?? '');
 	let activeMode = $derived(settings?.source_mode ?? 'brainzmash');
 	let pendingBrainzMash = $derived(settings?.pending_brainzmash ?? null);
 	let activeBrainzMash = $derived(hasValidActiveBrainzMashBinding(settings));
@@ -106,13 +155,30 @@
 	let nonBrainzTestPassed = $derived(testResult?.valid === true);
 	let nonBrainzTestRequired = $derived(!switchingAwayFromBrainz);
 	let communityNeedsAcknowledgment = $derived(
-		selectedMode === 'community' && !communityAcknowledged
+		selectedMode === 'community' && !section.draft?.community_acknowledged
 	);
 	let saveDisabled = $derived(
 		actionBusy ||
 			(nonBrainzTestRequired && !nonBrainzTestPassed) ||
 			communityNeedsAcknowledgment ||
 			!apiUrl.trim()
+	);
+	// Why Save is off, when the reason is not already on screen.
+	let saveHint = $derived(
+		switchingAwayFromBrainz
+			? ''
+			: communityNeedsAcknowledgment
+				? COMMUNITY_CONFIRM_BUTTON_HINT
+				: nonBrainzTestRequired && !nonBrainzTestPassed
+					? 'Test the connection before saving.'
+					: ''
+	);
+	// A quarantined source, or a chosen source that is not yet the active one,
+	// can be saved as it stands.
+	let needsSave = $derived(
+		settings !== null &&
+			(settings.source_quarantined === true ||
+				(settings.selected_source_mode ?? settings.source_mode) !== settings.source_mode)
 	);
 	let selectedModeNeedsStage = $derived(
 		isBrainzMash && pendingBrainzMash === null && activeMode !== 'brainzmash'
@@ -140,41 +206,42 @@
 		return true;
 	}
 
-	function cloneSettings(data: MusicBrainzSettingsResponse): MusicBrainzSettingsResponse {
+	function toForm(data: MusicBrainzSettingsResponse): SourceForm {
+		const mode = data.selected_source_mode ?? data.source_mode;
+		const fixedWirePolicy = mode === 'brainzmash' || mode === 'official';
+		const customModeFromFixedSource =
+			(data.source_mode === 'brainzmash' || data.source_mode === 'official') &&
+			(mode === 'mirror' || mode === 'community');
 		return {
-			...data,
-			pending_brainzmash: data.pending_brainzmash ? { ...data.pending_brainzmash } : null
+			source_mode: mode,
+			api_url: data.source_quarantined
+				? mode === 'official'
+					? OFFICIAL_ENDPOINT_URL
+					: mode === 'brainzmash'
+						? BRAINZMASH_ENDPOINT_URL
+						: ''
+				: (data.api_url ?? ''),
+			rate_limit:
+				mode === 'brainzmash'
+					? BRAINZMASH_RATE_MAX
+					: fixedWirePolicy || customModeFromFixedSource
+						? 1
+						: data.rate_limit,
+			community_acknowledged: data.community_acknowledged ?? false
 		};
 	}
 
-	function seedDraft(data: MusicBrainzSettingsResponse): void {
-		settings = cloneSettings(data);
-		selectedMode = data.selected_source_mode ?? data.source_mode;
-		apiUrl = data.source_quarantined
-			? selectedMode === 'official'
-				? OFFICIAL_ENDPOINT_URL
-				: selectedMode === 'brainzmash'
-					? BRAINZMASH_ENDPOINT_URL
-					: ''
-			: (data.api_url ?? '');
-		const fixedWirePolicy = selectedMode === 'brainzmash' || selectedMode === 'official';
-		const customModeFromFixedSource =
-			(data.source_mode === 'brainzmash' || data.source_mode === 'official') &&
-			(selectedMode === 'mirror' || selectedMode === 'community');
-		rateLimit =
-			selectedMode === 'brainzmash'
-				? BRAINZMASH_RATE_MAX
-				: fixedWirePolicy || customModeFromFixedSource
-					? 1
-					: data.rate_limit;
-		concurrentSearches =
-			fixedWirePolicy || customModeFromFixedSource ? 1 : data.concurrent_searches;
-		communityAcknowledged = data.community_acknowledged ?? false;
-	}
-
-	function applySettings(data: MusicBrainzSettingsResponse): void {
-		seedDraft(data);
-		testResult = null;
+	function toUpdate(form: SourceForm): MusicBrainzSettingsUpdate {
+		const mode = form.source_mode;
+		const fixedWirePolicy = mode === 'brainzmash' || mode === 'official';
+		const rate =
+			mode === 'brainzmash' ? BRAINZMASH_RATE_MAX : fixedWirePolicy ? 1 : Number(form.rate_limit);
+		return {
+			source_mode: mode,
+			api_url: mode === 'brainzmash' ? null : form.api_url.trim(),
+			rate_limit: Number.isFinite(rate) ? rate : 1,
+			community_acknowledged: mode === 'community' ? form.community_acknowledged : null
+		};
 	}
 
 	function sourceIdentity(data: MusicBrainzSettingsResponse): string {
@@ -201,11 +268,6 @@
 		} catch {
 			succeeded = false;
 		}
-		try {
-			if (!clearMusicBrainzProviderCaches()) succeeded = false;
-		} catch {
-			succeeded = false;
-		}
 		providerSweepPending = !succeeded;
 		if (!succeeded) {
 			actionError =
@@ -218,22 +280,19 @@
 		next: MusicBrainzSettingsResponse
 	): Promise<void> {
 		const sourceChanged = previous !== null && sourceIdentity(previous) !== sourceIdentity(next);
-		applySettings(next);
+		settings = next;
+		testResult = null;
 		if (sourceChanged || providerSweepPending) await sweepProviderCaches();
 	}
 
-	function selectedSettings(): MusicBrainzSettingsUpdate {
-		const fixedWirePolicy = selectedMode === 'brainzmash' || selectedMode === 'official';
-		const rate =
-			selectedMode === 'brainzmash' ? BRAINZMASH_RATE_MAX : fixedWirePolicy ? 1 : Number(rateLimit);
-		const concurrency = fixedWirePolicy ? 1 : Number(concurrentSearches);
-		return {
-			source_mode: selectedMode,
-			api_url: selectedMode === 'brainzmash' ? null : apiUrl.trim(),
-			rate_limit: Number.isFinite(rate) ? rate : 1,
-			concurrent_searches: Number.isFinite(concurrency) ? concurrency : 1,
-			community_acknowledged: selectedMode === 'community' ? communityAcknowledged : null
-		};
+	// A lifecycle action answers with the new settings; the form follows them.
+	async function adoptResponse(
+		previous: MusicBrainzSettingsResponse | null,
+		next: MusicBrainzSettingsResponse
+	): Promise<void> {
+		await syncResponse(previous, next);
+		await tick();
+		section.discard();
 	}
 
 	async function stageBrainzMash(): Promise<void> {
@@ -243,7 +302,7 @@
 		const previous = settings;
 		try {
 			const next = await stageMutation.mutateAsync();
-			await syncResponse(previous, next);
+			await adoptResponse(previous, next);
 			actionNotice = 'BrainzMash is active. No provider request was made.';
 		} catch (error) {
 			actionError = errorMessage(error, 'Could not stage BrainzMash.');
@@ -257,7 +316,7 @@
 		actionNotice = '';
 		try {
 			const next = await consentMutation.mutateAsync(bindingFor(proposal));
-			await syncResponse(settings, next);
+			await adoptResponse(settings, next);
 			actionNotice = 'Disclosure accepted locally. Test Connection is now enabled.';
 		} catch (error) {
 			actionError = errorMessage(error, 'Could not record BrainzMash consent.');
@@ -279,9 +338,9 @@
 				const next = await verifyMutation.mutateAsync(
 					bindingFor(proposal as BrainzMashPendingProposal)
 				);
-				await syncResponse(settings, next);
-			} else {
-				await verifyMutation.mutateAsync(selectedSettings());
+				await adoptResponse(settings, next);
+			} else if (section.draft) {
+				await verifyMutation.mutateAsync(toUpdate(section.draft));
 			}
 			testResult = {
 				valid: true,
@@ -303,24 +362,10 @@
 		actionNotice = '';
 		try {
 			const next = await activateMutation.mutateAsync(bindingFor(proposal));
-			await syncResponse(settings, next);
+			await adoptResponse(settings, next);
 			actionNotice = 'BrainzMash is active.';
 		} catch (error) {
 			actionError = errorMessage(error, 'Could not activate BrainzMash.');
-		}
-	}
-
-	async function saveNonBrainzSettings(): Promise<void> {
-		if (isBrainzMash || saveDisabled) return;
-		actionError = '';
-		actionNotice = '';
-		const previous = settings;
-		try {
-			const next = await saveMutation.mutateAsync(selectedSettings());
-			await syncResponse(previous, next);
-			actionNotice = 'MusicBrainz settings saved.';
-		} catch (error) {
-			actionError = errorMessage(error, 'Could not save MusicBrainz settings.');
 		}
 	}
 
@@ -328,42 +373,43 @@
 		void stageBrainzMash();
 	}
 
-	function selectMode(mode: MusicBrainzSourceMode): void {
-		const previousMode = selectedMode;
-		selectedMode = mode;
+	function selectMode(form: SourceForm, mode: MusicBrainzSourceMode): void {
+		const previousMode = form.source_mode;
+		form.source_mode = mode;
 		testResult = null;
 		actionError = '';
 		actionNotice = '';
 		if (mode === 'brainzmash') {
-			apiUrl = pendingBrainzMash?.endpoint ?? BRAINZMASH_ENDPOINT_URL;
-			rateLimit = BRAINZMASH_RATE_MAX;
-			concurrentSearches = 1;
+			form.api_url = pendingBrainzMash?.endpoint ?? BRAINZMASH_ENDPOINT_URL;
+			form.rate_limit = BRAINZMASH_RATE_MAX;
 			return;
 		}
 		if (mode === 'official') {
-			apiUrl = OFFICIAL_ENDPOINT_URL;
-			rateLimit = 1;
-			concurrentSearches = 1;
+			form.api_url = OFFICIAL_ENDPOINT_URL;
+			form.rate_limit = 1;
 		}
 		if (mode === 'mirror' || mode === 'community') {
-			const normalizedApiUrl = apiUrl.trim().replace(/\/+$/, '');
+			const normalizedApiUrl = form.api_url.trim().replace(/\/+$/, '');
 			const leavingFixedSource = previousMode === 'brainzmash' || previousMode === 'official';
 			const usingBuiltInEndpoint =
 				normalizedApiUrl === BRAINZMASH_ENDPOINT_URL || normalizedApiUrl === OFFICIAL_ENDPOINT_URL;
 			if (usingBuiltInEndpoint) {
-				apiUrl = '';
+				form.api_url = '';
 			}
 			if (leavingFixedSource || usingBuiltInEndpoint) {
-				rateLimit = 1;
-				concurrentSearches = 1;
+				form.rate_limit = 1;
 			}
 		}
 	}
 
-	function onRadioKeydown(event: KeyboardEvent, mode: MusicBrainzSourceMode): void {
+	function onRadioKeydown(
+		event: KeyboardEvent,
+		form: SourceForm,
+		mode: MusicBrainzSourceMode
+	): void {
 		if (event.key === 'Enter' || event.key === ' ') {
 			event.preventDefault();
-			selectMode(mode);
+			selectMode(form, mode);
 			return;
 		}
 		if (
@@ -380,55 +426,36 @@
 		const nextIndex =
 			(index + delta + MUSICBRAINZ_SOURCE_CARDS.length) % MUSICBRAINZ_SOURCE_CARDS.length;
 		const nextMode = MUSICBRAINZ_SOURCE_CARDS[nextIndex].mode;
-		selectMode(nextMode);
+		selectMode(form, nextMode);
 		const nextRadio = document.getElementById(`musicbrainz-source-${nextMode}`);
 		if (nextRadio instanceof HTMLInputElement) {
 			nextRadio.focus();
 			nextRadio.click();
 		}
 	}
-
-	$effect(() => {
-		const data = settingsQuery.data;
-		if (data && !seeded) {
-			seedDraft(data);
-			seeded = true;
-		}
-	});
 </script>
 
-<div class="card bg-base-200">
-	<div class="card-body">
-		<h2 class="card-title text-2xl">MusicBrainz</h2>
-		<p class="mb-4 text-base-content/70">
-			Choose where MusicBrainz data comes from. BrainzMash is the built-in default and is active
-			unless you choose a custom mirror or community server.
-		</p>
+<Card title="MusicBrainz">
+	<p class="mb-4 text-base-content/70">
+		Choose where MusicBrainz data comes from. BrainzMash is the built-in default and is active
+		unless you choose a custom mirror or community server.
+	</p>
 
-		{#if settingsQuery.isLoading}
-			<div class="flex items-center justify-center py-12">
-				<span class="loading loading-spinner loading-lg" aria-label="Loading MusicBrainz settings"
-				></span>
-			</div>
-		{:else if settingsQuery.isError}
-			<div class="alert alert-error" role="alert">
-				<CircleAlert class="h-5 w-5 shrink-0" aria-hidden="true" />
-				<span>{errorMessage(settingsQuery.error, 'Could not load MusicBrainz settings.')}</span>
-			</div>
-		{:else if settings}
+	<QueryBoundary query={section} what="the MusicBrainz settings">
+		{#snippet children(draft)}
 			<div class="space-y-4">
-				{#if settings.clamped_to_official_limits}
+				{#if settings?.clamped_to_official_limits}
 					<div class="alert alert-warning text-sm" role="status">
 						<CircleAlert class="h-5 w-5 shrink-0" aria-hidden="true" />
 						<span>{CLAMPED_WARNING}</span>
 					</div>
 				{/if}
 
-				{#if settings.source_quarantined}
+				{#if settings?.source_quarantined}
 					<div class="alert alert-error text-sm" role="alert" data-testid="musicbrainz-quarantined">
 						<CircleAlert class="h-5 w-5 shrink-0" aria-hidden="true" />
 						<span>
-							{settings.quarantine_reason ||
+							{settings?.quarantine_reason ||
 								'Existing MusicBrainz source settings require review. Select and save a valid source to re-enable traffic.'}
 						</span>
 					</div>
@@ -479,16 +506,16 @@
 							>
 								<input
 									id={`musicbrainz-source-${card.mode}`}
-									class="radio radio-primary mt-0.5 shrink-0"
+									class="radio radio-sm mt-0.5 shrink-0"
 									type="radio"
 									name="musicbrainz-source"
 									value={card.mode}
 									tabindex={isSelected ? 0 : -1}
-									bind:group={selectedMode}
+									checked={isSelected}
 									aria-label={card.title}
 									aria-describedby={`musicbrainz-source-${card.mode}-description`}
-									onchange={() => selectMode(card.mode)}
-									onkeydown={(event) => onRadioKeydown(event, card.mode)}
+									onchange={() => selectMode(draft, card.mode)}
+									onkeydown={(event) => onRadioKeydown(event, draft, card.mode)}
 								/>
 								<span class="min-w-0 space-y-2">
 									<span class="flex items-center justify-between gap-2">
@@ -540,148 +567,142 @@
 				</details>
 
 				{#if isBrainzMash}
-					<section
-						class="space-y-3 rounded-box border border-primary/25 bg-primary/5 p-4"
+					<Card
+						variant="bordered"
+						padding="md"
+						as="section"
 						aria-labelledby="brainzmash-pending-heading"
 					>
-						<div class="flex items-start gap-3">
-							<Network class="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-							<div class="min-w-0 space-y-1">
-								<h3 id="brainzmash-pending-heading" class="font-semibold">BrainzMash setup</h3>
-								<p class="text-sm text-base-content/70">
-									Built-in endpoint: <code
-										>{pendingBrainzMash?.endpoint ?? BRAINZMASH_ENDPOINT_URL}</code
-									>
-								</p>
-								<p class="text-xs text-base-content/60">
-									Supported read-only route families: {BRAINZMASH_SUPPORTED_ROUTE_FAMILIES.join(
-										', '
-									)}.
-								</p>
+						<div class="space-y-3">
+							<div class="flex items-start gap-3">
+								<Network class="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+								<div class="min-w-0 space-y-1">
+									<h3 id="brainzmash-pending-heading" class="font-semibold">BrainzMash setup</h3>
+									<p class="text-sm text-base-content/70">
+										Built-in endpoint: <code
+											>{pendingBrainzMash?.endpoint ?? BRAINZMASH_ENDPOINT_URL}</code
+										>
+									</p>
+									<p class="text-xs text-base-content/60">
+										Supported read-only route families: {BRAINZMASH_SUPPORTED_ROUTE_FAMILIES.join(
+											', '
+										)}.
+									</p>
+								</div>
 							</div>
-						</div>
 
-						{#if selectedModeNeedsStage}
-							<p class="text-sm text-base-content/70">
-								Stage the built-in endpoint locally to receive a fresh pending access revision and
-								source identity.
-							</p>
-							<button
-								class="btn btn-primary btn-sm"
-								type="button"
-								onclick={stageBrainzMash}
+							{#if selectedModeNeedsStage}
+								<p class="text-sm text-base-content/70">
+									Stage the built-in endpoint locally to receive a fresh pending access revision and
+									source identity.
+								</p>
+								<Button
+									variant="primary"
+									size="sm"
+									loading={stageMutation.isPending}
+									disabled={actionBusy}
+									onclick={stageBrainzMash}
+								>
+									Stage BrainzMash
+								</Button>
+							{:else if pendingBrainzMash}
+								<div class="space-y-3">
+									<div
+										class="rounded-box border border-warning/30 bg-warning/5 p-3 text-sm"
+										role="note"
+									>
+										<p class="font-medium">
+											Privacy disclosure {pendingBrainzMash.disclosure_version}
+										</p>
+										<p class="mt-1 text-base-content/70">{BRAINZMASH_PRIVACY_DISCLOSURE}</p>
+									</div>
+									<p class="text-sm text-base-content/70">{BRAINZMASH_LOCAL_POLICY_COPY}</p>
+									{#if activeBrainzMash}
+										<p
+											class="text-sm text-base-content/70"
+											data-testid="pending-brainzmash-disabled"
+										>
+											{BRAINZMASH_PENDING_TRANSPORT_COPY}
+										</p>
+									{:else}
+										<p class="text-sm text-base-content/70">{BRAINZMASH_TRANSPORT_DISABLED_COPY}</p>
+									{/if}
+
+									<label
+										class="flex items-start gap-3 rounded-box border border-base-content/15 bg-base-100/50 p-3"
+										for="brainzmash-consent"
+									>
+										<input
+											id="brainzmash-consent"
+											class="checkbox checkbox-sm mt-0.5 shrink-0"
+											type="checkbox"
+											checked={hasConsent}
+											disabled={hasConsent || actionBusy}
+											aria-label="Accept BrainzMash privacy disclosure"
+											onchange={(event) => {
+												if ((event.currentTarget as HTMLInputElement).checked)
+													void acceptBrainzMashDisclosure();
+											}}
+										/>
+										<span class="text-sm"
+											>{COMMUNITY_CONFIRM_LABEL.replace(
+												'routing identity data through a server I do not control',
+												'routing MusicBrainz query data through BrainzMash'
+											)}</span
+										>
+									</label>
+
+									<div class="flex flex-wrap gap-2">
+										<Button
+											variant="ghost"
+											size="sm"
+											loading={verifyMutation.isPending}
+											disabled={actionBusy || !hasConsent}
+											onclick={testConnection}
+										>
+											Test Connection
+										</Button>
+										<Button
+											variant="primary"
+											size="sm"
+											loading={activateMutation.isPending}
+											disabled={actionBusy || !hasConsent || !hasVerification}
+											onclick={activateBrainzMashSource}
+										>
+											Activate BrainzMash
+										</Button>
+									</div>
+								</div>
+							{:else if activeMode === 'brainzmash'}
+								<p class="text-sm text-success">
+									BrainzMash is the active runtime source. Traffic uses the local 10 requests/second
+									policy.
+								</p>
+							{/if}
+							<Button
+								variant="danger-ghost"
+								size="sm"
+								onclick={resetToDefaults}
 								disabled={actionBusy}
 							>
-								{#if stageMutation.isPending}<span class="loading loading-spinner loading-xs"
-									></span>{/if}
-								Stage BrainzMash
-							</button>
-						{:else if pendingBrainzMash}
-							<div class="space-y-3">
-								<div
-									class="rounded-box border border-warning/30 bg-warning/5 p-3 text-sm"
-									role="note"
-								>
-									<p class="font-medium">
-										Privacy disclosure {pendingBrainzMash.disclosure_version}
-									</p>
-									<p class="mt-1 text-base-content/70">{BRAINZMASH_PRIVACY_DISCLOSURE}</p>
-								</div>
-								<p class="text-sm text-base-content/70">{BRAINZMASH_LOCAL_POLICY_COPY}</p>
-								{#if activeBrainzMash}
-									<p class="text-sm text-base-content/70" data-testid="pending-brainzmash-disabled">
-										{BRAINZMASH_PENDING_TRANSPORT_COPY}
-									</p>
-								{:else}
-									<p class="text-sm text-base-content/70">{BRAINZMASH_TRANSPORT_DISABLED_COPY}</p>
-								{/if}
-
-								<label
-									class="flex items-start gap-3 rounded-box border border-base-content/15 bg-base-100/50 p-3"
-									for="brainzmash-consent"
-								>
-									<input
-										id="brainzmash-consent"
-										class="checkbox checkbox-primary mt-0.5 shrink-0"
-										type="checkbox"
-										checked={hasConsent}
-										disabled={hasConsent || actionBusy}
-										aria-label="Accept BrainzMash privacy disclosure"
-										onchange={(event) => {
-											if ((event.currentTarget as HTMLInputElement).checked)
-												void acceptBrainzMashDisclosure();
-										}}
-									/>
-									<span class="text-sm"
-										>{COMMUNITY_CONFIRM_LABEL.replace(
-											'routing identity data through a server I do not control',
-											'routing MusicBrainz query data through BrainzMash'
-										)}</span
-									>
-								</label>
-
-								<div class="flex flex-wrap gap-2">
-									<button
-										class="btn btn-ghost btn-sm"
-										type="button"
-										onclick={testConnection}
-										disabled={actionBusy || !hasConsent}
-									>
-										{#if verifyMutation.isPending}<span class="loading loading-spinner loading-xs"
-											></span>{/if}
-										Test Connection
-									</button>
-									<button
-										class="btn btn-primary btn-sm"
-										type="button"
-										onclick={activateBrainzMashSource}
-										disabled={actionBusy || !hasConsent || !hasVerification}
-									>
-										{#if activateMutation.isPending}<span class="loading loading-spinner loading-xs"
-											></span>{/if}
-										Activate BrainzMash
-									</button>
-								</div>
-							</div>
-						{:else if activeMode === 'brainzmash'}
-							<p class="text-sm text-success">
-								BrainzMash is the active runtime source. Traffic uses the local 10 requests/second
-								policy and one concurrent search.
-							</p>
-						{/if}
-						<button
-							type="button"
-							class="btn btn-outline btn-error btn-sm"
-							onclick={resetToDefaults}
-							disabled={actionBusy}
-						>
-							Reset to Defaults
-						</button>
-					</section>
+								Reset to Defaults
+							</Button>
+						</div>
+					</Card>
 				{:else}
 					<div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
 						{#if selectedMode !== 'official'}
-							<div class="form-control w-full">
-								<label class="label" for="mb-api-url">
-									<span class="label-text"
-										>{selectedMode === 'mirror'
-											? 'Mirror API Endpoint URL'
-											: 'Community Server API Endpoint URL'}</span
-									>
-								</label>
-								<input
-									id="mb-api-url"
-									type="text"
-									value={apiUrl}
-									class="input w-full"
+							<div>
+								<TextField
+									label={selectedMode === 'mirror'
+										? 'Mirror API Endpoint URL'
+										: 'Community Server API Endpoint URL'}
 									placeholder={selectedMode === 'mirror'
 										? 'http://mirror-host:5000/ws/2'
 										: 'https://mb.example.org/ws/2'}
-									oninput={(event) => (apiUrl = (event.currentTarget as HTMLInputElement).value)}
+									help="The full URL to the server's MusicBrainz API, including the version path."
+									bind:value={draft.api_url}
 								/>
-								<p class="mt-1 ml-1 text-xs text-base-content/50">
-									The full URL to the server's MusicBrainz API, including the version path.
-								</p>
 								{#if selectedMode === 'mirror'}
 									<p class="mt-1 ml-1 text-xs text-base-content/50">
 										Test Connection checks the server is alive. Data vintage is documented in the
@@ -695,58 +716,28 @@
 								{/if}
 							</div>
 						{:else}
-							<div class="rounded-box border border-base-content/10 bg-base-100/40 p-4 text-sm">
-								<p class="font-medium">Official endpoint</p>
-								<p class="mt-1 text-base-content/70">{OFFICIAL_ENDPOINT_URL}</p>
-								<p class="mt-1 text-xs text-base-content/50">
-									Endpoint editing is disabled for the official source.
-								</p>
-							</div>
+							<Card variant="bordered" padding="md">
+								<div>
+									<p class="font-medium">Official endpoint</p>
+									<p class="mt-1 text-base-content/70">{OFFICIAL_ENDPOINT_URL}</p>
+									<p class="mt-1 text-xs text-base-content/50">
+										Endpoint editing is disabled for the official source.
+									</p>
+								</div>
+							</Card>
 						{/if}
 
 						<div class="space-y-4">
-							<div class="form-control w-full">
-								<label class="label" for="mb-rate-limit">
-									<span class="label-text">Rate Limit (requests/sec)</span>
-									{#if selectedBounds.allowUnlimitedRate}<span class="badge badge-info badge-sm"
-											>{UNLIMITED_RATE_LABEL}</span
-										>{/if}
-								</label>
-								<input
-									id="mb-rate-limit"
-									type="number"
-									min={selectedBounds.allowUnlimitedRate ? 0 : 0.1}
-									max={selectedBounds.rateMax}
-									step="0.1"
-									value={rateLimit}
-									class="input w-full"
-									oninput={(event) =>
-										(rateLimit = Number((event.currentTarget as HTMLInputElement).value))}
-								/>
-								<p class="mt-1 ml-1 text-xs text-base-content/50">
-									{#if selectedBounds.allowUnlimitedRate}Up to {selectedBounds.rateMax} req/sec on your
-										own or a chosen server. 0 = {UNLIMITED_RATE_LABEL}. Be polite with servers you
-										do not own.{:else}DroppedNeedle keeps this source at 1 request/second.{/if}
-								</p>
-							</div>
-							<div class="form-control w-full">
-								<label class="label" for="mb-concurrent"
-									><span class="label-text">Concurrent Searches</span></label
-								>
-								<input
-									id="mb-concurrent"
-									type="number"
-									min="1"
-									max={selectedBounds.concurrentMax}
-									value={concurrentSearches}
-									class="input w-full"
-									oninput={(event) =>
-										(concurrentSearches = Number((event.currentTarget as HTMLInputElement).value))}
-								/>
-								<p class="mt-1 ml-1 text-xs text-base-content/50">
-									Local queue capacity, maximum {selectedBounds.concurrentMax}.
-								</p>
-							</div>
+							<NumberField
+								label="Rate Limit (requests/sec)"
+								min={selectedBounds.allowUnlimitedRate ? 0 : 0.1}
+								max={selectedBounds.rateMax}
+								step={0.1}
+								help={selectedBounds.allowUnlimitedRate
+									? `Up to ${selectedBounds.rateMax} req/sec on your own or a chosen server. 0 = ${UNLIMITED_RATE_LABEL}. Be polite with servers you do not own.`
+									: 'DroppedNeedle keeps this source at 1 request/second.'}
+								bind:value={() => draft.rate_limit, (next) => (draft.rate_limit = Number(next))}
+							/>
 						</div>
 					</div>
 
@@ -762,12 +753,14 @@
 							<input
 								id="community-acknowledgment"
 								type="checkbox"
-								class="checkbox checkbox-primary"
-								checked={communityAcknowledged}
+								class="checkbox checkbox-sm"
+								checked={draft.community_acknowledged}
 								onchange={(event) =>
-									(communityAcknowledged = (event.currentTarget as HTMLInputElement).checked)}
+									(draft.community_acknowledged = (
+										event.currentTarget as HTMLInputElement
+									).checked)}
 							/>
-							<span class="label-text text-sm">{COMMUNITY_CONFIRM_LABEL}</span>
+							<span class="text-sm">{COMMUNITY_CONFIRM_LABEL}</span>
 						</label>
 					{/if}
 
@@ -808,42 +801,37 @@
 							<span>{BRAINZMASH_NO_ALTERNATE_PROBE_COPY}</span>
 						</div>
 					{/if}
-					<div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-						<button
-							type="button"
-							class="btn btn-outline btn-error btn-sm"
-							onclick={resetToDefaults}
-							disabled={actionBusy}>Reset to Defaults</button
-						>
-						<div class="flex gap-2">
-							<button
-								type="button"
-								class="btn btn-ghost"
-								onclick={testConnection}
+					<div class="space-y-2 border-t border-base-300 pt-4">
+						<div class="flex flex-wrap items-center gap-3">
+							<Button
+								variant="danger-ghost"
+								size="sm"
+								onclick={resetToDefaults}
+								disabled={actionBusy}
+							>
+								Reset to Defaults
+							</Button>
+							<Button
+								size="sm"
+								loading={verifyMutation.isPending}
 								disabled={actionBusy || !apiUrl.trim() || switchingAwayFromBrainz}
+								onclick={testConnection}
 							>
-								{#if verifyMutation.isPending}<span class="loading loading-spinner loading-sm"
-									></span>{/if}Test Connection
-							</button>
-							<div
-								class="tooltip"
-								data-tip={switchingAwayFromBrainz
-									? BRAINZMASH_NO_ALTERNATE_PROBE_COPY
-									: communityNeedsAcknowledgment
-										? COMMUNITY_CONFIRM_BUTTON_HINT
-										: 'Test connection before saving'}
-							>
-								<button
-									type="button"
-									class="btn btn-primary"
-									onclick={saveNonBrainzSettings}
+								Test Connection
+							</Button>
+							<div class="min-w-0 flex-1">
+								<SaveBar
+									{...section.bar}
+									dirty={section.dirty || needsSave}
+									ondiscard={section.dirty ? section.discard : undefined}
 									disabled={saveDisabled}
-								>
-									{#if saveMutation.isPending}<span class="loading loading-spinner loading-sm"
-										></span>{/if}Save Settings
-								</button>
+									saveLabel="Save Settings"
+								/>
 							</div>
 						</div>
+						{#if saveHint && (section.dirty || needsSave)}
+							<p class="text-xs text-base-content/60">{saveHint}</p>
+						{/if}
 					</div>
 				{/if}
 
@@ -868,6 +856,6 @@
 					</div>
 				{/if}
 			</div>
-		{/if}
-	</div>
-</div>
+		{/snippet}
+	</QueryBoundary>
+</Card>

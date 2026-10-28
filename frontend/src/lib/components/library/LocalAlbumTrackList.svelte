@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Play } from 'lucide-svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import RatingStars from '$lib/ui/RatingStars.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { buildDiscoveryQueueFromLocal } from '$lib/player/queueHelpers';
 	import { formatBytes, formatDurationSec } from '$lib/utils/formatting';
@@ -9,10 +11,16 @@
 
 	interface Props {
 		tracks: NativeTrackListItem[];
+		/** A sentence about a file, by track id, shown on its row. */
+		notes?: Map<string, string>;
 		getTrackMenuItems?: (track: NativeTrackListItem) => MenuItem[];
+		/** The caller's rating of each track they rated, by track id. */
+		trackRatings?: Record<string, number>;
+		/** Rate a track, or clear it with 0. Rows show stars only with this. */
+		onRateTrack?: (trackId: string, rating: number) => void;
 	}
 
-	let { tracks, getTrackMenuItems }: Props = $props();
+	let { tracks, notes, getTrackMenuItems, trackRatings = {}, onRateTrack }: Props = $props();
 </script>
 
 <ol
@@ -20,11 +28,12 @@
 >
 	{#each tracks as track, index (track.id)}
 		<li class="group flex items-center gap-3 px-3 py-2.5">
-			<button
-				class="btn btn-ghost btn-circle btn-sm"
+			<IconButton
+				label={`Play ${track.title}`}
+				icon={Play}
+				size="sm"
 				onclick={() => playerStore.playQueue(buildDiscoveryQueueFromLocal(tracks), index, false)}
-				aria-label={`Play ${track.title}`}><Play class="h-4 w-4" /></button
-			>
+			/>
 			<span class="w-9 shrink-0 text-right text-xs tabular-nums text-base-content/40"
 				>{track.disc_number}.{track.track_number}</span
 			>
@@ -35,10 +44,31 @@
 					class="truncate text-xs text-base-content/55 hover:underline"
 					>{track.artist_name || 'Unknown artist'}</a
 				>
+				{#if notes?.get(track.id)}
+					<p class="text-xs text-info">{notes.get(track.id)}</p>
+				{/if}
+				{#if onRateTrack}
+					<div class="sm:hidden">
+						<RatingStars
+							value={trackRatings[track.id] ?? 0}
+							label={track.title}
+							onchange={(rating) => onRateTrack(track.id, rating)}
+						/>
+					</div>
+				{/if}
 			</div>
 			{#if track.format}<span class="hidden text-xs uppercase text-base-content/40 sm:block"
 					>{track.format}</span
 				>{/if}
+			{#if onRateTrack}
+				<div class="hidden sm:block">
+					<RatingStars
+						value={trackRatings[track.id] ?? 0}
+						label={track.title}
+						onchange={(rating) => onRateTrack(track.id, rating)}
+					/>
+				</div>
+			{/if}
 			<span class="text-xs tabular-nums text-base-content/45"
 				>{formatDurationSec(track.duration_seconds)}</span
 			>

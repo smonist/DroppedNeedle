@@ -1,4 +1,6 @@
 <script lang="ts">
+	import '$lib/components/now-playing.css';
+	import '$lib/components/local/deck.css';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { eqStore } from '$lib/stores/eq.svelte';
 	import { scrobbleManager } from '$lib/stores/scrobble.svelte';
@@ -6,9 +8,12 @@
 	import LyricsPanel from '$lib/components/LyricsPanel.svelte';
 	import AudioQualityBadge from '$lib/components/AudioQualityBadge.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
+	import CoverPlaceholder from '$lib/ui/CoverPlaceholder.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 	import { getLyricsQuery } from '$lib/queries/lyrics/LyricsQuery.svelte';
 	import { authStore } from '$lib/stores/authStore.svelte';
-	import { getNavidromeFolderScopeRevision } from '$lib/utils/navidromeLibraryCache';
+	import { navidromeFolderScope } from '$lib/queries/remotes/RemoteQueries.svelte';
 	import type { CrateTrack, LocalAlbumSummary } from '$lib/types';
 	import {
 		Play,
@@ -18,7 +23,6 @@
 		ChevronsLeft,
 		ChevronsRight,
 		Shuffle,
-		Disc3,
 		Sparkles,
 		Dices,
 		ListMusic,
@@ -55,7 +59,7 @@
 	const lyricsQuery = getLyricsQuery(
 		() => playerStore.nowPlaying,
 		() => authStore.user?.id,
-		() => getNavidromeFolderScopeRevision(authStore.user?.id ?? '')
+		() => navidromeFolderScope(authStore.user?.id)
 	);
 	const supportsLyrics = $derived(lyricsQuery.isSuccess && lyricsQuery.data !== null);
 
@@ -178,9 +182,7 @@
 						className="h-full w-full object-cover"
 					/>
 				{:else}
-					<div class="flex h-full w-full items-center justify-center bg-base-300">
-						<Disc3 class="h-8 w-8 text-base-content/30" />
-					</div>
+					<CoverPlaceholder />
 				{/if}
 			</div>
 			<div
@@ -241,66 +243,53 @@
 		</div>
 
 		<div class="flex items-center gap-2">
-			<button
-				class="btn btn-circle btn-ghost"
-				class:btn-active={playerStore.shuffleEnabled}
+			<IconButton
+				icon={Shuffle}
+				label="Shuffle"
+				active={playerStore.shuffleEnabled}
 				onclick={() => playerStore.toggleShuffle()}
-				aria-label="Shuffle"
-			>
-				<Shuffle class="h-5 w-5 {playerStore.shuffleEnabled ? 'text-accent' : ''}" />
-			</button>
-			<div class="tooltip tooltip-top" data-tip="Previous album">
-				<button
-					class="btn btn-circle btn-ghost btn-sm"
-					onclick={() => playerStore.previousAlbum()}
-					disabled={!playerStore.hasPreviousAlbum}
-					aria-label="Previous album"
-				>
-					<ChevronsLeft class="h-5 w-5" />
-				</button>
-			</div>
-			<button
-				class="btn btn-circle btn-ghost"
-				onclick={() => playerStore.previousTrack()}
+			/>
+			<IconButton
+				size="sm"
+				icon={ChevronsLeft}
+				label="Previous album"
+				disabled={!playerStore.hasPreviousAlbum}
+				onclick={() => playerStore.previousAlbum()}
+			/>
+			<IconButton
+				icon={SkipBack}
+				label="Previous"
 				disabled={!playerStore.hasPrevious}
-				aria-label="Previous"
-			>
-				<SkipBack class="h-6 w-6" />
-			</button>
-			<button
-				class="btn btn-circle btn-primary btn-lg shadow-lg"
+				onclick={() => playerStore.previousTrack()}
+			/>
+			<IconButton
+				variant="primary"
+				size="lg"
+				icon={isPlaying ? Pause : Play}
+				label={isPlaying ? 'Pause' : 'Play'}
+				class="shadow-lg"
 				onclick={() => playerStore.togglePlay()}
-				aria-label={isPlaying ? 'Pause' : 'Play'}
-			>
-				{#if isPlaying}<Pause class="h-7 w-7" />{:else}<Play class="h-7 w-7" />{/if}
-			</button>
-			<button
-				class="btn btn-circle btn-ghost"
-				onclick={() => playerStore.nextTrack()}
+			/>
+			<IconButton
+				icon={SkipForward}
+				label="Next"
 				disabled={!playerStore.hasNext}
-				aria-label="Next"
-			>
-				<SkipForward class="h-6 w-6" />
-			</button>
-			<div class="tooltip tooltip-top" data-tip="Next album">
-				<button
-					class="btn btn-circle btn-ghost btn-sm"
-					onclick={() => playerStore.nextAlbum()}
-					disabled={!playerStore.hasNextAlbum}
-					aria-label="Next album"
-				>
-					<ChevronsRight class="h-5 w-5" />
-				</button>
-			</div>
+				onclick={() => playerStore.nextTrack()}
+			/>
+			<IconButton
+				size="sm"
+				icon={ChevronsRight}
+				label="Next album"
+				disabled={!playerStore.hasNextAlbum}
+				onclick={() => playerStore.nextAlbum()}
+			/>
 			<div class="indicator">
 				{#if playerStore.upcomingQueueLength > 0}
 					<span class="badge indicator-item badge-xs badge-accent"
 						>{playerStore.upcomingQueueLength}</span
 					>
 				{/if}
-				<button class="btn btn-circle btn-ghost" onclick={onOpenQueue} aria-label="Open queue">
-					<ListMusic class="h-5 w-5" />
-				</button>
+				<IconButton icon={ListMusic} label="Open queue" onclick={onOpenQueue} />
 			</div>
 		</div>
 
@@ -343,31 +332,29 @@
 				</div>
 				{#if supportsLyrics}
 					<div class="tooltip tooltip-top" data-tip="Lyrics">
-						<button
-							class="btn btn-circle btn-ghost btn-sm"
-							class:text-accent={lyricsPanelOpen}
-							onclick={() => (lyricsPanelOpen = !lyricsPanelOpen)}
+						<IconButton
+							size="sm"
+							icon={Music2}
+							label="Toggle lyrics"
+							active={lyricsPanelOpen}
 							aria-expanded={lyricsPanelOpen}
-							aria-label="Toggle lyrics"
-						>
-							<Music2 class="h-4 w-4" />
-						</button>
+							onclick={() => (lyricsPanelOpen = !lyricsPanelOpen)}
+						/>
 					</div>
 				{/if}
 				<div
 					class="tooltip tooltip-top"
 					data-tip={isYouTube ? 'EQ unavailable for YouTube' : 'Equalizer'}
 				>
-					<button
-						class="btn btn-circle btn-ghost btn-sm"
-						class:text-accent={eqStore.enabled && !isYouTube}
-						onclick={() => (eqPanelOpen = !eqPanelOpen)}
+					<IconButton
+						size="sm"
+						icon={SlidersHorizontal}
+						label="Toggle equalizer"
+						active={eqStore.enabled && !isYouTube}
 						disabled={isYouTube}
 						aria-expanded={eqPanelOpen}
-						aria-label="Toggle equalizer"
-					>
-						<SlidersHorizontal class="h-4 w-4" />
-					</button>
+						onclick={() => (eqPanelOpen = !eqPanelOpen)}
+					/>
 				</div>
 			</div>
 		</div>
@@ -386,15 +373,9 @@
 				</p>
 			</div>
 			<div class="flex flex-wrap items-center justify-center gap-2">
-				<button class="btn btn-primary btn-sm gap-2" onclick={onPlayAll}>
-					<Play class="h-4 w-4" /> Play All
-				</button>
-				<button class="btn btn-ghost btn-sm gap-2" onclick={onShuffleAll}>
-					<Shuffle class="h-4 w-4" /> Shuffle
-				</button>
-				<button class="btn btn-ghost btn-sm gap-2" onclick={onSurprise}>
-					<Dices class="h-4 w-4" /> Surprise me
-				</button>
+				<Button variant="primary" size="sm" icon={Play} onclick={onPlayAll}>Play All</Button>
+				<Button variant="ghost" size="sm" icon={Shuffle} onclick={onShuffleAll}>Shuffle</Button>
+				<Button variant="ghost" size="sm" icon={Dices} onclick={onSurprise}>Surprise me</Button>
 			</div>
 			<div
 				class="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-base-content/30"
@@ -418,3 +399,44 @@
 	artistName={playerStore.nowPlaying?.artistName ?? ''}
 	onclose={() => (lyricsPanelOpen = false)}
 />
+
+<style>
+	.turntable-platter {
+		background:
+			repeating-radial-gradient(
+				circle at center,
+				oklch(from var(--color-base-content) l c h / 0.05) 0px,
+				oklch(from var(--color-base-content) l c h / 0.05) 1px,
+				transparent 2px,
+				transparent 4px
+			),
+			radial-gradient(
+				circle at 33% 27%,
+				oklch(from var(--color-base-content) l c h / 0.1),
+				transparent 58%
+			),
+			radial-gradient(circle at center, var(--color-base-300), var(--color-base-100) 95%);
+		box-shadow:
+			inset 0 0 0 1px oklch(from var(--color-base-content) l c h / 0.08),
+			inset 0 0 40px oklch(from var(--color-base-100) l c h / 0.9),
+			0 30px 60px -22px oklch(from var(--color-base-100) l c h / 0.85);
+	}
+
+	.tonearm {
+		transform-origin: 88% 12%;
+		transform: rotate(-148deg);
+		transition: transform 0.9s var(--ease-overshoot);
+	}
+
+	.tonearm.is-playing {
+		transform: rotate(-117deg);
+	}
+
+	.deck-halo {
+		background: radial-gradient(
+			circle at center,
+			oklch(from var(--color-accent) l c h / 0.16),
+			transparent 66%
+		);
+	}
+</style>

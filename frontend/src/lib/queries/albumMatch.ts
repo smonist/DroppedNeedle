@@ -1,22 +1,23 @@
+import { createQuery } from '@tanstack/svelte-query';
+import type { Getter } from 'runed';
+
 import { api, ApiError } from '$lib/api/client';
 import { v3 } from '$lib/api/v3/endpoint';
-import type {
-	JellyfinAlbumMatch,
-	LocalAlbumMatch,
-	LocalTrackInfo,
-	NavidromeAlbumMatch,
-	PlexAlbumMatch
-} from '$lib/types';
-import { toJellyfinTrack, toNavidromeTrack, toPlexTrack } from './remotes/remoteAdapters';
-import { remoteApi } from './remotes/remoteApi';
+import { CACHE_TTL } from '$lib/constants';
+import type { LocalAlbumMatch, LocalTrackInfo } from '$lib/types';
 import type { components } from '$lib/api/v3/openapi';
+import { remoteApi } from './remotes/remoteApi';
+import type { RemoteMatchHints } from './remotes/endpoints';
+import type { RemoteMatch, RemoteSource } from './remotes/types';
+import { userIdSegment } from './userKeySegment';
 
 // "Which copy of this MusicBrainz album does each source hold": the local
-// catalog and each remote source answer through v3, adapted into the match
-// shapes the album page, album cards and artist radio read.
+// catalog and each remote source answer through v3. The local answer is
+// adapted into the match shape the album page, album cards and artist radio
+// read; a remote answer is the contract's match view.
 
 const localMatchUrl = (mbid: string) =>
-	v3('/api/v3/local-library/albums/match/{mbid}', { path: { mbid }, query: { limit: 500 } });
+	v3('/api/v3/library/albums/match/{mbid}', { path: { mbid }, query: { limit: 500 } });
 
 function toLocalTrack(track: components['schemas']['TrackView']): LocalTrackInfo {
 	return {
@@ -44,9 +45,7 @@ export async function fetchLocalAlbumMatch(
 	signal?: AbortSignal
 ): Promise<LocalAlbumMatch> {
 	try {
-		// `match_album` is shared with the remotes route in the contract, so
-		// the typed client cannot infer this read; it names the page type.
-		const page = await api.global.get<components['schemas']['TrackPage']>(localMatchUrl(mbid), {
+		const page = await api.global.v3.GET(localMatchUrl(mbid), {
 			signal
 		});
 		const tracks = page.items.map(toLocalTrack);
@@ -65,38 +64,66 @@ export async function fetchLocalAlbumMatch(
 	}
 }
 
-export async function fetchJellyfinAlbumMatch(
+/** A remote source's copy of the album. Jellyfin matches on the MusicBrainz id alone. */
+export function fetchRemoteAlbumMatch(
+	source: RemoteSource,
 	mbid: string,
+	hints: RemoteMatchHints,
 	signal?: AbortSignal
-): Promise<JellyfinAlbumMatch> {
-	const match = await remoteApi.match('jellyfin', mbid, signal);
-	return {
-		found: match.found,
-		jellyfin_album_id: match.remote_album_id ?? null,
-		tracks: match.tracks.map(toJellyfinTrack)
-	};
+): Promise<RemoteMatch> {
+	return remoteApi.match(source, mbid, source === 'jellyfin' ? {} : hints, signal);
 }
 
-export async function fetchNavidromeAlbumMatch(
-	mbid: string,
-	signal?: AbortSignal
-): Promise<NavidromeAlbumMatch> {
-	const match = await remoteApi.match('navidrome', mbid, signal);
-	return {
-		found: match.found,
-		navidrome_album_id: match.remote_album_id ?? null,
-		tracks: match.tracks.map(toNavidromeTrack)
-	};
-}
+type UserId = string | null | undefined;
 
-export async function fetchPlexAlbumMatch(
-	mbid: string,
-	signal?: AbortSignal
-): Promise<PlexAlbumMatch> {
-	const match = await remoteApi.match('plex', mbid, signal);
-	return {
-		found: match.found,
-		plex_album_id: match.remote_album_id ?? null,
-		tracks: match.tracks.map(toPlexTrack)
-	};
-}
+// Keyed by user (the remote sources are the caller's own connections), then
+// album, so one album's sources or all of a user's refresh together.
+export const AlbumMatchKeyFactory = {
+	prefix: ['album-match'] as const,
+	user: (userId: UserId) => [...AlbumMatchKeyFactory.prefix, userIdSegment(userId)] as const,
+	album: (userId: UserId, mbid: string) => [...AlbumMatchKeyFactory.user(userId), mbid] as const,
+	local: (userId: UserId, mbid: string) =>
+		[...AlbumMatchKeyFactory.album(userId, mbid), 'local'] as const,
+	remote: (userId: UserId, source: RemoteSource, mbid: string, hints: RemoteMatchHints) =>
+		[
+			...AlbumMatchKeyFactory.album(userId, mbid),
+			source,
+			source === 'jellyfin' ? '' : (hints.title ?? ''),
+			source === 'jellyfin' ? '' : (hints.artist ?? '')
+		] as const
+};
+
+export const getLocalAlbumMatchQuery = (
+	getUserId: Getter<UserId>,
+	getMbid: Getter<string>,
+	getEnabled: Getter<boolean>
+) =>
+	createQuery(() => {
+		const mbid = getMbid();
+		return {
+			queryKey: AlbumMatchKeyFactory.local(getUserId(), mbid),
+			enabled: getEnabled() && !!mbid,
+			staleTime: CACHE_TTL.ALBUM_DETAIL_SOURCE_MATCH,
+			queryFn: ({ signal }: { signal: AbortSignal }) => fetchLocalAlbumMatch(mbid, signal)
+		};
+	});
+
+export const getRemoteAlbumMatchQuery = (
+	getUserId: Getter<UserId>,
+	getParams: Getter<{
+		source: RemoteSource;
+		mbid: string;
+		hints: RemoteMatchHints;
+		enabled: boolean;
+	}>
+) =>
+	createQuery(() => {
+		const { source, mbid, hints, enabled } = getParams();
+		return {
+			queryKey: AlbumMatchKeyFactory.remote(getUserId(), source, mbid, hints),
+			enabled: enabled && !!mbid,
+			staleTime: CACHE_TTL.ALBUM_DETAIL_SOURCE_MATCH,
+			queryFn: ({ signal }: { signal: AbortSignal }) =>
+				fetchRemoteAlbumMatch(source, mbid, hints, signal)
+		};
+	});

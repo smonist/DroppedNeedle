@@ -9,20 +9,20 @@
 //!
 //! It also carries the two provider ports the library's identification and
 //! contributions read through. `main` leaves both alone, so the live
-//! clients are built; a test puts scripted ones there.
+//! clients are built; a test puts scripted ones there. And it carries the
+//! ffmpeg the server transcodes with: [`Outbound::live`] finds it on
+//! `PATH` once, at boot; a test gives a stand-in or none.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{
-    acquire::wiring::{SPOTIFY_ACCOUNTS_BASE, SPOTIFY_API_BASE},
-    auth::{users::hibp::RANGE_URL_PREFIX, wiring::Upstreams},
-    library::{contrib::ContribProviders, identify::providers::IdentifyProviders},
-    plugins::install::GitHubHosts,
-    providers::{
-        acoustid, audiodb, coverart, discogs, geocoding, github, itunes, lastfm, listenbrainz,
-        lrclib, musicbrainz, preview, skiddle, ticketmaster, wikidata, youtube,
-    },
-    remotes::plex::PLEX_TV_BASE,
+use droppedneedle_acquire::wiring::{SPOTIFY_ACCOUNTS_BASE, SPOTIFY_API_BASE, SpotifyEndpoints};
+use droppedneedle_auth::{users::hibp::RANGE_URL_PREFIX, wiring::Upstreams};
+use droppedneedle_library::{contrib::ContribProviders, identify::providers::IdentifyProviders};
+use droppedneedle_plugins::install::GitHubHosts;
+use droppedneedle_providers::{
+    acoustid, audiodb, coverart, discogs, geocoding, github, itunes, lastfm, listenbrainz, lrclib,
+    musicbrainz, plextv::PLEX_TV_BASE, preview, skiddle, ticketmaster, wikidata, youtube,
 };
 
 /// A provider port the builder fills with its live client unless one is
@@ -98,6 +98,10 @@ pub struct Outbound {
     pub spotify_api: String,
     /// Spotify accounts origin (token exchange).
     pub spotify_accounts: String,
+    /// A playlist cover origin allowed beside the Spotify CDN: the tests'
+    /// mock CDN. `None` in production, where only https to `*.scdn.co`
+    /// is fetched.
+    pub spotify_cover_cdn: Option<String>,
     /// Ticketmaster Discovery root: events and the key check.
     pub ticketmaster: String,
     /// Skiddle API root: events and the key check.
@@ -112,6 +116,9 @@ pub struct Outbound {
     pub identify_providers: Port<Arc<dyn IdentifyProviders>>,
     /// What library contributions ask Discogs and MusicBrainz through.
     pub contribution_providers: Port<ContribProviders>,
+    /// The ffmpeg program transcodes run. `None` turns transcoding off:
+    /// every stream is the file as it is.
+    pub ffmpeg: Option<PathBuf>,
 }
 
 impl Outbound {
@@ -130,14 +137,15 @@ impl Outbound {
             discogs: discogs::API_BASE.to_owned(),
             lrclib: lrclib::API_BASE.to_owned(),
             github_releases: github::GITHUB_RELEASES_URL.to_owned(),
-            github_api: crate::plugins::install::API_BASE.to_owned(),
-            github_codeload: crate::plugins::install::CODELOAD_BASE.to_owned(),
+            github_api: droppedneedle_plugins::install::API_BASE.to_owned(),
+            github_codeload: droppedneedle_plugins::install::CODELOAD_BASE.to_owned(),
             youtube: youtube::YOUTUBE_API_HOST.to_owned(),
             acoustid: acoustid::DEFAULT_BASE_URL.to_owned(),
             pwned_passwords: RANGE_URL_PREFIX.to_owned(),
             plex_tv: PLEX_TV_BASE.to_owned(),
             spotify_api: SPOTIFY_API_BASE.to_owned(),
             spotify_accounts: SPOTIFY_ACCOUNTS_BASE.to_owned(),
+            spotify_cover_cdn: None,
             ticketmaster: ticketmaster::TICKETMASTER_API_URL.to_owned(),
             skiddle: skiddle::SKIDDLE_API_URL.to_owned(),
             geocoding: geocoding::GEOCODING_API_URL.to_owned(),
@@ -145,43 +153,32 @@ impl Outbound {
             brainzmash: musicbrainz::BRAINZMASH_API_BASE.to_owned(),
             identify_providers: Port::live(),
             contribution_providers: Port::live(),
+            ffmpeg: droppedneedle_media::stream::transcode::ffmpeg_on_path(),
         }
     }
 
-    /// The addresses the catalog, discovery and cover reads use.
-    pub fn catalog(&self) -> crate::reads::catalog::upstream::Endpoints {
-        crate::reads::catalog::upstream::Endpoints {
+    /// The addresses of the providers built once for every area.
+    pub fn providers(&self) -> droppedneedle_providers::ProviderEndpoints {
+        droppedneedle_providers::ProviderEndpoints {
+            musicbrainz: self.musicbrainz.clone(),
+            brainzmash: self.brainzmash.clone(),
+            coverart: self.cover_art_archive.clone(),
             listenbrainz: self.listenbrainz.clone(),
             lastfm: self.lastfm.clone(),
             audiodb: self.audiodb.clone(),
+            acoustid: self.acoustid.clone(),
+            discogs: self.discogs.clone(),
+            itunes: self.itunes.clone(),
+            deezer: self.deezer.clone(),
+            lrclib: self.lrclib.clone(),
             wikidata: self.wikidata.clone(),
             wikipedia: self.wikipedia.clone(),
             commons: self.commons.clone(),
-            itunes: self.itunes.clone(),
-            deezer: self.deezer.clone(),
-            cover_art_archive: self.cover_art_archive.clone(),
-            lrclib: self.lrclib.clone(),
-            github_releases: self.github_releases.clone(),
-            youtube: self.youtube.clone(),
-            musicbrainz: self.musicbrainz.clone(),
-            brainzmash: self.brainzmash.clone(),
-        }
-    }
-
-    /// The addresses the events sources use.
-    pub fn concerts(&self) -> crate::concerts::Endpoints {
-        crate::concerts::Endpoints {
             ticketmaster: self.ticketmaster.clone(),
             skiddle: self.skiddle.clone(),
             geocoding: self.geocoding.clone(),
-        }
-    }
-
-    /// The addresses scrobbles are forwarded to.
-    pub fn scrobbles(&self) -> crate::playback::forwarding::Endpoints {
-        crate::playback::forwarding::Endpoints {
-            listenbrainz: self.listenbrainz.clone(),
-            lastfm: self.lastfm.clone(),
+            youtube: self.youtube.clone(),
+            github_releases: self.github_releases.clone(),
         }
     }
 
@@ -189,8 +186,24 @@ impl Outbound {
     pub fn sign_in(&self) -> Upstreams {
         Upstreams {
             plex_tv: self.plex_tv.clone(),
-            lastfm: self.lastfm.clone(),
             pwned_passwords: self.pwned_passwords.clone(),
+        }
+    }
+
+    /// The addresses the Spotify import reaches.
+    pub fn spotify(&self) -> SpotifyEndpoints {
+        SpotifyEndpoints {
+            api: self.spotify_api.clone(),
+            accounts: self.spotify_accounts.clone(),
+            cover_cdn: self.spotify_cover_cdn.clone(),
+        }
+    }
+
+    /// The provider ports the library uses.
+    pub fn library(&self) -> droppedneedle_library::wiring::Endpoints {
+        droppedneedle_library::wiring::Endpoints {
+            identify_providers: self.identify_providers.get(),
+            contribution_providers: self.contribution_providers.get(),
         }
     }
 
@@ -200,14 +213,5 @@ impl Outbound {
             api: self.github_api.clone(),
             codeload: self.github_codeload.clone(),
         }
-    }
-
-    /// The MusicBrainz source the saved settings select, with the two
-    /// built-in roots taken from here.
-    pub fn musicbrainz_source(
-        &self,
-        settings: &crate::runtime_config::sections::MusicBrainzSettings,
-    ) -> musicbrainz::MbSource {
-        musicbrainz::MbSource::from_settings(settings, &self.musicbrainz, &self.brainzmash)
     }
 }

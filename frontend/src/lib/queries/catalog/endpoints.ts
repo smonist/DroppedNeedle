@@ -69,14 +69,15 @@ export const CATALOG_ENDPOINTS = {
 		v3('/api/v3/albums/{album_id}/editions/{release_mbid}/tracks', {
 			path: { album_id: albumId, release_mbid: releaseMbid }
 		}),
-	// Choose an edition for the group's one library copy (404 with no copy,
-	// 409 when several copies match the group).
-	editionPin: (albumId: string) =>
-		v3('/api/v3/albums/{album_id}/edition', { path: { album_id: albumId } }),
-	// `copyId` names the library copy the edition picker planned.
-	acquireEdition: (albumId: string, copyId?: string) =>
+	// `copyId` names the library copy the edition picker planned;
+	// `replaceVersions` (the server's default is on) fetches the edition's
+	// version of each track the copy holds in another version, to replace it.
+	acquireEdition: (albumId: string, copyId?: string, replaceVersions?: boolean) =>
 		v3('/api/v3/albums/{album_id}/edition/acquire', {
 			path: { album_id: albumId },
-			query: copyId ? { album_id: copyId } : {}
+			query: {
+				...(copyId ? { album_id: copyId } : {}),
+				...(replaceVersions === undefined ? {} : { replace_versions: replaceVersions })
+			}
 		})
 } as const;

@@ -2,10 +2,11 @@
 	import { Check } from 'lucide-svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import AlbumCardOverlay from '$lib/components/AlbumCardOverlay.svelte';
-	import type { HomeAlbum } from '$lib/types';
+	import Card from '$lib/ui/Card.svelte';
+	import type { AlbumRef } from '$lib/queries/discover/types';
 
 	interface Props {
-		album: HomeAlbum;
+		album: AlbumRef;
 		showLibraryBadge?: boolean;
 		onclick?: () => void;
 		href?: string | null;
@@ -14,44 +15,51 @@
 	let { album, showLibraryBadge = false, onclick, href = null }: Props = $props();
 </script>
 
-<svelte:element
-	this={href ? 'a' : 'button'}
+<Card
+	padding="none"
 	href={href ?? undefined}
-	type={href ? undefined : 'button'}
 	onclick={href ? undefined : onclick}
-	onkeydown={href || !onclick ? undefined : (e: KeyboardEvent) => e.key === 'Enter' && onclick()}
+	onkeydown={href || !onclick
+		? undefined
+		: (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					onclick();
+				}
+			}}
 	role={href || !onclick ? undefined : 'button'}
 	tabindex={href || !onclick ? undefined : 0}
-	class="card bg-base-200/50 hover:bg-base-200 hover:scale-[1.03] hover:shadow-lg transition-all duration-200 group {href ||
-	onclick
-		? 'cursor-pointer'
-		: 'cursor-default'}"
+	class="group {href
+		? ''
+		: onclick
+			? 'cursor-pointer transition-colors hover:bg-base-300 focus-visible:outline-2 focus-visible:outline-primary'
+			: 'cursor-default'}"
 >
 	<figure class="aspect-square overflow-hidden relative rounded-t-2xl">
 		<AlbumImage
-			mbid={album.mbid || ''}
-			alt={album.name}
+			mbid={album.musicbrainz_id || ''}
+			alt={album.title}
 			size="md"
 			rounded="none"
 			className="w-full h-full"
-			customUrl={album.image_url || null}
+			customUrl={album.cover_url || null}
 		/>
 		{#if showLibraryBadge || album.in_library}
 			<div class="absolute top-2 left-2 z-20 badge badge-success badge-sm gap-1 opacity-90">
 				<Check class="w-3 h-3" />
 			</div>
 		{/if}
-		{#if album.mbid && album.in_library}
+		{#if album.musicbrainz_id && album.in_library}
 			<AlbumCardOverlay
-				mbid={album.mbid}
-				albumName={album.name}
+				mbid={album.musicbrainz_id}
+				albumName={album.title}
 				artistName={album.artist_name || 'Unknown'}
-				coverUrl={album.image_url || null}
+				coverUrl={album.cover_url || null}
 			/>
 		{/if}
 	</figure>
-	<div class="card-body p-3">
-		<h3 class="font-semibold text-sm line-clamp-1">{album.name}</h3>
+	<div class="flex flex-col gap-2 px-3 pt-1 pb-3">
+		<h3 class="font-semibold text-sm line-clamp-1">{album.title}</h3>
 		<p class="text-xs text-base-content/50 line-clamp-1">
 			{album.artist_name || 'Unknown Artist'}
 			{#if album.release_date}
@@ -59,4 +67,4 @@
 			{/if}
 		</p>
 	</div>
-</svelte:element>
+</Card>

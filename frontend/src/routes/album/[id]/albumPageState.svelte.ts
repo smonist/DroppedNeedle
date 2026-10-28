@@ -2,65 +2,29 @@ import { browser } from '$app/environment';
 import { get } from 'svelte/store';
 import { untrack } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { useQueryClient } from '@tanstack/svelte-query';
 import type {
 	AlbumBasicInfo,
-	AlbumTracksInfo,
-	MoreByArtistResponse,
-	SimilarAlbumsResponse,
 	YouTubeTrackLink,
 	YouTubeLink,
 	YouTubeQuotaStatus,
-	JellyfinAlbumMatch,
-	JellyfinTrackInfo,
 	LocalAlbumMatch,
 	LocalTrackInfo,
-	NavidromeAlbumMatch,
-	NavidromeTrackInfo,
-	PlexAlbumMatch,
-	PlexTrackInfo,
-	LastFmAlbumEnrichment,
 	LibraryAlbumStatus,
 	LibraryFileMeta,
 	DownloadTask,
-	HeldImport
+	HeldFileInEntry
 } from '$lib/types';
+import type { RemoteTrack } from '$lib/queries/remotes/types';
 import { libraryStore } from '$lib/stores/library';
 import { integrationStore } from '$lib/stores/integration';
 import { ApiError } from '$lib/api/client';
-import { isAbortError } from '$lib/utils/errorHandling';
-import { extractServiceStatus } from '$lib/utils/serviceStatus';
-import {
-	albumBasicCache,
-	albumDiscoveryCache,
-	albumLastFmCache,
-	albumTracksCache,
-	albumYouTubeCache,
-	albumSourceMatchCache,
-	albumSourceMatchCacheKey
-} from '$lib/utils/albumDetailCache';
-import { hydrateDetailCacheEntry } from '$lib/utils/detailCacheHydration';
 import { compareDiscTrack, getDiscTrackKey } from '$lib/player/queueHelpers';
 import type { QueueItem } from '$lib/player/types';
-import { launchJellyfinPlayback } from '$lib/player/launchJellyfinPlayback';
+import { launchRemotePlayback } from '$lib/player/launchRemotePlayback';
 import { launchLocalPlayback } from '$lib/player/launchLocalPlayback';
-import { launchNavidromePlayback } from '$lib/player/launchNavidromePlayback';
-import { launchPlexPlayback } from '$lib/player/launchPlexPlayback';
 import type { MenuItem } from '$lib/components/ContextMenu.svelte';
-import {
-	fetchAlbumBasic,
-	fetchAlbumTracks,
-	fetchDiscovery,
-	fetchYouTubeAlbumLink,
-	fetchYouTubeTrackLinks,
-	fetchJellyfinMatch,
-	fetchLocalMatch,
-	fetchNavidromeMatch,
-	fetchPlexMatch,
-	fetchLastFm,
-	refreshAlbum
-} from './albumFetchers';
 import { buildRenderedTrackSections, buildSortedTrackMap } from './albumTrackResolvers';
-import type { RenderedTrackSection } from './albumTrackResolvers';
 import { createEventHandlers } from './albumEventHandlers';
 import {
 	playSourceTrack as playSourceTrackImpl,
@@ -69,12 +33,49 @@ import {
 	buildSourceCallbacks
 } from './albumPlaybackHandlers';
 import { getLibraryAlbumStatusQuery } from '$lib/queries/library/LibraryQueries.svelte';
+import {
+	editionFetchLive,
+	getAlbumEditionStatusQuery,
+	getEditionFetchQuery,
+	getEditionPlanQuery,
+	type EditionFetchTrackState
+} from '$lib/queries/albums/EditionQueries.svelte';
+import { editionTrackRows, unmatchedFiles, type EditionTrackRow } from './albumEdition';
 import { getAlbumDownloadsQuery } from '$lib/queries/downloads/DownloadQueries.svelte';
-import { getHeldImportsQuery } from '$lib/queries/downloads/HeldQueries.svelte';
+import { getHeldEntriesQuery } from '$lib/queries/downloads/HeldQueries.svelte';
 import { isActiveDownloadStatus } from '$lib/queries/downloads/downloadStatus';
 import { authStore } from '$lib/stores/authStore.svelte';
 import { removeLibraryTrack } from '$lib/queries/library/LibraryMutations.svelte';
 import { toastStore } from '$lib/stores/toast';
+import { getActiveRequestsQuery } from '$lib/queries/requests/RequestQueries.svelte';
+import { switchRequestedEdition } from '$lib/queries/albums/EditionQueries.svelte';
+import type { EditionRequestPick } from '$lib/components/library/edition/editionSheetState.svelte';
+import {
+	getAlbumBasicQuery,
+	getAlbumLastFmQuery,
+	getAlbumTracksQuery,
+	getAlbumYouTubeLinkQuery,
+	getAlbumYouTubeTrackLinksQuery,
+	getMoreByArtistQuery,
+	getSimilarAlbumsQuery
+} from '$lib/queries/catalog/AlbumQueries.svelte';
+import { AlbumQueryKeyFactory } from '$lib/queries/catalog/AlbumQueryKeyFactory';
+import { refreshAlbum } from '$lib/queries/catalog/AlbumMutations.svelte';
+import {
+	AlbumMatchKeyFactory,
+	getLocalAlbumMatchQuery,
+	getRemoteAlbumMatchQuery
+} from '$lib/queries/albumMatch';
+import {
+	invalidateQueriesWithPersister,
+	setQueryDataWithPersister
+} from '$lib/queries/QueryClient';
+
+/** An edition track row, with where the edition fetch is with it. */
+export interface FetchedEditionRow extends EditionTrackRow {
+	/** Set while a fetch that asked for the track runs, or after it failed. */
+	fetchState: EditionFetchTrackState | null;
+}
 
 export interface SourceCallbacks {
 	onPlayAll: () => void;
@@ -85,44 +86,90 @@ export interface SourceCallbacks {
 }
 
 export function createAlbumPageState(albumIdGetter: () => string) {
-	let album = $state<AlbumBasicInfo | null>(null);
-	let tracksInfo = $state<AlbumTracksInfo | null>(null);
-	let error = $state<string | null>(null);
-	let primaryError = $state<ApiError | null>(null);
-	let loadingBasic = $state(true);
-	let loadingTracks = $state(true);
-	let tracksError = $state(false);
-	let showToast = $state(false);
-	let toastMessage = $state('Added to Library');
-	let toastType = $state<'success' | 'error' | 'info' | 'warning'>('success');
+	const client = useQueryClient();
+	const userId = () => authStore.user?.id;
+	let integrations = $state(get(integrationStore));
 	let requesting = $state(false);
 	let showDeleteModal = $state(false);
-	let moreByArtist = $state<MoreByArtistResponse | null>(null);
-	let similarAlbums = $state<SimilarAlbumsResponse | null>(null);
-	let loadingDiscovery = $state(true);
-	let trackLinks = $state<YouTubeTrackLink[]>([]);
-	let albumLink = $state<YouTubeLink | null>(null);
 	let quota = $state<YouTubeQuotaStatus | null>(null);
-	let jellyfinMatch = $state<JellyfinAlbumMatch | null>(null);
-	let localMatch = $state<LocalAlbumMatch | null>(null);
-	let navidromeMatch = $state<NavidromeAlbumMatch | null>(null);
-	let plexMatch = $state<PlexAlbumMatch | null>(null);
-	let loadingJellyfin = $state(false);
-	let loadingLocal = $state(false);
-	let loadingNavidrome = $state(false);
-	let loadingPlex = $state(false);
-	let lastfmEnrichment = $state<LastFmAlbumEnrichment | null>(null);
-	let loadingLastfm = $state(true);
-	let renderedTrackSections = $state<RenderedTrackSection[]>([]);
 	let playlistModalRef = $state<{ open: (tracks: QueueItem[]) => void } | null>(null);
-	let abortController: AbortController | null = null;
-	let refreshing = $state(false);
-	let downloadClientConfigured = $state(false);
 	let externalRecheckTimers: ReturnType<typeof setTimeout>[] = [];
 	// task ids we've watched go active this session, and the ones whose completion we've already
 	// handled - so an already-finished download present on first load doesn't trigger a spurious refresh
 	const seenActiveTaskIds = new SvelteSet<string>();
 	const settledTaskIds = new SvelteSet<string>();
+
+	$effect(() => integrationStore.subscribe((s) => (integrations = s)));
+	$effect(() => {
+		if (browser) void integrationStore.ensureLoaded();
+	});
+	const downloadClientConfigured = $derived(integrations.download_client);
+
+	const basicQuery = getAlbumBasicQuery(userId, albumIdGetter);
+	const album = $derived<AlbumBasicInfo | null>(basicQuery.data ?? null);
+	const primaryError = $derived(basicQuery.error instanceof ApiError ? basicQuery.error : null);
+	const error = $derived(basicQuery.isError && !album ? 'Error loading album' : null);
+	const tracksQuery = getAlbumTracksQuery(userId, albumIdGetter);
+	const tracksInfo = $derived(tracksQuery.data ?? null);
+	const tracksError = $derived(tracksQuery.isError && !tracksInfo);
+	const renderedTrackSections = $derived(
+		tracksInfo ? buildRenderedTrackSections(tracksInfo.tracks) : []
+	);
+
+	// The shelves wait for the tracklist, which the page shows first.
+	const discoveryParams = () => ({
+		albumId: albumIdGetter(),
+		artistId: album?.artist_id ?? '',
+		enabled: !tracksQuery.isPending
+	});
+	const moreByArtistQuery = getMoreByArtistQuery(userId, discoveryParams);
+	const similarAlbumsQuery = getSimilarAlbumsQuery(userId, discoveryParams);
+	const loadingDiscovery = $derived(
+		!!album?.artist_id && (moreByArtistQuery.isPending || similarAlbumsQuery.isPending)
+	);
+
+	const lastFmQuery = getAlbumLastFmQuery(() =>
+		album
+			? { albumId: albumIdGetter(), artistName: album.artist_name, albumName: album.title }
+			: null
+	);
+	const youtubeLinkQuery = getAlbumYouTubeLinkQuery(albumIdGetter);
+	const youtubeTrackLinksQuery = getAlbumYouTubeTrackLinksQuery(albumIdGetter);
+	const trackLinks = $derived(youtubeTrackLinksQuery.data ?? []);
+
+	// Jellyfin and the local library match on the id alone; Navidrome and Plex
+	// also take the title and artist, so they wait for the header.
+	const localMatchQuery = getLocalAlbumMatchQuery(
+		userId,
+		albumIdGetter,
+		() => integrations.localfiles
+	);
+	const jellyfinMatchQuery = getRemoteAlbumMatchQuery(userId, () => ({
+		source: 'jellyfin',
+		mbid: albumIdGetter(),
+		hints: {},
+		enabled: integrations.jellyfin
+	}));
+	const namedHints = () => ({ title: album?.title, artist: album?.artist_name });
+	const navidromeMatchQuery = getRemoteAlbumMatchQuery(userId, () => ({
+		source: 'navidrome',
+		mbid: albumIdGetter(),
+		hints: namedHints(),
+		enabled: integrations.navidrome && !!album
+	}));
+	const plexMatchQuery = getRemoteAlbumMatchQuery(userId, () => ({
+		source: 'plex',
+		mbid: albumIdGetter(),
+		hints: namedHints(),
+		enabled: integrations.plex && !!album
+	}));
+	const localMatch = $derived<LocalAlbumMatch | null>(localMatchQuery.data ?? null);
+	const jellyfinMatch = $derived(jellyfinMatchQuery.data ?? null);
+	const navidromeMatch = $derived(navidromeMatchQuery.data ?? null);
+	const plexMatch = $derived(plexMatchQuery.data ?? null);
+
+	const refresh = refreshAlbum();
+
 	// shared TanStack query so tag-edit/rescan mutations that invalidate album(mbid) refresh this overlay in place
 	const libraryStatusQuery = getLibraryAlbumStatusQuery(albumIdGetter);
 	const libraryStatus = $derived<LibraryAlbumStatus | null>(libraryStatusQuery.data ?? null);
@@ -154,11 +201,6 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 			if (!existing || t.created_at > existing.created_at) m.set(t.recording_mbid, t);
 		}
 		return m;
-	});
-
-	$effect(() => {
-		const unsub = integrationStore.subscribe((s) => (downloadClientConfigured = s.download_client));
-		return unsub;
 	});
 
 	// when a task we watched go active later settles (completed/partial), refresh library status +
@@ -222,36 +264,47 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	});
 	// tracks this album downloaded but couldn't auto-verify (held for "import anyway"),
 	// keyed both ways so a track row can find its held candidate the same way owned files match
-	const heldImportsQuery = getHeldImportsQuery(albumIdGetter, () => downloadClientConfigured);
-	const headerManagementHeld = $derived.by(() => {
+	const heldQuery = getHeldEntriesQuery(
+		() => ({ releaseGroupMbid: albumIdGetter() }),
+		() => downloadClientConfigured && !!albumIdGetter()
+	);
+	const heldFiles = $derived(
+		(heldQuery.data?.entries ?? []).flatMap((entry) =>
+			entry.files.map((file): HeldFileInEntry => ({ entry, file }))
+		)
+	);
+	const headerHeldFiles = $derived.by(() => {
 		if (!headerDownloadTask) return [];
-		return (heldImportsQuery.data?.items ?? []).filter(
-			(item) =>
-				item.source_task_id === headerDownloadTask?.id && item.reason.startsWith('management:')
-		);
+		return heldFiles
+			.filter((held) => held.file.source_task_id === headerDownloadTask?.id)
+			.map((held) => held.file);
 	});
 	const heldByRecording = $derived.by(() => {
-		const m = new SvelteMap<string, HeldImport>();
-		for (const h of heldImportsQuery.data?.items ?? []) {
-			if (h.reason.startsWith('management:')) continue;
-			if (h.recording_mbid) m.set(h.recording_mbid, h);
+		const m = new SvelteMap<string, HeldFileInEntry>();
+		for (const held of heldFiles) {
+			if (held.file.recording_mbid) m.set(held.file.recording_mbid, held);
 		}
 		return m;
 	});
 	const heldByPosition = $derived.by(() => {
-		const m = new SvelteMap<string, HeldImport>();
-		for (const h of heldImportsQuery.data?.items ?? []) {
-			if (h.reason.startsWith('management:')) continue;
-			m.set(getDiscTrackKey({ disc_number: h.disc_number, track_number: h.track_number }), h);
+		const m = new SvelteMap<string, HeldFileInEntry>();
+		for (const held of heldFiles) {
+			m.set(
+				getDiscTrackKey({
+					disc_number: held.file.disc_number,
+					track_number: held.file.track_number
+				}),
+				held
+			);
 		}
 		return m;
 	});
-	// A held track resolving ("import anyway" / discard) shrinks the held set. Refetch
+	// A held file resolving (import or discard) shrinks the held set. Refetch
 	// library status + source matches so a newly-owned track's play button appears in place,
 	// without a manual refresh (mirrors the settled-download effect above).
 	let lastHeldItemCount = -1;
 	$effect(() => {
-		const count = heldImportsQuery.data?.items?.length ?? 0;
+		const count = heldFiles.length;
 		untrack(() => {
 			if (lastHeldItemCount !== -1 && count < lastHeldItemCount) {
 				void libraryStatusQuery.refetch();
@@ -265,332 +318,67 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	const libraryTrackCount = $derived(libraryStatus?.track_count ?? 0);
 	// any held track below the quality cutoff -> the header's curator "Upgrade quality" affordance
 	const libraryBelowCutoff = $derived((libraryStatus?.tracks ?? []).some((t) => t.below_cutoff));
-	// P5 coverage: what the held files actually COVER of the release's tracklist.
+	// Coverage: what the held files actually COVER of the release's tracklist.
 	// expectedTracks === 0 -> tracklist unavailable, badge/Play All fall back to the
 	// presence-only reading (never block playback on a MusicBrainz hiccup).
 	const coverageExpected = $derived(libraryStatus?.expected_tracks ?? 0);
-	const coverageCovered = $derived(libraryStatus?.covered_tracks ?? 0);
 	const matchedFileIds = $derived(new SvelteSet(libraryStatus?.matched_file_ids ?? []));
-	const libraryOrphans = $derived(libraryStatus?.orphans ?? []);
 
-	function resetState() {
-		if (abortController) {
-			abortController.abort();
-			abortController = null;
+	// The local album that holds this release group, and its current edition's
+	// plan: the same reads, under the same keys, as the edition plate, so the
+	// track rows, the counts and the plate never disagree.
+	const localAlbumId = $derived(
+		libraryStatus && libraryStatus.album_id !== albumIdGetter() ? libraryStatus.album_id : ''
+	);
+	const editionStatusQuery = getAlbumEditionStatusQuery(userId, () => localAlbumId);
+	const editionPlanQuery = getEditionPlanQuery(
+		userId,
+		() => localAlbumId,
+		() => null,
+		() =>
+			editionStatusQuery.data?.album_id === localAlbumId &&
+			editionStatusQuery.data.edition_kind === 'release'
+	);
+	const editionPlan = $derived(
+		localAlbumId && editionPlanQuery.data?.album_id === localAlbumId ? editionPlanQuery.data : null
+	);
+	const libraryTracksById = $derived(
+		new SvelteMap((libraryStatus?.tracks ?? []).map((track) => [track.id, track]))
+	);
+	// The edition's tracks a fetch asked for, while it runs or after it
+	// failed: their rows say fetching, failed or held instead of missing.
+	const editionFetchQuery = getEditionFetchQuery(
+		userId,
+		() => editionPlan?.release_group_mbid ?? '',
+		() => localAlbumId,
+		() => authStore.isTrusted
+	);
+	const fetchStates = $derived.by(() => {
+		const edition = editionFetchQuery.data?.latest;
+		if (!edition || !editionPlan || edition.release_mbid !== editionPlan.release_mbid) return null;
+		if (!editionFetchLive(edition) && edition.state !== 'failed') return null;
+		return new SvelteMap(
+			edition.tracks.map((track) => [
+				getDiscTrackKey({ disc_number: track.disc, position: track.position }),
+				track.state
+			])
+		);
+	});
+	// The rows follow the plan only while the page lists the same edition.
+	const editionRows = $derived.by((): Map<string, FetchedEditionRow> | null => {
+		if (!editionPlan || editionPlan.release_mbid !== tracksInfo?.selected_release_mbid) return null;
+		const rows = new SvelteMap<string, FetchedEditionRow>();
+		for (const [key, row] of editionTrackRows(editionPlan, libraryTracksById)) {
+			rows.set(key, { ...row, fetchState: fetchStates?.get(key) ?? null });
 		}
-		clearExternalRecheck();
-		seenActiveTaskIds.clear();
-		settledTaskIds.clear();
-		lastHeldItemCount = -1;
-		album = null;
-		tracksInfo = null;
-		renderedTrackSections = [];
-		error = null;
-		primaryError = null;
-		loadingBasic = true;
-		loadingTracks = true;
-		tracksError = false;
-		loadingDiscovery = true;
-		moreByArtist = null;
-		similarAlbums = null;
-		trackLinks = [];
-		albumLink = null;
-		quota = null;
-		jellyfinMatch = null;
-		localMatch = null;
-		navidromeMatch = null;
-		plexMatch = null;
-		loadingJellyfin = false;
-		loadingLocal = false;
-		loadingNavidrome = false;
-		loadingPlex = false;
-		lastfmEnrichment = null;
-		loadingLastfm = true;
-		refreshing = false;
-	}
-
-	function hydrateFromCache(albumId: string) {
-		const refreshBasic = hydrateDetailCacheEntry({
-			cache: albumBasicCache,
-			cacheKey: albumId,
-			onHydrate: (cached) => {
-				album = cached;
-				loadingBasic = false;
-			}
-		});
-		const refreshTracks = hydrateDetailCacheEntry({
-			cache: albumTracksCache,
-			cacheKey: albumId,
-			onHydrate: (cached) => {
-				tracksInfo = cached;
-				renderedTrackSections = buildRenderedTrackSections(cached.tracks);
-				loadingTracks = false;
-			}
-		});
-		const refreshDiscovery = hydrateDetailCacheEntry({
-			cache: albumDiscoveryCache,
-			cacheKey: albumId,
-			onHydrate: (cached) => {
-				moreByArtist = cached.moreByArtist;
-				similarAlbums = cached.similarAlbums;
-				loadingDiscovery = false;
-			}
-		});
-		const refreshLastfm = hydrateDetailCacheEntry({
-			cache: albumLastFmCache,
-			cacheKey: albumId,
-			onHydrate: (cached) => {
-				lastfmEnrichment = cached;
-				loadingLastfm = false;
-			}
-		});
-		const refreshSourceMatch = (() => {
-			const cached = albumSourceMatchCache.get(albumSourceMatchCacheKey(albumId));
-			if (cached && !albumSourceMatchCache.isStale(cached.timestamp)) {
-				jellyfinMatch = cached.data.jellyfin;
-				localMatch = cached.data.local;
-				navidromeMatch = cached.data.navidrome;
-				plexMatch = cached.data.plex;
-				loadingJellyfin = false;
-				loadingLocal = false;
-				loadingNavidrome = false;
-				loadingPlex = false;
-				return false;
-			}
-			return true;
-		})();
-		return { refreshBasic, refreshTracks, refreshDiscovery, refreshLastfm, refreshSourceMatch };
-	}
-
-	async function doFetchBasic(albumId: string, signal: AbortSignal) {
-		primaryError = null;
-		try {
-			const result = await fetchAlbumBasic(albumId, signal);
-			if (result) {
-				album = result;
-				error = null;
-				extractServiceStatus(album);
-				albumBasicCache.set(album, albumId);
-			}
-		} catch (e) {
-			if (isAbortError(e)) return;
-			if (e instanceof ApiError) primaryError = e;
-			if (!album) error = 'Error loading album';
-		} finally {
-			if (!signal.aborted) loadingBasic = false;
-		}
-	}
-
-	async function doFetchTracks(albumId: string, signal: AbortSignal) {
-		tracksError = false;
-		try {
-			const result = await fetchAlbumTracks(albumId, signal);
-			if (result) {
-				tracksInfo = result;
-				renderedTrackSections = buildRenderedTrackSections(result.tracks);
-				albumTracksCache.set(result, albumId);
-			}
-		} catch (e) {
-			if (isAbortError(e)) return;
-			if (!tracksInfo) tracksError = true;
-		}
-		if (!signal.aborted) loadingTracks = false;
-	}
-
-	async function doFetchDiscovery(albumId: string, signal: AbortSignal) {
-		if (!album?.artist_id) {
-			loadingDiscovery = false;
-			return;
-		}
-		loadingDiscovery = true;
-		try {
-			const result = await fetchDiscovery(albumId, album.artist_id, signal);
-			if (result.moreByArtist) moreByArtist = result.moreByArtist;
-			if (result.similarAlbums) similarAlbums = result.similarAlbums;
-			albumDiscoveryCache.set({ moreByArtist, similarAlbums }, albumId);
-		} catch (e) {
-			if (isAbortError(e)) return;
-		} finally {
-			if (!signal.aborted) loadingDiscovery = false;
-		}
-	}
-
-	async function doFetchYouTube(albumId: string, signal: AbortSignal) {
-		const cached = albumYouTubeCache.get(albumId);
-		if (cached && !albumYouTubeCache.isStale(cached.timestamp)) {
-			albumLink = cached.data.albumLink;
-			trackLinks = cached.data.trackLinks;
-			return;
-		}
-		try {
-			const [linkData, tracksData] = await Promise.all([
-				fetchYouTubeAlbumLink(albumId, signal),
-				fetchYouTubeTrackLinks(albumId, signal)
-			]);
-			if (linkData) albumLink = linkData;
-			if (tracksData) trackLinks = tracksData;
-			albumYouTubeCache.set({ albumLink: linkData, trackLinks: tracksData ?? [] }, albumId);
-		} catch (e) {
-			if (isAbortError(e)) return;
-		}
-	}
-
-	async function doFetchSourceMatch<T>(
-		signal: AbortSignal,
-		fetcher: () => Promise<T | null>,
-		setter: (v: T | null) => void,
-		loadingSetter: (v: boolean) => void,
-		label: string,
-		albumId: string,
-		cacheField: 'jellyfin' | 'local' | 'navidrome' | 'plex'
-	) {
-		loadingSetter(true);
-		try {
-			const result = await fetcher();
-			setter(result);
-			const cacheKey = albumSourceMatchCacheKey(albumId);
-			const existing = albumSourceMatchCache.get(cacheKey)?.data ?? {
-				jellyfin: null,
-				local: null,
-				navidrome: null,
-				plex: null
-			};
-			albumSourceMatchCache.set({ ...existing, [cacheField]: result }, cacheKey);
-		} catch (e) {
-			if (isAbortError(e)) return;
-		} finally {
-			if (!signal.aborted) loadingSetter(false);
-		}
-	}
-
-	async function doFetchLastFm(albumId: string, signal: AbortSignal) {
-		if (!album) {
-			loadingLastfm = false;
-			return;
-		}
-		// global/shared feature; backend returns null when Last.fm isn't configured
-		loadingLastfm = true;
-		try {
-			const result = await fetchLastFm(
-				albumId,
-				{ artistName: album.artist_name, albumName: album.title },
-				signal
-			);
-			if (result) {
-				lastfmEnrichment = result;
-				albumLastFmCache.set(result, albumId);
-			}
-		} catch (e) {
-			if (isAbortError(e)) return;
-		} finally {
-			if (!signal.aborted) loadingLastfm = false;
-		}
-	}
-
-	// MBID-only source matches (Jellyfin, Local Files) - can start before basic info loads
-	async function fetchMbidSourceMatches(albumId: string, signal: AbortSignal) {
-		try {
-			await integrationStore.ensureLoaded();
-			if (signal.aborted) return;
-			const integrations = get(integrationStore);
-			if (integrations.jellyfin)
-				void doFetchSourceMatch(
-					signal,
-					() => fetchJellyfinMatch(albumId, signal),
-					(v) => (jellyfinMatch = v),
-					(v) => (loadingJellyfin = v),
-					'Jellyfin',
-					albumId,
-					'jellyfin'
-				);
-			if (integrations.localfiles)
-				void doFetchSourceMatch(
-					signal,
-					() => fetchLocalMatch(albumId, signal),
-					(v) => (localMatch = v),
-					(v) => (loadingLocal = v),
-					'local',
-					albumId,
-					'local'
-				);
-		} catch {
-			return;
-		}
-	}
-
-	// name-based source matches (Navidrome, Plex) - need album title/artist from basic info
-	async function fetchNamedSourceMatches(albumId: string, signal: AbortSignal) {
-		try {
-			await integrationStore.ensureLoaded();
-			if (signal.aborted) return;
-			const integrations = get(integrationStore);
-			if (integrations.navidrome)
-				void doFetchSourceMatch(
-					signal,
-					() =>
-						fetchNavidromeMatch(
-							albumId,
-							{ albumTitle: album?.title, artistName: album?.artist_name },
-							signal
-						),
-					(v) => (navidromeMatch = v),
-					(v) => (loadingNavidrome = v),
-					'Navidrome',
-					albumId,
-					'navidrome'
-				);
-			if (integrations.plex)
-				void doFetchSourceMatch(
-					signal,
-					() =>
-						fetchPlexMatch(
-							albumId,
-							{ albumTitle: album?.title, artistName: album?.artist_name },
-							signal
-						),
-					(v) => (plexMatch = v),
-					(v) => (loadingPlex = v),
-					'Plex',
-					albumId,
-					'plex'
-				);
-		} catch {
-			return;
-		}
-	}
-
-	async function loadAlbum(albumId: string) {
-		const { refreshBasic, refreshTracks, refreshDiscovery, refreshLastfm, refreshSourceMatch } =
-			hydrateFromCache(albumId);
-		if (abortController) abortController.abort();
-		abortController = new AbortController();
-		const signal = abortController.signal;
-		let tracksPromise: Promise<void> | null = null;
-
-		if (refreshSourceMatch) void fetchMbidSourceMatches(albumId, signal);
-
-		if (refreshBasic) {
-			if (refreshTracks) tracksPromise = doFetchTracks(albumId, signal);
-			void doFetchYouTube(albumId, signal);
-			await doFetchBasic(albumId, signal);
-		} else {
-			void doFetchBasic(albumId, signal);
-		}
-		if (signal.aborted || !album) return;
-		if (refreshTracks && !refreshBasic) tracksPromise = doFetchTracks(albumId, signal);
-		if (!refreshBasic) void doFetchYouTube(albumId, signal);
-		if (refreshLastfm) void doFetchLastFm(albumId, signal);
-		if (refreshSourceMatch) void fetchNamedSourceMatches(albumId, signal);
-		if (refreshDiscovery) {
-			if (tracksPromise) {
-				void tracksPromise.then(() => {
-					if (!signal.aborted) void doFetchDiscovery(albumId, signal);
-				});
-			} else {
-				void doFetchDiscovery(albumId, signal);
-			}
-		}
-	}
+		return rows;
+	});
+	const editionCounts = $derived(
+		editionPlan ? { kept: editionPlan.kept_count, total: editionPlan.tracks.length } : null
+	);
+	const libraryUnmatchedFiles = $derived(
+		editionPlan ? unmatchedFiles(editionPlan, libraryTracksById) : []
+	);
 
 	function clearExternalRecheck() {
 		for (const t of externalRecheckTimers) clearTimeout(t);
@@ -599,11 +387,12 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 
 	function refreshSourcesAfterDownload(): void {
 		const albumId = albumIdGetter();
-		const signal = abortController?.signal;
-		if (!albumId || !signal || signal.aborted) return;
-		albumSourceMatchCache.remove(albumSourceMatchCacheKey(albumId));
-		void fetchMbidSourceMatches(albumId, signal);
-		void fetchNamedSourceMatches(albumId, signal);
+		if (!albumId) return;
+		void invalidateQueriesWithPersister(
+			{ queryKey: AlbumMatchKeyFactory.album(userId(), albumId) },
+			undefined,
+			{ client }
+		);
 	}
 
 	// external servers (Jellyfin/Navidrome/Plex) index newly-imported files on their own schedule, so
@@ -611,7 +400,6 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	// and is already fresh from the immediate refresh.
 	function scheduleExternalSourceRecheck(): void {
 		clearExternalRecheck();
-		const integrations = get(integrationStore);
 		if (!integrations.jellyfin && !integrations.navidrome && !integrations.plex) return;
 		for (const delay of [20_000, 50_000]) {
 			externalRecheckTimers.push(setTimeout(() => refreshSourcesAfterDownload(), delay));
@@ -624,109 +412,135 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		scheduleExternalSourceRecheck();
 	}
 
-	async function forceLoadAlbum(albumId: string): Promise<void> {
-		albumBasicCache.remove(albumId);
-		albumTracksCache.remove(albumId);
-		albumSourceMatchCache.remove(albumSourceMatchCacheKey(albumId));
-
-		error = null;
-		primaryError = null;
-		if (abortController) abortController.abort();
-		abortController = new AbortController();
-		const signal = abortController.signal;
-
-		try {
-			const freshBasic = await refreshAlbum(albumId, signal);
-			if (freshBasic) {
-				album = freshBasic;
-				extractServiceStatus(album);
-				albumBasicCache.set(album, albumId);
-			}
-		} catch {
-			void signal.aborted;
-		}
-
-		if (signal.aborted) return;
-		await loadAlbum(albumId);
-	}
-
 	async function refreshAll(): Promise<void> {
 		const albumId = albumIdGetter();
-		if (!albumId || refreshing) return;
-		refreshing = true;
-		try {
-			void libraryStatusQuery.refetch();
-			await forceLoadAlbum(albumId);
-		} finally {
-			refreshing = false;
-		}
+		if (!albumId || refresh.isPending) return;
+		await refresh.mutateAsync({ userId: userId(), albumId }).catch(() => undefined);
+	}
+
+	function setAlbum(next: AlbumBasicInfo): void {
+		void setQueryDataWithPersister(
+			AlbumQueryKeyFactory.basic(userId(), albumIdGetter()),
+			next,
+			undefined,
+			client
+		);
 	}
 
 	function handleDeleted(): void {
 		showDeleteModal = false;
-		if (album) {
-			album = { ...album, in_library: false, requested: false };
-			albumBasicCache.set(album, albumIdGetter());
-		}
-		localMatch = null;
-		albumSourceMatchCache.remove(albumSourceMatchCacheKey(albumIdGetter()));
-		toastMessage = 'Removed from Library';
-		toastType = 'success';
-		showToast = true;
+		const albumId = albumIdGetter();
+		if (album) setAlbum({ ...album, in_library: false, requested: false });
+		const localKey = AlbumMatchKeyFactory.local(userId(), albumId);
+		void setQueryDataWithPersister<LocalAlbumMatch>(
+			localKey,
+			{ found: false, musicbrainz_id: albumId, tracks: [], total_size_bytes: 0 },
+			undefined,
+			client
+		);
+		toastStore.show({ message: 'Removed from Library', type: 'success' });
 	}
 
+	// A new album starts with a clean slate of page-only state.
 	$effect(() => {
 		const albumId = albumIdGetter();
-		if (!browser || !albumId) return;
+		if (!albumId) return;
 		untrack(() => {
-			resetState();
-			void loadAlbum(albumId);
-		});
-		return () => {
+			pickedRelease = null;
+			quota = null;
 			clearExternalRecheck();
-			if (abortController) {
-				abortController.abort();
-				abortController = null;
+			seenActiveTaskIds.clear();
+			settledTaskIds.clear();
+			lastHeldItemCount = -1;
+		});
+		return clearExternalRecheck;
+	});
+
+	// The edition a request gets on an album the library does not hold
+	// (curators): their pick, else the catalog's; once requested, the live
+	// request's, which a pick switches until its download starts.
+	let pickedRelease = $state<string | null>(null);
+	const activeRequestsQuery = getActiveRequestsQuery(() => isRequested && authStore.isTrusted);
+	const liveRequest = $derived(
+		activeRequestsQuery.data?.items.find(
+			(item) =>
+				item.request_kind === 'album' && item.musicbrainz_id === album?.musicbrainz_id.toLowerCase()
+		) ?? null
+	);
+	const switchEdition = switchRequestedEdition();
+	const editionPick = $derived.by((): EditionRequestPick | null => {
+		if (!album || inLibrary || libraryInLibrary || !authStore.isTrusted) return null;
+		if (isRequested && !liveRequest) return null;
+		const current = album;
+		return {
+			release: liveRequest
+				? (liveRequest.release_mbid ?? null)
+				: (pickedRelease ?? tracksInfo?.selected_release_mbid ?? null),
+			requested: isRequested,
+			locked: Boolean(liveRequest?.task_id),
+			albumTitle: current.title,
+			pick: async (release) => {
+				if (!isRequested) {
+					pickedRelease = release;
+					return;
+				}
+				const answer = await switchEdition.mutateAsync({
+					group: current.musicbrainz_id,
+					release,
+					artistName: current.artist_name ?? null,
+					albumTitle: current.title
+				});
+				toastStore.show({
+					message: answer.message,
+					type: answer.status === 'downloading' ? 'info' : 'success'
+				});
 			}
 		};
 	});
 
 	const eventHandlers = createEventHandlers({
 		getAlbum: () => album,
-		setAlbum: (a) => (album = a),
-		getAlbumId: albumIdGetter,
-		getSelectedRelease: () => tracksInfo?.selected_release_mbid ?? null,
-		albumBasicCacheSet: (data, key) => albumBasicCache.set(data, key),
-		setTrackLinks: (tl) => (trackLinks = tl),
+		setAlbum,
+		getSelectedRelease: () => pickedRelease ?? tracksInfo?.selected_release_mbid ?? null,
+		setTrackLinks: (tl) =>
+			void setQueryDataWithPersister<YouTubeTrackLink[]>(
+				AlbumQueryKeyFactory.youtubeTrackLinks(albumIdGetter()),
+				tl,
+				undefined,
+				client
+			),
 		getTrackLinks: () => trackLinks,
-		setAlbumLink: (l) => (albumLink = l),
+		setAlbumLink: (l) =>
+			void setQueryDataWithPersister<YouTubeLink | null>(
+				AlbumQueryKeyFactory.youtubeLink(albumIdGetter()),
+				l,
+				undefined,
+				client
+			),
 		setQuota: (q) => (quota = q),
 		setRequesting: (v) => (requesting = v),
 		getRequesting: () => requesting,
 		setShowDeleteModal: (v) => (showDeleteModal = v),
-		setToast: (msg, type) => {
-			toastMessage = msg;
-			toastType = type;
-		},
-		setShowToast: (v) => (showToast = v),
 		onRequestSuccess: () => {
-			albumSourceMatchCache.remove(albumSourceMatchCacheKey(albumIdGetter()));
+			// the sources' copies are read again on the next visit
+			void invalidateQueriesWithPersister(
+				{ queryKey: AlbumMatchKeyFactory.album(userId(), albumIdGetter()), refetchType: 'none' },
+				undefined,
+				{ client }
+			).catch(() => undefined);
 			// pick up the freshly-created download task so the header strip + polling kick in
 			void downloadsQuery.refetch();
 		}
 	});
 
 	function retryTracks(): void {
-		loadingTracks = true;
-		tracksError = false;
-		const signal = abortController?.signal ?? new AbortController().signal;
-		void doFetchTracks(albumIdGetter(), signal);
+		void tracksQuery.refetch();
 	}
 
-	// Playback sees only files that COVER an expected track (P5, 2026-07-05
-	// incident): an orphan ("doesn't match this album") never enters the album
-	// queue - it plays individually from the review section. Falls back to the
-	// raw match when the tracklist was unavailable (expected_tracks === 0).
+	// Playback sees only files that COVER an expected track: an orphan
+	// ("doesn't match this album") never enters the album queue - it plays
+	// individually from the review section. Falls back to the raw match when
+	// the tracklist was unavailable (expected_tracks === 0).
 	const localMatchForPlayback = $derived.by(() => {
 		if (!localMatch || coverageExpected === 0) return localMatch;
 		return {
@@ -769,9 +583,9 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	function getTrackContextMenuItems(
 		track: { position: number; disc_number?: number | null; title: string },
 		resolvedLocal: LocalTrackInfo | null,
-		resolvedJellyfin: JellyfinTrackInfo | null,
-		resolvedNavidrome: NavidromeTrackInfo | null = null,
-		resolvedPlex: PlexTrackInfo | null = null
+		resolvedJellyfin: RemoteTrack | null,
+		resolvedNavidrome: RemoteTrack | null = null,
+		resolvedPlex: RemoteTrack | null = null
 	): MenuItem[] {
 		if (!album) return [];
 		return getTrackContextMenuItemsImpl(
@@ -794,7 +608,6 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		fileId: string;
 		albumMbid: string;
 		albumCacheId: string;
-		albumCacheKey: string;
 		title: string;
 	} | null>(null);
 	let removeFileError = $state<string | null>(null);
@@ -813,13 +626,7 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		const albumCacheId = albumIdGetter();
 		if (!albumMbid || !fileId || !albumCacheId) return;
 		removeFileError = null;
-		removeFileTarget = {
-			fileId,
-			albumMbid,
-			albumCacheId,
-			albumCacheKey: albumSourceMatchCacheKey(albumCacheId),
-			title
-		};
+		removeFileTarget = { fileId, albumMbid, albumCacheId, title };
 	}
 
 	function closeRemoveFileDialog(): void {
@@ -828,35 +635,16 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		removeFileError = null;
 	}
 
-	function refetchRemovedAlbumMatch(albumCacheId: string): void {
-		const signal = abortController?.signal;
-		if (!signal || signal.aborted || albumIdGetter() !== albumCacheId) return;
-		void doFetchSourceMatch(
-			signal,
-			() => fetchLocalMatch(albumCacheId, signal),
-			(v) => (localMatch = v),
-			(v) => (loadingLocal = v),
-			'local',
-			albumCacheId,
-			'local'
-		);
-	}
-
 	function confirmRemoveFile(): void {
 		const target = removeFileTarget;
 		if (!target || removeTrack.isPending) return;
 		removeTrack.mutate(
-			{
-				fileId: target.fileId,
-				albumMbid: target.albumMbid,
-				albumCacheKey: target.albumCacheKey
-			},
+			{ fileId: target.fileId, albumMbid: target.albumMbid },
 			{
 				onSuccess: () => {
 					removeFileTarget = null;
 					removeFileError = null;
 					toastStore.show({ message: 'File removed', type: 'success' });
-					refetchRemovedAlbumMatch(target.albumCacheId);
 				},
 				onError: () => {
 					removeFileError = "Couldn't remove this file";
@@ -875,7 +663,7 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 
 	const jellyfinCallbacks: SourceCallbacks = buildSourceCallbacks(
 		() => jellyfinMatch,
-		launchJellyfinPlayback,
+		launchRemotePlayback,
 		'jellyfin',
 		albumGetter,
 		tracksGetters,
@@ -893,7 +681,7 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	);
 	const navidromeCallbacks: SourceCallbacks = buildSourceCallbacks(
 		() => navidromeMatch,
-		launchNavidromePlayback,
+		launchRemotePlayback,
 		'navidrome',
 		albumGetter,
 		tracksGetters,
@@ -902,7 +690,7 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 	);
 	const plexCallbacks: SourceCallbacks = buildSourceCallbacks(
 		() => plexMatch,
-		launchPlexPlayback,
+		launchRemotePlayback,
 		'plex',
 		albumGetter,
 		tracksGetters,
@@ -924,25 +712,13 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 			return primaryError;
 		},
 		get loadingBasic() {
-			return loadingBasic;
+			return basicQuery.isPending;
 		},
 		get loadingTracks() {
-			return loadingTracks;
+			return tracksQuery.isPending;
 		},
 		get tracksError() {
 			return tracksError;
-		},
-		get showToast() {
-			return showToast;
-		},
-		set showToast(v: boolean) {
-			showToast = v;
-		},
-		get toastMessage() {
-			return toastMessage;
-		},
-		get toastType() {
-			return toastType;
 		},
 		get requesting() {
 			return requesting;
@@ -966,10 +742,10 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		closeRemoveFileDialog,
 		confirmRemoveFile,
 		get moreByArtist() {
-			return moreByArtist;
+			return moreByArtistQuery.data ?? null;
 		},
 		get similarAlbums() {
-			return similarAlbums;
+			return similarAlbumsQuery.data ?? null;
 		},
 		get loadingDiscovery() {
 			return loadingDiscovery;
@@ -978,7 +754,7 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 			return trackLinks;
 		},
 		get albumLink() {
-			return albumLink;
+			return youtubeLinkQuery.data ?? null;
 		},
 		get quota() {
 			return quota;
@@ -996,22 +772,22 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 			return plexMatch;
 		},
 		get loadingJellyfin() {
-			return loadingJellyfin;
+			return jellyfinMatchQuery.isLoading;
 		},
 		get loadingLocal() {
-			return loadingLocal;
+			return localMatchQuery.isLoading;
 		},
 		get loadingNavidrome() {
-			return loadingNavidrome;
+			return navidromeMatchQuery.isLoading;
 		},
 		get loadingPlex() {
-			return loadingPlex;
+			return plexMatchQuery.isLoading;
 		},
 		get lastfmEnrichment() {
-			return lastfmEnrichment;
+			return lastFmQuery.data ?? null;
 		},
 		get loadingLastfm() {
-			return loadingLastfm;
+			return lastFmQuery.isPending;
 		},
 		get renderedTrackSections() {
 			return renderedTrackSections;
@@ -1049,6 +825,9 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		get isRequested() {
 			return isRequested;
 		},
+		get editionPick() {
+			return editionPick;
+		},
 		get libraryStatus() {
 			return libraryStatus;
 		},
@@ -1073,26 +852,29 @@ export function createAlbumPageState(albumIdGetter: () => string) {
 		get libraryBelowCutoff() {
 			return libraryBelowCutoff;
 		},
-		get coverageExpected() {
-			return coverageExpected;
-		},
 		get localMatchForPlayback() {
 			return localMatchForPlayback;
 		},
-		get coverageCovered() {
-			return coverageCovered;
+		get localAlbumId() {
+			return localAlbumId;
 		},
-		get libraryOrphans() {
-			return libraryOrphans;
+		get editionRows() {
+			return editionRows;
+		},
+		get editionCounts() {
+			return editionCounts;
+		},
+		get libraryUnmatchedFiles() {
+			return libraryUnmatchedFiles;
 		},
 		get refreshing() {
-			return refreshing;
+			return refresh.isPending;
 		},
 		get headerDownloadTask() {
 			return headerDownloadTask;
 		},
-		get headerManagementHeld() {
-			return headerManagementHeld;
+		get headerHeldFiles() {
+			return headerHeldFiles;
 		},
 		get trackDownloadTasks() {
 			return trackDownloadTasks;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { userStorageSegment } from '$lib/queries/userKeySegment';
 	import { goto } from '$app/navigation';
+	import { CACHE_TTL } from '$lib/constants';
 	import { onDestroy, untrack } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { requestMissingTracks, type PlaylistDetail } from '$lib/api/playlists';
@@ -8,7 +9,6 @@
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { toastStore } from '$lib/stores/toast';
 	import { authStore } from '$lib/stores/authStore.svelte';
-	import { getCacheTTL } from '$lib/stores/cacheTtl.svelte';
 	import {
 		getPlaylistDetailV3Query,
 		type PlaylistDetailV3
@@ -24,7 +24,9 @@
 	import { extractDominantColor, DEFAULT_GRADIENT } from '$lib/utils/colors';
 	import { getApiUrl } from '$lib/api/api-utils';
 	import { withBasePath } from '$lib/utils/basePath';
-	import { Music, Download, LoaderCircle } from 'lucide-svelte';
+	import { Music, Download } from 'lucide-svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
 	import BackButton from '$lib/components/BackButton.svelte';
 	import HeroBackdrop from '$lib/components/HeroBackdrop.svelte';
 	import type { PageData } from './$types';
@@ -93,7 +95,7 @@
 	}
 
 	// Source-resolution cache is namespaced per user so two accounts on a shared
-	// browser never read each other's resolved sources (AMU-5).
+	// browser never read each other's resolved sources.
 	const SOURCES_CACHE_PREFIX = 'droppedneedle_playlist_sources_';
 	function sourcesCacheKey(playlistId: string): string {
 		return `${SOURCES_CACHE_PREFIX}${userStorageSegment(authStore.user?.id)}_${playlistId}`;
@@ -105,7 +107,7 @@
 			const raw = localStorage.getItem(key);
 			if (!raw) return null;
 			const cached = JSON.parse(raw) as { ts: number; data: Record<string, string[]> };
-			const ttl = getCacheTTL('playlistSources');
+			const ttl = CACHE_TTL.PLAYLIST_SOURCES;
 			if (Date.now() - cached.ts > ttl) {
 				localStorage.removeItem(key);
 				return null;
@@ -350,9 +352,7 @@
 			<h2 class="text-lg font-semibold text-base-content/80">Couldn't load this playlist</h2>
 			<p class="text-sm text-base-content/60">{loadError}</p>
 			<div class="flex items-center gap-2">
-				<button class="btn btn-sm btn-accent" onclick={() => void detailQuery.refetch()}>
-					Retry
-				</button>
+				<Button variant="accent" size="sm" onclick={() => void detailQuery.refetch()}>Retry</Button>
 				<BackButton fallback={withBasePath('/playlists')} />
 			</div>
 		</div>
@@ -366,7 +366,7 @@
 		<div class="space-y-6 sm:space-y-8">
 			<div
 				class="group relative rounded-box playlist-hero"
-				style="--hero-glow-color: var(--brand-hero);"
+				style:--hero-glow-color="var(--brand-hero)"
 			>
 				<div
 					class="absolute inset-0 bg-linear-to-b {heroGradient} transition-all duration-1000 rounded-box"
@@ -404,27 +404,24 @@
 			</div>
 
 			{#if isOwner && missingAlbumCount > 0}
-				<div
-					class="flex items-center gap-3 rounded-xl border border-base-300/40 bg-base-200/40 px-4 py-3"
-				>
-					<Download class="h-4 w-4 shrink-0 text-base-content/50" />
-					<p class="flex-1 text-sm text-base-content/70">
-						{missingAlbumCount}
-						{missingAlbumCount === 1 ? 'album' : 'albums'} not in your library
-					</p>
-					<button
-						class="btn btn-accent btn-sm"
-						onclick={() => void handleRequestMissing()}
-						disabled={requesting}
-					>
-						{#if requesting}
-							<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-						{:else}
-							<Download class="h-3.5 w-3.5" />
-						{/if}
-						Request {missingAlbumCount === 1 ? 'album' : missingAlbumCount + ' albums'}
-					</button>
-				</div>
+				<Card variant="bordered" padding="sm">
+					<div class="flex items-center gap-3">
+						<Download class="h-4 w-4 shrink-0 text-base-content/50" />
+						<p class="flex-1 text-sm text-base-content/70">
+							{missingAlbumCount}
+							{missingAlbumCount === 1 ? 'album' : 'albums'} not in your library
+						</p>
+						<Button
+							variant="accent"
+							size="sm"
+							icon={Download}
+							loading={requesting}
+							onclick={() => void handleRequestMissing()}
+						>
+							Request {missingAlbumCount === 1 ? 'album' : missingAlbumCount + ' albums'}
+						</Button>
+					</div>
+				</Card>
 			{/if}
 
 			<PlaylistTrackList

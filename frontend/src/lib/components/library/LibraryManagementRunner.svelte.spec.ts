@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -20,22 +20,22 @@ vi.mock('$lib/queries/library/LibraryQueries.svelte', () => ({
 			const search = getSearch().toLowerCase();
 			return {
 				artists: [],
-				albums: search.includes('juturna')
+				albums: search.includes('low tide')
 					? [
 							{
 								id: 'album-1',
-								title: 'Juturna',
-								artist_name: 'Circa Survive',
+								title: 'Low Tide',
+								artist_name: 'The Alphas',
 								track_count: 11,
 								cover_available: true
 							}
 						]
-					: search.includes('descensus')
+					: search.includes('high water')
 						? [
 								{
 									id: 'album-2',
-									title: 'Descensus',
-									artist_name: 'Circa Survive',
+									title: 'High Water',
+									artist_name: 'The Alphas',
 									track_count: 11,
 									cover_available: true
 								}

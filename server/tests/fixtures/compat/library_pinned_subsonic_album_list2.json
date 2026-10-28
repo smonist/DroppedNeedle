@@ -11,18 +11,28 @@
               "name": "ユキ"
             }
           ],
-          "coverArt": "al-<id-2>",
+          "coverArt": "al-<id-2>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
+          "discTitles": [],
           "displayArtist": "ユキ",
           "duration": 0,
+          "explicitStatus": "",
+          "genres": [],
           "id": "al-<id-2>",
           "isCompilation": false,
+          "moods": [],
+          "musicBrainzId": "",
           "name": "望厚",
+          "originalReleaseDate": {},
+          "recordLabels": [],
+          "releaseDate": {},
           "releaseTypes": [
             "album"
           ],
           "songCount": 1,
           "sortName": "望厚",
+          "userRating": 0,
+          "version": "",
           "year": 2015
         },
         {
@@ -34,18 +44,28 @@
               "name": "Various Artists"
             }
           ],
-          "coverArt": "al-<id-4>",
+          "coverArt": "al-<id-4>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
+          "discTitles": [],
           "displayArtist": "Various Artists",
           "duration": 0,
+          "explicitStatus": "",
+          "genres": [],
           "id": "al-<id-4>",
           "isCompilation": true,
+          "moods": [],
+          "musicBrainzId": "",
           "name": "Now Thats Music",
+          "originalReleaseDate": {},
+          "recordLabels": [],
+          "releaseDate": {},
           "releaseTypes": [
             "compilation"
           ],
           "songCount": 1,
           "sortName": "Now Thats Music",
+          "userRating": 0,
+          "version": "",
           "year": 2001
         },
         {
@@ -57,10 +77,12 @@
               "name": "U2"
             }
           ],
-          "coverArt": "al-<id-6>",
+          "coverArt": "al-<id-6>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
+          "discTitles": [],
           "displayArtist": "U2",
           "duration": 0,
+          "explicitStatus": "",
           "genre": "Rock",
           "genres": [
             {
@@ -69,12 +91,19 @@
           ],
           "id": "al-<id-6>",
           "isCompilation": false,
+          "moods": [],
+          "musicBrainzId": "",
           "name": "Achtung Baby",
+          "originalReleaseDate": {},
+          "recordLabels": [],
+          "releaseDate": {},
           "releaseTypes": [
             "album"
           ],
           "songCount": 1,
           "sortName": "Achtung Baby",
+          "userRating": 0,
+          "version": "",
           "year": 1991
         },
         {
@@ -86,10 +115,12 @@
               "name": "Radiohead"
             }
           ],
-          "coverArt": "al-<id-8>",
+          "coverArt": "al-<id-8>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
+          "discTitles": [],
           "displayArtist": "Radiohead",
           "duration": 1,
+          "explicitStatus": "",
           "genre": "Alternative Rock",
           "genres": [
             {
@@ -98,41 +129,60 @@
           ],
           "id": "al-<id-8>",
           "isCompilation": false,
+          "moods": [],
+          "musicBrainzId": "<id-9>",
           "name": "OK Computer",
+          "originalReleaseDate": {},
+          "recordLabels": [],
+          "releaseDate": {},
           "releaseTypes": [
             "album"
           ],
           "songCount": 2,
           "sortName": "OK Computer",
+          "userRating": 0,
+          "version": "",
           "year": 1997
         },
         {
           "artist": "Massive Attack",
-          "artistId": "ar-<id-9>",
+          "artistId": "ar-<id-10>",
           "artists": [
             {
-              "id": "ar-<id-9>",
+              "id": "ar-<id-10>",
               "name": "Massive Attack"
             }
           ],
-          "coverArt": "al-<id-10>",
+          "coverArt": "al-<id-11>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
+          "discTitles": [],
           "displayArtist": "Massive Attack",
           "duration": 0,
-          "id": "al-<id-10>",
+          "explicitStatus": "",
+          "genres": [],
+          "id": "al-<id-11>",
           "isCompilation": false,
+          "moods": [],
+          "musicBrainzId": "",
           "name": "Mezzanine",
+          "originalReleaseDate": {},
+          "recordLabels": [],
+          "releaseDate": {
+            "year": 1998
+          },
           "releaseTypes": [
             "album"
           ],
           "songCount": 1,
           "sortName": "Mezzanine",
+          "userRating": 0,
+          "version": "",
           "year": 1998
         }
       ]
     },
     "openSubsonic": true,
-    "serverVersion": "10.10.6",
+    "serverVersion": "re:\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?",
     "status": "ok",
     "type": "DroppedNeedle",
     "version": "1.16.1"

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '$lib/components/library/library-management.css';
 	import { goto } from '$app/navigation';
 	import { Check, ChevronDown, ListPlus, RotateCcw, ShieldAlert, Tags, X } from 'lucide-svelte';
 
@@ -14,6 +15,9 @@
 	import type { LibraryFileMeta } from '$lib/types';
 	import { withBasePath } from '$lib/utils/basePath';
 	import { createUuid } from '$lib/utils/uuid';
+	import Button from '$lib/ui/Button.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
 
 	interface Props {
 		track: LibraryFileMeta;
@@ -206,12 +210,14 @@
 					Changes are previewed, journalled, validated, and published through file organization.
 				</p>
 			</div>
-			<button
-				class="btn btn-ghost btn-sm btn-square"
-				aria-label="Close tag editor"
+			<IconButton
+				label="Close tag editor"
+				icon={X}
+				size="sm"
+				shape="square"
 				disabled={pending}
-				onclick={close}><X class="h-5 w-5" /></button
-			>
+				onclick={close}
+			/>
 		</header>
 
 		<div class="max-h-[72vh] overflow-y-auto p-5 sm:p-6">
@@ -345,8 +351,9 @@
 						<div class="p-4">
 							<label class="grid gap-1 text-sm">
 								<span>Find a field</span>
-								<input
-									class="input input-bordered input-sm"
+								<Input
+									size="sm"
+									label="Find a field"
 									bind:value={advancedSearch}
 									placeholder="Composer, ISRC, sort name…"
 								/>
@@ -375,16 +382,16 @@
 				Using {context?.profile_name ?? 'the root profile'} format compatibility rules.
 			</p>
 			<div class="flex gap-2">
-				<button class="btn btn-ghost" disabled={pending} onclick={close}>Cancel</button>
-				<button
-					class="btn management-btn"
-					disabled={pending || !context?.accepted_identity || selectionCount === 0}
+				<Button variant="ghost" disabled={pending} onclick={close}>Cancel</Button>
+				<Button
+					variant="warning"
+					loading={pending}
+					disabled={!context?.accepted_identity || selectionCount === 0}
 					onclick={preview}
 				>
-					{#if pending}<span class="loading loading-spinner loading-sm"></span>{/if}
 					Preview {selectionCount || ''}
 					{selectionCount === 1 ? 'change' : 'changes'}
-				</button>
+				</Button>
 			</div>
 		</footer>
 	</div>
@@ -406,25 +413,153 @@
 				>Local override</span
 			>{/if}
 		{#if field.cardinality === 'ordered_strings'}
-			<textarea
-				class="textarea textarea-bordered min-h-20 sm:col-span-2"
-				bind:value={drafts[field.field_name]}></textarea>
+			<textarea class="textarea min-h-20 sm:col-span-2" bind:value={drafts[field.field_name]}
+			></textarea>
 		{:else if field.cardinality === 'boolean'}
-			<select
-				class="select select-bordered select-sm sm:col-span-2"
-				bind:value={drafts[field.field_name]}
-			>
+			<select class="select select-sm sm:col-span-2" bind:value={drafts[field.field_name]}>
 				<option value="">Not set</option>
 				<option value="true">Yes</option>
 				<option value="false">No</option>
 			</select>
 		{:else}
-			<input
+			<Input
 				type={field.cardinality === 'integer' ? 'number' : 'text'}
 				min={field.cardinality === 'integer' ? 0 : undefined}
-				class="input input-bordered input-sm sm:col-span-2"
+				size="sm"
+				label={fieldLabel(field.field_name)}
+				class="sm:col-span-2"
 				bind:value={drafts[field.field_name]}
 			/>
 		{/if}
 	</label>
 {/snippet}
+
+<style>
+	.management-tag-editor {
+		border: 1px solid color-mix(in oklab, var(--color-library-manage) 24%, transparent);
+		background:
+			linear-gradient(
+				145deg,
+				color-mix(in oklab, var(--color-library-manage) 5%, var(--color-base-100)),
+				var(--color-base-100) 18rem
+			),
+			var(--color-base-100);
+	}
+
+	.management-write-notice {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.9rem 1rem;
+		border: 1px solid color-mix(in oklab, var(--color-library-manage) 28%, transparent);
+		border-radius: 0.8rem;
+		background: color-mix(in oklab, var(--color-library-manage) 8%, var(--color-base-100));
+	}
+
+	.management-write-notice > :global(svg) {
+		flex: none;
+		color: var(--color-library-manage);
+	}
+
+	.management-write-notice p {
+		margin-top: 0.1rem;
+		color: color-mix(in oklab, var(--color-base-content) 58%, transparent);
+		font-size: 0.75rem;
+	}
+
+	.management-tag-modes {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.55rem;
+	}
+
+	.management-tag-modes > button {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.55rem;
+		min-width: 0;
+		padding: 0.8rem;
+		text-align: left;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 11%, transparent);
+		border-radius: 0.8rem;
+		background: color-mix(in oklab, var(--color-base-100) 88%, var(--color-base-200));
+	}
+
+	.management-tag-modes > button.active {
+		border-color: color-mix(in oklab, var(--color-library-manage) 48%, transparent);
+		background: color-mix(in oklab, var(--color-library-manage) 9%, var(--color-base-100));
+		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-library-manage) 12%, transparent);
+	}
+
+	.management-tag-modes > button > :global(svg) {
+		margin-top: 0.12rem;
+		flex: none;
+		color: var(--color-library-manage);
+	}
+
+	.management-tag-modes span,
+	.management-tag-field > span:first-child {
+		display: grid;
+		gap: 0.1rem;
+	}
+
+	.management-tag-modes small,
+	.management-tag-field small {
+		color: color-mix(in oklab, var(--color-base-content) 52%, transparent);
+		font-size: 0.68rem;
+		font-weight: 400;
+	}
+
+	.management-tag-fields {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.65rem;
+	}
+
+	.management-tag-field {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 0.45rem;
+		align-content: start;
+		padding: 0.75rem;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+		border-radius: 0.75rem;
+		background: color-mix(in oklab, var(--color-base-100) 90%, var(--color-base-200));
+	}
+
+	.management-tag-field.changed {
+		border-color: color-mix(in oklab, var(--color-management-changed) 42%, transparent);
+		box-shadow: inset 0.2rem 0 0 var(--color-management-changed);
+	}
+
+	.management-disclosure {
+		overflow: hidden;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+		border-radius: 0.85rem;
+		background: color-mix(in oklab, var(--color-base-200) 42%, transparent);
+	}
+
+	.management-disclosure > summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.85rem 1rem;
+		list-style: none;
+		cursor: pointer;
+	}
+
+	.management-disclosure > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.management-disclosure[open] > summary :global(svg) {
+		transform: rotate(180deg);
+	}
+
+	@media (max-width: 639px) {
+		.management-tag-modes,
+		.management-tag-fields {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

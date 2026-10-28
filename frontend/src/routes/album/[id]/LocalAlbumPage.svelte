@@ -1,23 +1,29 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import {
-		ChevronLeft,
-		Disc3,
-		ExternalLink,
-		FileUp,
-		ListMusic,
-		Play,
-		Shuffle
-	} from 'lucide-svelte';
+	import { ChevronLeft, Disc3, FileUp, ListMusic, Play, Shuffle } from 'lucide-svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import LibraryFormatBadge from '$lib/components/library/LibraryFormatBadge.svelte';
+	import NoFilesBadge from '$lib/components/library/NoFilesBadge.svelte';
 	import LocalIdentityBadge from '$lib/components/library/LocalIdentityBadge.svelte';
-	import AlbumIdentificationPanel from '$lib/components/library/AlbumIdentificationPanel.svelte';
-	import EditionPanel from '$lib/components/library/EditionPanel.svelte';
+	import ManagementHoldSection from '$lib/components/library/ManagementHoldSection.svelte';
+	import RecycledRemovals from '$lib/components/library/RecycledRemovals.svelte';
+	import AlbumHistory from '$lib/components/library/AlbumHistory.svelte';
+	import RetagPairCard from '$lib/components/library/RetagPairCard.svelte';
+	import EditionPlate from '$lib/components/library/edition/EditionPlate.svelte';
 	import AlbumOrganizationDialog from '$lib/components/library/AlbumOrganizationDialog.svelte';
 	import LocalAlbumTrackList from '$lib/components/library/LocalAlbumTrackList.svelte';
 	import AlbumDownloadButton from './AlbumDownloadButton.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import RatingStars from '$lib/ui/RatingStars.svelte';
+	import { getRatingsQuery, ratingOf, setRating } from '$lib/queries/ratings/RatingQueries.svelte';
 	import { getDownloadAccessQuery } from '$lib/queries/local/DownloadAccessQuery.svelte';
+	import {
+		getAlbumEditionStatusQuery,
+		getEditionPlanQuery
+	} from '$lib/queries/albums/EditionQueries.svelte';
+	import { getRetagPairsQuery } from '$lib/queries/library/LibraryRetagPairQueries.svelte';
+	import { notesByFile } from './albumEdition';
 	import AddToPlaylistModal from '$lib/components/AddToPlaylistModal.svelte';
 	import type { MenuItem } from '$lib/components/ContextMenu.svelte';
 	import { getTrackContextMenuItems } from './albumPlaybackHandlers';
@@ -29,7 +35,6 @@
 		getLibraryAlbumDetailQuery,
 		getLibraryAlbumTracksQuery
 	} from '$lib/queries/library/LibraryQueries.svelte';
-	import { getAlbumEditionsQuery } from '$lib/queries/albums/EditionQueries.svelte';
 	import type {
 		AlbumBasicInfo,
 		LocalTrackInfo,
@@ -49,18 +54,44 @@
 	const tracksQuery = getLibraryAlbumTracksQuery(() => albumId);
 	const album = $derived(albumQuery.data);
 	const tracks = $derived(tracksQuery.data?.items ?? []);
+	// The track count is over files in the library: none means nothing to play.
+	const hasFiles = $derived((album?.track_count ?? 0) > 0);
 	// The download buttons follow the admin's "Library downloads" setting.
 	const downloadAccessQuery = getDownloadAccessQuery(() => authStore.user?.id);
 	const downloadAllowed = $derived(
 		album?.download_allowed !== false && downloadAccessQuery.data?.allowed !== false
 	);
-	const editionsQuery = getAlbumEditionsQuery(
-		() => authStore.user?.id,
-		() => album?.musicbrainz_release_group_id ?? '',
-		() => Boolean(album?.musicbrainz_release_group_id)
-	);
-	const editions = $derived(editionsQuery.data?.items ?? []);
 	const contributionMutation = createLibraryContributionMutation();
+
+	// One ratings read for the album and its tracks, once the tracks are in.
+	const ratingsQuery = getRatingsQuery(() =>
+		album && tracksQuery.isSuccess
+			? { albumIds: [album.id], trackIds: tracks.map((track) => track.id) }
+			: null
+	);
+	const rate = setRating();
+
+	// The edition plan's word on single files, read under the plate's keys.
+	const userId = () => authStore.user?.id;
+	const editionStatusQuery = getAlbumEditionStatusQuery(userId, () => albumId);
+	const editionPlanQuery = getEditionPlanQuery(
+		userId,
+		() => albumId,
+		() => null,
+		() =>
+			editionStatusQuery.data?.album_id === albumId &&
+			editionStatusQuery.data.edition_kind === 'release'
+	);
+	const fileNotes = $derived(
+		editionPlanQuery.data?.album_id === albumId ? notesByFile(editionPlanQuery.data) : undefined
+	);
+
+	const retagPairsQuery = getRetagPairsQuery(() => authStore.isAdmin);
+	const retagPairs = $derived(
+		(retagPairsQuery.data?.pairs ?? []).filter(
+			(pair) => pair.old_album.id === albumId || pair.new_album.id === albumId
+		)
+	);
 
 	const reviewLabel = $derived(
 		album?.identification_status === 'needs_review'
@@ -82,25 +113,6 @@
 		album?.album_identity_state === 'release_group_linked' && album.pick_basis
 			? (pickBasisQualifier[album.pick_basis] ?? null)
 			: null
-	);
-	const managementIdentityAttention = $derived(
-		album?.management_identity_readiness === 'exact_release_required'
-			? 'Exact MusicBrainz edition required'
-			: album?.management_identity_readiness === 'track_mapping_required'
-				? 'Exact track map required'
-				: album?.management_identity_readiness === 'custom_manifest_stale'
-					? 'Custom edition review required'
-					: album?.identification_status === 'needs_review' ||
-						  album?.identification_status === 'manual_identity_needs_review'
-						? 'Identity review required'
-						: null
-	);
-	const musicbrainzUrl = $derived(
-		album?.musicbrainz_release_id
-			? `https://musicbrainz.org/release/${album.musicbrainz_release_id}`
-			: album?.musicbrainz_release_group_id
-				? `https://musicbrainz.org/release-group/${album.musicbrainz_release_group_id}`
-				: null
 	);
 
 	function play(shuffle: boolean): void {
@@ -156,12 +168,15 @@
 <svelte:head><title>{album?.title ?? 'Album'} · Library</title></svelte:head>
 
 <main class="container mx-auto p-4 md:p-6 lg:p-8">
-	<button
-		class="btn btn-ghost btn-sm mb-5 gap-2"
+	<Button
+		variant="ghost"
+		size="sm"
+		icon={ChevronLeft}
+		class="mb-5"
 		onclick={() => goto(withBasePath('/library/albums'))}
 	>
-		<ChevronLeft class="h-4 w-4" /> Albums
-	</button>
+		Albums
+	</Button>
 
 	{#if albumQuery.isLoading}
 		<div class="grid gap-6 md:grid-cols-[16rem_1fr]">
@@ -174,24 +189,24 @@
 		</div>
 	{:else if albumQuery.isError || !album}
 		<div class="alert alert-error">
-			<span>Couldn't load this album.</span><button
-				class="btn btn-sm"
-				onclick={() => albumQuery.refetch()}>Retry</button
-			>
+			<span>Couldn't load this album.</span>
+			<Button size="sm" onclick={() => albumQuery.refetch()}>Retry</Button>
 		</div>
 	{:else}
 		<header class="grid gap-6 md:grid-cols-[16rem_1fr] md:items-end">
 			<AlbumImage
-				mbid={album.id}
-				source="local"
+				albumId={album.id}
+				mbid={album.musicbrainz_release_group_id ?? ''}
 				available={album.cover_available}
 				alt={`Cover for ${album.title}`}
 				size="full"
+				requestSize={500}
+				priority
 				className="aspect-square w-full rounded-2xl shadow-xl"
 			/>
 			<div class="min-w-0">
 				<div class="flex flex-wrap items-center gap-2">
-					<LibraryFormatBadge format={album.format} />
+					{#if hasFiles}<LibraryFormatBadge format={album.format} />{:else}<NoFilesBadge />{/if}
 					{#if album.is_compilation}<span class="badge badge-ghost">Compilation</span>{/if}
 					{#if reviewLabel}<span class="badge badge-warning badge-outline">{reviewLabel}</span>{/if}
 				</div>
@@ -219,36 +234,50 @@
 						>
 					{/if}
 				</p>
+				<RatingStars
+					size="md"
+					class="mt-2 -ml-1"
+					value={ratingOf(ratingsQuery.data, 'album', album.id)}
+					label={album.title}
+					onchange={(rating) => rate.mutate({ kind: 'album', itemId: album.id, rating })}
+				/>
+				<div class="mt-4">
+					<EditionPlate copies={[album]} />
+				</div>
 				<div class="mt-5 flex flex-wrap items-center gap-2">
-					<button
-						class="btn btn-primary gap-2"
-						disabled={!tracks.length}
-						onclick={() => play(false)}><Play class="h-4 w-4 fill-current" /> Play</button
-					>
-					<button class="btn btn-ghost gap-2" disabled={!tracks.length} onclick={() => play(true)}
-						><Shuffle class="h-4 w-4" /> Shuffle</button
-					>
-					<AlbumDownloadButton
-						albumId={album.id}
-						mbid={null}
-						totalSizeBytes={album.total_size_bytes}
-						trackCount={tracks.length}
-						{downloadAllowed}
-					/>
+					{#if hasFiles}
+						<Button
+							variant="primary"
+							icon={Play}
+							class="[&_svg]:fill-current"
+							disabled={!tracks.length}
+							onclick={() => play(false)}>Play</Button
+						>
+						<Button
+							variant="ghost"
+							icon={Shuffle}
+							disabled={!tracks.length}
+							onclick={() => play(true)}>Shuffle</Button
+						>
+						<AlbumDownloadButton
+							albumId={album.id}
+							mbid={null}
+							totalSizeBytes={album.total_size_bytes}
+							trackCount={tracks.length}
+							{downloadAllowed}
+						/>
+					{/if}
 					{#if authStore.isTrusted && album.album_identity_state === 'local_only'}
-						<button
-							class="btn btn-ghost gap-2"
+						<Button
+							variant="ghost"
+							icon={FileUp}
 							disabled={contributionMutation.isPending}
 							onclick={openContribution}
 						>
-							<FileUp class="h-4 w-4" />
 							{album.contribution_id ? 'Contribution in progress' : 'Contribute to MusicBrainz'}
-						</button>
+						</Button>
 					{/if}
-					{#if authStore.isAdmin}<AlbumIdentificationPanel
-							{album}
-							attentionLabel={managementIdentityAttention}
-						/><AlbumOrganizationDialog {album} {tracks} />{/if}
+					{#if authStore.isAdmin}<AlbumOrganizationDialog {album} {tracks} />{/if}
 				</div>
 				{#if album.review_id && authStore.isAdmin}
 					<a
@@ -259,6 +288,22 @@
 				{/if}
 			</div>
 		</header>
+
+		{#if authStore.isAdmin}
+			<div class="mt-6"><ManagementHoldSection {album} /></div>
+		{/if}
+
+		{#if authStore.isTrusted}
+			<RecycledRemovals
+				class="mt-6"
+				albumId={album.id}
+				releaseGroupMbid={album.musicbrainz_release_group_id}
+			/>
+		{/if}
+
+		{#each retagPairs as pair (`${pair.old_album.id}/${pair.new_album.id}`)}
+			<div class="mt-6"><RetagPairCard {pair} currentAlbumId={albumId} /></div>
+		{/each}
 
 		<section class="mt-8" aria-labelledby="local-tracks-title">
 			<div class="flex items-center gap-2">
@@ -272,79 +317,23 @@
 			{:else if tracksQuery.isError}
 				<div class="alert alert-error mt-3">Couldn't load tracks.</div>
 			{:else if !tracks.length}
-				<div class="mt-3 rounded-box bg-base-200 p-6 text-center text-base-content/55">
+				<Card class="mt-3 text-center text-base-content/55">
 					<Disc3 class="mx-auto h-8 w-8 opacity-30" />
-					<p class="mt-2">No playable tracks are attached to this album.</p>
-				</div>
+					<p>No playable tracks are attached to this album.</p>
+				</Card>
 			{:else}
-				<LocalAlbumTrackList {tracks} getTrackMenuItems={getLocalTrackMenuItems} />
+				<LocalAlbumTrackList
+					{tracks}
+					notes={fileNotes}
+					getTrackMenuItems={getLocalTrackMenuItems}
+					trackRatings={ratingsQuery.data?.tracks}
+					onRateTrack={(trackId, rating) => rate.mutate({ kind: 'track', itemId: trackId, rating })}
+				/>
 			{/if}
 		</section>
 
-		<div class="mt-6">
-			<EditionPanel
-				albumId={album.id}
-				albumTitle={album.title}
-				groupMbid={album.musicbrainz_release_group_id ?? ''}
-				onchanged={() => void albumQuery.refetch()}
-			/>
-		</div>
+		<AlbumHistory {albumId} />
 
-		<section
-			class="mt-6 rounded-box border border-base-content/10 bg-base-200/35 p-4"
-			aria-labelledby="provider-features-title"
-		>
-			<div class="flex flex-wrap items-center justify-between gap-3">
-				<h2 id="provider-features-title" class="font-semibold">MusicBrainz editions</h2>
-				{#if musicbrainzUrl}
-					<a
-						class="btn btn-ghost btn-sm gap-2"
-						href={musicbrainzUrl}
-						target="_blank"
-						rel="noreferrer">Open in MusicBrainz <ExternalLink class="h-3.5 w-3.5" /></a
-					>
-				{/if}
-			</div>
-			{#if album.musicbrainz_release_group_id}
-				{#if editionsQuery.isLoading}
-					<div class="mt-3 grid gap-2 sm:grid-cols-2">
-						<div class="skeleton h-12"></div>
-						<div class="skeleton h-12"></div>
-					</div>
-				{:else if editionsQuery.isError}
-					<p class="mt-3 text-sm text-base-content/55">
-						MusicBrainz edition details are temporarily unavailable.
-					</p>
-				{:else if editions.length}
-					<ul class="mt-3 grid gap-2 sm:grid-cols-2">
-						{#each editions.slice(0, 6) as edition (edition.release_mbid)}
-							<li>
-								<a
-									class="flex h-full items-center justify-between gap-3 rounded-box border border-base-content/10 bg-base-100 px-3 py-2 text-sm transition-colors hover:border-primary/35 hover:bg-base-100/70"
-									href={`https://musicbrainz.org/release/${edition.release_mbid}`}
-									target="_blank"
-									rel="noreferrer"
-								>
-									<span class="min-w-0">
-										<span class="block truncate font-medium">{edition.title ?? album.title}</span>
-										<span class="block truncate text-xs text-base-content/50">
-											{[edition.date?.slice(0, 4), edition.country, edition.packaging]
-												.filter(Boolean)
-												.join(' · ') || `${edition.track_count} tracks`}
-										</span>
-									</span>
-									<ExternalLink class="h-3.5 w-3.5 shrink-0 text-base-content/35" />
-								</a>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{:else}
-				<p class="mt-2 text-sm text-base-content/60">
-					Link a MusicBrainz release group to compare editions.
-				</p>
-			{/if}
-		</section>
 		<AddToPlaylistModal bind:this={playlistModal} />
 	{/if}
 </main>

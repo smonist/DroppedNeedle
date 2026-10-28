@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '$lib/components/library/library-management.css';
 	import { ArrowRight, CircleCheckBig, FileClock, ShieldAlert } from 'lucide-svelte';
 
 	import type { LibraryManagementResultItem } from '$lib/queries/library-management/types';
@@ -11,6 +12,7 @@
 		managementReasonLabel,
 		titleManagementValue
 	} from './LibraryManagementDisplay';
+	import Card from '$lib/ui/Card.svelte';
 	import LibraryManagementLyricsEvidence from './LibraryManagementLyricsEvidence.svelte';
 
 	interface Props {
@@ -51,7 +53,7 @@
 			<span
 				class="badge badge-sm {item.failure_code
 					? 'badge-error'
-					: item.work_state === 'succeeded' || item.work_state === 'completed'
+					: item.work_state === 'succeeded'
 						? 'badge-success'
 						: 'badge-outline'}"
 			>
@@ -114,7 +116,7 @@
 				</div>
 			</div>
 		{:else if item.result && Object.keys(item.result).length}
-			<div class="rounded-xl border border-base-content/10 bg-base-100/70 p-3">
+			<Card variant="bordered" padding="sm">
 				<div class="flex items-center gap-2">
 					<FileClock class="h-4 w-4 text-library-manage" /><strong class="text-sm"
 						>Result payload</strong
@@ -123,9 +125,26 @@
 				<p class="mt-2 break-words font-mono text-xs text-base-content/60">
 					{formatManagementValue(item.result)}
 				</p>
-			</div>
+			</Card>
 		{:else}
 			<p class="text-sm text-base-content/50">No additional result payload was required.</p>
 		{/if}
 	</section>
 </div>
+
+<style>
+	.management-journal-chain {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.72rem;
+	}
+
+	.management-journal-chain li {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		color: color-mix(in oklab, var(--color-success) 70%, var(--color-base-content));
+	}
+</style>

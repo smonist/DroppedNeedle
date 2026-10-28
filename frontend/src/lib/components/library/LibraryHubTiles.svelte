@@ -8,6 +8,7 @@
 	} from '$lib/queries/library/LibraryQueries.svelte';
 	import type { LibraryStats } from '$lib/types';
 	import { withBasePath } from '$lib/utils/basePath';
+	import { NOISE_TEXTURE } from './noiseTexture';
 
 	interface Props {
 		stats: LibraryStats;
@@ -16,6 +17,7 @@
 
 	interface Art {
 		key: string;
+		albumId?: string;
 		mbid: string;
 		remoteUrl: string | null;
 		type: 'album' | 'artist';
@@ -28,7 +30,8 @@
 	const albumArt = $derived<Art[]>(
 		(recentlyAddedQuery.data?.items ?? []).slice(0, 9).map((a) => ({
 			key: a.id,
-			mbid: a.id,
+			albumId: a.id,
+			mbid: a.musicbrainz_release_group_id ?? '',
 			remoteUrl: null,
 			type: 'album',
 			available: a.cover_available
@@ -37,7 +40,7 @@
 	const artistArt = $derived<Art[]>(
 		(artistThumbsQuery.data?.items ?? []).slice(0, 9).map((a) => ({
 			key: a.id,
-			mbid: a.id,
+			mbid: a.musicbrainz_artist_id ?? '',
 			remoteUrl: null,
 			type: 'artist',
 			available: a.musicbrainz_artist_id !== null
@@ -140,8 +143,8 @@
 				>
 					{#if slot.item.type === 'album'}
 						<AlbumImage
+							albumId={slot.item.albumId}
 							mbid={slot.item.mbid}
-							source="local"
 							available={slot.item.available}
 							remoteUrl={slot.item.remoteUrl}
 							alt=""
@@ -155,7 +158,6 @@
 					{:else}
 						<ArtistImage
 							mbid={slot.item.mbid}
-							source="local"
 							available={slot.item.available}
 							remoteUrl={slot.item.remoteUrl}
 							alt=""
@@ -192,7 +194,8 @@
 		<div
 			aria-hidden="true"
 			class="pointer-events-none absolute inset-0 opacity-[0.035]"
-			style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/></filter><rect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%220.5%22/></svg>');background-size:200px;"
+			style:background-image={NOISE_TEXTURE}
+			style:background-size="200px"
 		></div>
 		<ArrowUpRight
 			class="absolute top-5 right-5 z-10 h-5 w-5 text-base-content/25 transition-all duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary"
@@ -226,7 +229,8 @@
 		<div
 			aria-hidden="true"
 			class="pointer-events-none absolute inset-0 opacity-[0.035]"
-			style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/></filter><rect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%220.5%22/></svg>');background-size:200px;"
+			style:background-image={NOISE_TEXTURE}
+			style:background-size="200px"
 		></div>
 		<ArrowUpRight
 			class="absolute top-5 right-5 z-10 h-5 w-5 text-base-content/25 transition-all duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-accent"
@@ -260,7 +264,8 @@
 		<div
 			aria-hidden="true"
 			class="pointer-events-none absolute inset-0 opacity-[0.035]"
-			style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/></filter><rect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%220.5%22/></svg>');background-size:200px;"
+			style:background-image={NOISE_TEXTURE}
+			style:background-size="200px"
 		></div>
 		{#if wide}
 			<div class="relative h-28 w-52 shrink-0">

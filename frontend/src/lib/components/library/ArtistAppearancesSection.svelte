@@ -1,9 +1,12 @@
 <script lang="ts">
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
 	import { Disc3, MicVocal } from 'lucide-svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import LocalAlbumTrackList from '$lib/components/library/LocalAlbumTrackList.svelte';
 	import ArtistAppearancesSectionSkeleton from './ArtistAppearancesSectionSkeleton.svelte';
 	import { getLibraryArtistAppearancesQuery } from '$lib/queries/library/LibraryQueries.svelte';
+	import { ApiError } from '$lib/api/client';
 	import { albumHref } from '$lib/utils/entityRoutes';
 
 	interface Props {
@@ -14,6 +17,10 @@
 	let { artistId, className = '' }: Props = $props();
 	const appearancesQuery = getLibraryArtistAppearancesQuery(() => artistId);
 	const appearances = $derived(appearancesQuery.data?.pages.flatMap((page) => page.items) ?? []);
+	// No library artist behind the id: nothing appears, so there is no section.
+	const notInLibrary = $derived(
+		appearancesQuery.error instanceof ApiError && appearancesQuery.error.status === 404
+	);
 	const summary = $derived(appearancesQuery.data?.pages[0]);
 	const releaseCount = $derived(summary?.total ?? appearances.length);
 	const trackCount = $derived(
@@ -26,7 +33,7 @@
 	<div class={className}>
 		<ArtistAppearancesSectionSkeleton />
 	</div>
-{:else if appearancesQuery.isError}
+{:else if appearancesQuery.isError && !notInLibrary}
 	<section
 		id="section-library-appearances"
 		class="scroll-mt-24 rounded-2xl border border-error/20 bg-error/5 p-5 {className}"
@@ -39,9 +46,7 @@
 					Couldn't load this artist's local track appearances.
 				</p>
 			</div>
-			<button class="btn btn-sm btn-outline" onclick={() => appearancesQuery.refetch()}
-				>Retry</button
-			>
+			<Button variant="outline" size="sm" onclick={() => appearancesQuery.refetch()}>Retry</Button>
 		</div>
 	</section>
 {:else if appearances.length > 0}
@@ -87,18 +92,16 @@
 
 		<div class="space-y-3 p-3 sm:p-4">
 			{#each appearances as appearance (appearance.album.id)}
-				<article
-					class="appearance-release rounded-xl border border-base-content/10 bg-base-100/80 p-3 shadow-sm transition-colors hover:border-accent/25 sm:p-4"
-				>
+				<Card as="article" variant="bordered" padding="sm">
 					<div class="grid gap-4 sm:grid-cols-[7rem_minmax(0,1fr)]">
 						<a
 							href={albumHref(appearance.album.musicbrainz_release_group_id ?? appearance.album.id)}
-							class="group/cover relative mx-auto block aspect-square w-28 overflow-hidden rounded-lg shadow-md sm:mx-0 sm:w-full"
+							class="appearance-cover group/cover relative mx-auto block aspect-square w-28 overflow-hidden rounded-lg shadow-md sm:mx-0 sm:w-full"
 							aria-label={`Open ${appearance.album.title}`}
 						>
 							<AlbumImage
-								mbid={appearance.album.id}
-								source="local"
+								albumId={appearance.album.id}
+								mbid={appearance.album.musicbrainz_release_group_id ?? ''}
 								available={appearance.album.cover_available}
 								alt={`Cover for ${appearance.album.title}`}
 								size="full"
@@ -130,7 +133,7 @@
 							<LocalAlbumTrackList tracks={appearance.tracks} />
 						</div>
 					</div>
-				</article>
+				</Card>
 			{/each}
 		</div>
 
@@ -141,18 +144,15 @@
 				<p class="text-xs text-base-content/50">
 					Showing {appearances.length} of {releaseCount} local releases
 				</p>
-				<button
-					class="btn btn-sm btn-ghost"
-					disabled={appearancesQuery.isFetchingNextPage}
+				<Button
+					variant="ghost"
+					size="sm"
+					loading={appearancesQuery.isFetchingNextPage}
 					onclick={() => void appearancesQuery.fetchNextPage()}
+					>{appearancesQuery.isFetchingNextPage
+						? 'Loading appearances'
+						: 'Load more appearances'}</Button
 				>
-					{#if appearancesQuery.isFetchingNextPage}
-						<span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-						Loading appearances
-					{:else}
-						Load more appearances
-					{/if}
-				</button>
 			</footer>
 		{/if}
 	</section>
@@ -172,11 +172,8 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.appearance-release,
-		.appearance-release :global(img) {
+		.appearance-cover :global(img) {
 			transition: none !important;
-		}
-		.appearance-release :global(img) {
 			transform: none !important;
 		}
 	}

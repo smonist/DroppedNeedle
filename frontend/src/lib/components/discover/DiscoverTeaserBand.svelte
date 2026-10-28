@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Compass, Sparkles } from 'lucide-svelte';
+	import { ArrowRight, Compass } from 'lucide-svelte';
 	import ArtistImage from '$lib/components/ArtistImage.svelte';
 	import { discoverQueueStatusStore } from '$lib/stores/discoverQueueStatus';
 	import { withBasePath } from '$lib/utils/basePath';
-	import type { DiscoverPreview } from '$lib/types';
+	import type { DiscoverPreview } from '$lib/queries/discover/types';
+	import Card from '$lib/ui/Card.svelte';
 
 	interface Props {
 		preview: DiscoverPreview | null;
@@ -32,20 +33,22 @@
 	);
 </script>
 
-<a
+<Card
+	variant="bordered"
+	padding="none"
 	href={withBasePath('/discover')}
-	class="group relative block overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/10 via-base-200/60 to-secondary/10 shadow-[0_4px_24px_oklch(from_var(--color-primary)_l_c_h_/_0.08)] transition-all duration-300 motion-safe:hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_8px_32px_oklch(from_var(--color-primary)_l_c_h_/_0.15)]"
+	class="group relative overflow-hidden bg-gradient-to-r from-primary/10 via-base-200/60 to-secondary/10"
 >
 	<div class="flex flex-col items-center gap-4 px-5 py-6 sm:flex-row sm:gap-6 sm:px-7">
 		{#if teaserArtists.length > 0}
 			<div class="flex shrink-0 -space-x-4">
-				{#each teaserArtists as artist, i (artist.mbid ?? `${artist.name}-${i}`)}
+				{#each teaserArtists as artist, i (artist.musicbrainz_id ?? `${artist.name}-${i}`)}
 					<div
 						class="h-14 w-14 overflow-hidden rounded-full border-2 border-base-100 shadow-md"
 						style="z-index: {teaserArtists.length - i};"
 					>
 						<ArtistImage
-							mbid={artist.mbid ?? ''}
+							mbid={artist.musicbrainz_id ?? ''}
 							alt={artist.name}
 							size="full"
 							requestSize={250}
@@ -74,11 +77,11 @@
 		</div>
 
 		<span
-			class="btn btn-primary btn-sm shrink-0 gap-2 pointer-events-none sm:btn-md"
+			class="flex shrink-0 items-center gap-1 text-sm font-semibold text-primary"
 			aria-hidden="true"
 		>
-			<Sparkles class="h-4 w-4" />
 			Open Discover
+			<ArrowRight class="h-4 w-4 transition-transform group-hover:translate-x-1" />
 		</span>
 	</div>
-</a>
+</Card>

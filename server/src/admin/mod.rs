@@ -1,12 +1,11 @@
 //! Admin UX: backups, caches, queues, providers, quotas, plus the system
 //! health read every user's header polls.
 //!
-//! Every `/admin` route is admin-only. [`require_admin`] re-reads the
-//! caller's user row on each request (role changes land immediately) and
-//! answers 401 for missing or stale sessions, 403 for signed-in non-admins:
-//! the same posture as the users routes, minus their extractor (this router
-//! carries [`AdminSetup`] state, not `UsersDeps`). `/system/health` takes
-//! any signed-in user through [`require_user`], as in v2.
+//! Every `/admin` handler takes [`Admin`](droppedneedle_auth::Admin): 401
+//! without a session, 403 for a signed-in non-admin, judged on the role
+//! the session gate read for this request. `/system/health` and the
+//! precache status take any signed-in user, as in v2; stopping a precache
+//! takes a curator.
 //!
 //! Optional backends ([`AdminDb`], backups, checkpoint, precache) are
 //! `None` on unwired test states; handlers answer 503 there instead of
@@ -23,65 +22,45 @@ pub mod system;
 
 use std::sync::Arc;
 
-use axum::{
-    Router,
-    extract::{Request, State},
-    middleware::Next,
-    response::{IntoResponse, Response},
-    routing::{get, post},
-};
-use sqlx::SqlitePool;
-
-use crate::{
-    auth::{
-        session::middleware::CurrentSession,
-        users::{UsersDeps, models::UserRecord, roles::Role},
-    },
-    db::{BackupService, CheckpointService, DurableWorkWakeups, WriteLane},
-    providers::{InMemoryProviderCache, Providers},
-};
+use droppedneedle_auth::users::UsersDeps;
+use droppedneedle_kernel::db::{BackupService, CheckpointService, Db};
+use droppedneedle_kernel::mount::{Routes, routes};
+use droppedneedle_providers::{ProviderCacheStore, Providers};
 
 pub use error::AdminError;
-pub use handlers::AdminHttpError;
 pub use models::{
     BackupListResponse, BackupRunResponse, BackupView, CacheClearBody, CacheClearResponse,
     CacheStatsResponse, CacheSyncCancelResponse, CheckpointView, JobView, PrecacheRunResponse,
-    ProviderLimiterView, ProviderStatsResponse, QueueStatsResponse, QuotaOverrideBody,
-    QuotaOverrideView, QuotaResponse, RestoreCheck, RestoreReport, SlotView, WakeupChannelView,
+    ProviderCallsView, ProviderLimiterView, ProviderStatsResponse, QueueDepthView,
+    QueueStatsResponse, QuotaOverrideBody, QuotaOverrideView, QuotaResponse, RestoreCheck,
+    RestoreReport,
 };
 pub use system::{ServiceHealthItem, SystemHealthResponse};
 
 /// Database handles the admin routes read and write through.
 #[derive(Clone)]
 pub struct AdminDb {
-    /// Pool for admin reads (wakeup rows, quota rows, task sizes).
-    pub pool: SqlitePool,
-    /// Writer lane for quota override writes.
-    pub lane: WriteLane,
-    /// Durable fabric for the job-registry half of queue stats.
-    pub wakeups: DurableWorkWakeups,
+    /// The database: admin reads (quota rows, task sizes) and quota
+    /// override writes.
+    pub db: Db,
 }
 
 impl AdminDb {
-    /// Bundle the pool with its lane; the wakeup handle derives from the pool.
-    pub fn new(pool: SqlitePool, lane: WriteLane) -> Self {
-        Self {
-            wakeups: DurableWorkWakeups::new(pool.clone()),
-            pool,
-            lane,
-        }
+    /// The database the admin routes use.
+    pub fn new(db: Db) -> Self {
+        Self { db }
     }
 }
 
 /// Everything the admin router needs, built once at boot.
 #[derive(Clone)]
 pub struct AdminSetup {
-    /// Account rows for gating and quota identity.
+    /// Account rows for quota identity.
     pub users: UsersDeps,
     /// Live quota ledger (shared with acquisition enforcement).
-    pub quota: Arc<crate::acquire::requests::quota::QuotaLedger>,
-    /// Provider byte cache (shared with the provider clients).
-    pub cache: Arc<InMemoryProviderCache>,
+    pub quota: Arc<droppedneedle_acquire::requests::quota::QuotaLedger>,
+    /// Provider answer cache (shared with the provider clients).
+    pub cache: ProviderCacheStore,
     /// Provider limiters and slot lanes for provider stats.
     pub providers: Arc<Providers>,
     /// Database handles. `None` on unwired test states.
@@ -90,12 +69,12 @@ pub struct AdminSetup {
     pub backups: Option<Arc<BackupService>>,
     /// Checkpoint service for health observability. `None` until wired.
     pub checkpoint: Option<CheckpointService>,
-    /// Precache trigger over the shared jobs registry. `None` on unwired
+    /// Precache trigger on the loop supervisor. `None` on unwired
     /// test states.
-    pub precache: Option<crate::jobs::wiring::PrecacheTrigger>,
+    pub precache: Option<crate::bootstrap::jobs::PrecacheTrigger>,
     /// Cover and artist image cache, for its stats and clears. `None` on
     /// states without one.
-    pub covers: Option<crate::reads::platform::artwork::cache::ArtworkCache>,
+    pub covers: Option<droppedneedle_catalog::reads::platform::artwork::cache::ArtworkCache>,
 }
 
 impl AdminSetup {
@@ -103,8 +82,8 @@ impl AdminSetup {
     /// `with_*` builders; production wires all three.
     pub fn new(
         users: UsersDeps,
-        quota: Arc<crate::acquire::requests::quota::QuotaLedger>,
-        cache: Arc<InMemoryProviderCache>,
+        quota: Arc<droppedneedle_acquire::requests::quota::QuotaLedger>,
+        cache: ProviderCacheStore,
         providers: Arc<Providers>,
     ) -> Self {
         Self {
@@ -143,7 +122,7 @@ impl AdminSetup {
 
     /// Attach the precache trigger.
     #[must_use]
-    pub fn with_precache(mut self, precache: crate::jobs::wiring::PrecacheTrigger) -> Self {
+    pub fn with_precache(mut self, precache: crate::bootstrap::jobs::PrecacheTrigger) -> Self {
         self.precache = Some(precache);
         self
     }
@@ -152,141 +131,26 @@ impl AdminSetup {
     #[must_use]
     pub fn with_covers(
         mut self,
-        covers: crate::reads::platform::artwork::cache::ArtworkCache,
+        covers: droppedneedle_catalog::reads::platform::artwork::cache::ArtworkCache,
     ) -> Self {
         self.covers = Some(covers);
         self
     }
-
-    /// Test bundle: always-present handles only, backends unwired. Suites
-    /// that need a database attach it with the `with_*` builders.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn for_tests(
-        users: UsersDeps,
-        quota: Arc<crate::acquire::requests::quota::QuotaLedger>,
-        cache: Arc<InMemoryProviderCache>,
-        providers: Arc<Providers>,
-    ) -> Self {
-        Self::new(users, quota, cache, providers)
-    }
-
-    /// Mount the admin routes and the system health read. Layers are
-    /// applied by `create_app`, plus the [`require_admin`] or
-    /// [`require_user`] gate below; handlers take `State<AdminSetup>`.
-    pub fn gated_router(&self) -> Router {
-        let system = Router::new()
-            .route("/system/health", get(system::system_health))
-            .route("/cache/sync/status", get(handlers::cache_sync_status))
-            .layer(axum::middleware::from_fn_with_state(
-                self.clone(),
-                require_user,
-            ))
-            .with_state(self.clone());
-        let curator = Router::new()
-            .route("/cache/sync/cancel", post(handlers::cancel_cache_sync))
-            .layer(axum::middleware::from_fn_with_state(
-                self.clone(),
-                require_curator,
-            ))
-            .with_state(self.clone());
-        let admin = Router::new()
-            .route(
-                "/admin/backups",
-                get(handlers::list_backups).post(handlers::run_backup),
-            )
-            .route(
-                "/admin/backups/{name}/restore-report",
-                get(handlers::restore_report),
-            )
-            .route("/admin/cache/stats", get(handlers::cache_stats))
-            .route("/admin/cache/clear", post(handlers::clear_cache))
-            .route("/admin/queue-stats", get(handlers::queue_stats))
-            .route("/admin/provider-stats", get(handlers::provider_stats))
-            .route(
-                "/admin/users/{id}/quota",
-                get(handlers::get_quota).put(handlers::set_quota),
-            )
-            .route("/admin/precache/run", post(handlers::run_precache))
-            .layer(axum::middleware::from_fn_with_state(
-                self.clone(),
-                require_admin,
-            ))
-            .with_state(self.clone());
-        admin.merge(system).merge(curator)
-    }
 }
 
-/// The caller's live user row: 401 when no session is stashed or the
-/// account is gone. Read on every request, so role changes land on the
-/// next call. Takes the session's user id rather than the request, which
-/// is not `Sync` and so cannot be borrowed across the lookup.
-async fn signed_in_user(
-    admin: &AdminSetup,
-    session_user: Option<String>,
-) -> Result<UserRecord, AdminHttpError> {
-    let missing = || {
-        AdminHttpError(AdminError::Unauthorized {
-            message: "Authentication required".to_owned(),
-        })
-    };
-    let user_id = session_user.ok_or_else(missing)?;
-    match admin.users.users.get_by_id(&user_id).await {
-        Ok(Some(user)) => Ok(user),
-        Ok(None) => Err(missing()),
-        Err(error) => Err(AdminHttpError(AdminError::internal(&format_args!(
-            "session user lookup failed: {error}"
-        )))),
-    }
-}
-
-/// The user id the session gate stashed, if any.
-fn session_user(request: &Request) -> Option<String> {
-    request
-        .extensions()
-        .get::<CurrentSession>()
-        .map(|session| session.user_id.clone())
-}
-
-/// Signed-in gate: any live account passes.
-async fn require_user(State(admin): State<AdminSetup>, request: Request, next: Next) -> Response {
-    match signed_in_user(&admin, session_user(&request)).await {
-        Ok(_) => next.run(request).await,
-        Err(error) => error.into_response(),
-    }
-}
-
-/// Curator gate: [`signed_in_user`], then 403 unless the account is an
-/// admin or trusted.
-async fn require_curator(
-    State(admin): State<AdminSetup>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let user = match signed_in_user(&admin, session_user(&request)).await {
-        Ok(user) => user,
-        Err(error) => return error.into_response(),
-    };
-    if !user.role.is_curator() {
-        return AdminHttpError(AdminError::Forbidden {
-            message: "Curator role required".to_owned(),
-        })
-        .into_response();
-    }
-    next.run(request).await
-}
-
-/// Admin gate: [`signed_in_user`], then 403 when the account is not an
-/// admin.
-async fn require_admin(State(admin): State<AdminSetup>, request: Request, next: Next) -> Response {
-    let user = match signed_in_user(&admin, session_user(&request)).await {
-        Ok(user) => user,
-        Err(error) => return error.into_response(),
-    };
-    if user.role != Role::Admin {
-        return AdminHttpError(AdminError::Forbidden {
-            message: "Admin role required".to_owned(),
-        })
-        .into_response();
-    }
-    next.run(request).await
+/// The admin routes and the system health read. Each handler also takes
+/// the caller it admits.
+pub fn routes() -> Routes<AdminSetup> {
+    Routes::new()
+        .user(routes!(system::system_health))
+        .user(routes!(handlers::cache_sync_status))
+        .curator(routes!(handlers::cancel_cache_sync))
+        .admin(routes!(handlers::list_backups, handlers::run_backup))
+        .admin(routes!(handlers::restore_report))
+        .admin(routes!(handlers::cache_stats))
+        .admin(routes!(handlers::clear_cache))
+        .admin(routes!(handlers::queue_stats))
+        .admin(routes!(handlers::provider_stats))
+        .admin(routes!(handlers::get_quota, handlers::set_quota))
+        .admin(routes!(handlers::run_precache))
 }

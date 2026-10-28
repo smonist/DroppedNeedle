@@ -1,13 +1,15 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
-import { getCacheTTLs } from '$lib/stores/cacheTtl.svelte';
 import { api, ApiError } from '$lib/api/client';
 import { authStore } from '$lib/stores/authStore.svelte';
 import { musicBrainzSourceKey } from '$lib/queries/musicbrainz/sourceScope.svelte';
 import { DiscoverV3Api } from '$lib/queries/discover/DiscoverV3Api';
 import type { components } from '$lib/api/v3/openapi';
 
-export type QueueBuildStatus = 'idle' | 'building' | 'ready' | 'error' | 'unknown';
+/** How often a building queue's status is checked, in milliseconds. */
+const POLL_INTERVAL_MS = 4000;
+
+export type QueueBuildStatus = components['schemas']['QueueBuildStatus'] | 'unknown';
 
 interface DiscoverQueueStatusState {
 	status: QueueBuildStatus;
@@ -24,12 +26,9 @@ type QueueStatusPayload = {
 	error?: string;
 };
 
-const BUILD_STATUSES: readonly QueueBuildStatus[] = ['idle', 'building', 'ready', 'error'];
-
 function toPayload(data: components['schemas']['DiscoverQueueStatusResponse']): QueueStatusPayload {
-	const status = BUILD_STATUSES.find((known) => known === data.status) ?? 'unknown';
 	return {
-		status,
+		status: data.status,
 		queue_id: data.queue_id ?? undefined,
 		item_count: data.item_count ?? undefined,
 		error: data.error ?? undefined
@@ -49,10 +48,6 @@ function createDiscoverQueueStatusStore() {
 	let epoch = 0;
 	const requestScope = () =>
 		`${epoch}:${authStore.user?.id}:${JSON.stringify(musicBrainzSourceKey())}`;
-
-	function getPollingInterval(): number {
-		return getCacheTTLs().discoverQueuePollingInterval;
-	}
 
 	function applyStatusData(data: QueueStatusPayload): void {
 		set({
@@ -105,13 +100,12 @@ function createDiscoverQueueStatusStore() {
 	function startPolling(): void {
 		if (pollTimer || !browser) return;
 		isPolling = true;
-		const interval = getPollingInterval();
 		pollTimer = setInterval(async () => {
 			const result = await fetchStatus();
 			if (result && result.status !== 'building') {
 				stopPolling();
 			}
-		}, interval);
+		}, POLL_INTERVAL_MS);
 	}
 
 	function stopPolling(): void {

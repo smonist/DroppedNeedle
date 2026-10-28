@@ -12,7 +12,7 @@
 	import { formatBytes } from '$lib/utils/formatting';
 	import type { CrateTrack, LocalAlbumSummary } from '$lib/types';
 	import type { QueueItem } from '$lib/player/types';
-	import { slide } from 'svelte/transition';
+	import { slide } from '$lib/ui/motion';
 	import Turntable from '$lib/components/local/Turntable.svelte';
 	import Crate from '$lib/components/local/Crate.svelte';
 	import QueueDrawer from '$lib/components/QueueDrawer.svelte';
@@ -20,6 +20,7 @@
 	import DeckVisualiser from '$lib/components/local/DeckVisualiser.svelte';
 	import HorizontalCarousel from '$lib/components/HorizontalCarousel.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
+	import NoFilesBadge from '$lib/components/library/NoFilesBadge.svelte';
 	import {
 		getLocalRecentV3Query,
 		getLocalAlbumsV3Query,
@@ -27,13 +28,14 @@
 		getLocalDecadesV3Query,
 		getLocalStatsV3Query
 	} from '$lib/queries/local/LocalV3Queries.svelte';
-	import { LocalV3Api } from '$lib/queries/local/LocalV3Api';
+	import { LibraryV3Api } from '$lib/queries/library/LibraryV3Api';
 	import {
 		albumCardToSummary,
 		albumCoverUrl,
 		crateCoverUrl,
 		matchTrackToQueueItem,
-		suggestionToCrateTrack
+		suggestionToCrateTrack,
+		type SpinAlbum
 	} from '$lib/queries/local/LocalV3Adapters';
 	import { ChevronDown, Headphones, Play, Shuffle, Clock } from 'lucide-svelte';
 
@@ -62,7 +64,6 @@
 	const recentQuery = getLocalRecentV3Query(() => 20);
 	const rediscoverQuery = getLocalAlbumsV3Query(() => ({
 		limit: 20,
-		offset: 0,
 		sort: 'rediscover',
 		order: 'asc'
 	}));
@@ -72,7 +73,7 @@
 
 	let openDecade = $state<number | null>(null);
 	const shelfQuery = getLocalAlbumsV3Query(
-		() => ({ limit: 50, offset: 0, sort: 'name', order: 'asc', decade: openDecade ?? undefined }),
+		() => ({ limit: 50, sort: 'name', order: 'asc', decade: openDecade ?? undefined }),
 		() => openDecade !== null
 	);
 
@@ -158,10 +159,10 @@
 		void suggestionsQuery.refetch();
 	}
 
-	async function playAlbum(album: LocalAlbumSummary, shuffle = false) {
+	async function playAlbum(album: SpinAlbum, shuffle = false) {
 		try {
 			const match = await api.global.v3.GET(
-				LocalV3Api.albumMatch(album.musicbrainz_id, { limit: 1000 })
+				LibraryV3Api.albumMatch(album.musicbrainz_id, { limit: 1000 })
 			);
 			const tracks = [...match.items].sort(
 				(a, b) => a.disc_number - b.disc_number || a.track_number - b.track_number
@@ -188,10 +189,10 @@
 		playerStore.addToQueue(crateToQueueItem(t));
 	}
 
-	async function queueAlbum(album: LocalAlbumSummary) {
+	async function queueAlbum(album: SpinAlbum) {
 		try {
 			const match = await api.global.v3.GET(
-				LocalV3Api.albumMatch(album.musicbrainz_id, { limit: 1000 })
+				LibraryV3Api.albumMatch(album.musicbrainz_id, { limit: 1000 })
 			);
 			const tracks = [...match.items].sort(
 				(a, b) => a.disc_number - b.disc_number || a.track_number - b.track_number
@@ -208,7 +209,7 @@
 
 	async function fetchBatch(): Promise<QueueItem[]> {
 		try {
-			const res = await api.global.v3.GET(LocalV3Api.suggestions(40, null));
+			const res = await api.global.v3.GET(LibraryV3Api.suggestions(40, null));
 			return res.items.map((s) =>
 				crateToQueueItem(suggestionToCrateTrack(s, albumMbidById.get(s.album_id) ?? null))
 			);
@@ -399,25 +400,44 @@
 
 		{#snippet albumTile(album: LocalAlbumSummary)}
 			<div class="group w-36 shrink-0 sm:w-40">
-				<button
-					class="relative block aspect-square w-full overflow-hidden rounded-xl ring-1 ring-base-content/10 transition-transform group-hover:scale-[1.03]"
-					onclick={() => playAlbum(album)}
-					title="Play {album.name}"
-				>
-					<AlbumImage
-						customUrl={albumCoverUrl(album)}
-						alt={album.name}
-						size="full"
-						requestSize={250}
-						rounded="none"
-						className="h-full w-full object-cover"
-					/>
+				{#if album.track_count === 0}
 					<div
-						class="absolute inset-0 flex items-center justify-center bg-base-100/40 opacity-0 backdrop-blur-[2px] transition-opacity group-hover:opacity-100"
+						class="relative block aspect-square w-full overflow-hidden rounded-xl ring-1 ring-base-content/10"
 					>
-						<div class="btn btn-circle btn-primary btn-sm shadow-lg"><Play class="h-4 w-4" /></div>
+						<AlbumImage
+							customUrl={albumCoverUrl(album)}
+							alt={album.name}
+							size="full"
+							requestSize={250}
+							rounded="none"
+							className="h-full w-full object-cover"
+						/>
+						<NoFilesBadge className="absolute right-2 top-2 z-10" />
 					</div>
-				</button>
+				{:else}
+					<button
+						class="relative block aspect-square w-full overflow-hidden rounded-xl ring-1 ring-base-content/10 transition-transform group-hover:scale-[1.03]"
+						onclick={() => playAlbum(album)}
+						title="Play {album.name}"
+					>
+						<AlbumImage
+							customUrl={albumCoverUrl(album)}
+							alt={album.name}
+							size="full"
+							requestSize={250}
+							rounded="none"
+							className="h-full w-full object-cover"
+						/>
+						<div
+							class="absolute inset-0 flex items-center justify-center bg-base-100/40 opacity-0 backdrop-blur-[2px] transition-opacity group-hover:opacity-100"
+						>
+							<span
+								class="grid size-8 place-items-center rounded-full bg-primary text-primary-content shadow-lg"
+								aria-hidden="true"><Play class="h-4 w-4" /></span
+							>
+						</div>
+					</button>
+				{/if}
 				{#if isMbid(album.musicbrainz_id)}
 					<a
 						href={withBasePath(`/album/${album.musicbrainz_id}`)}
@@ -464,13 +484,20 @@
 							title="Browse {shelfData.label}"
 						>
 							{#if faceCover}
-								<img
-									src={faceCover}
-									alt=""
+								<div
+									class="pointer-events-none absolute inset-0 scale-110 opacity-20 blur-[2px] transition-opacity duration-300 group-hover:opacity-30"
 									aria-hidden="true"
-									loading="lazy"
-									class="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-20 blur-[2px] transition-opacity duration-300 group-hover:opacity-30"
-								/>
+								>
+									<AlbumImage
+										customUrl={faceCover}
+										alt=""
+										size="full"
+										requestSize={250}
+										rounded="none"
+										showPlaceholder={false}
+										className="h-full w-full"
+									/>
+								</div>
 							{/if}
 							<div
 								class="pointer-events-none absolute inset-0 bg-gradient-to-t from-base-100/85 via-base-100/40 to-transparent"
@@ -533,3 +560,17 @@
 </div>
 
 <QueueDrawer bind:open={queueDrawerOpen} onclose={() => (queueDrawerOpen = false)} />
+
+<style>
+	.decade-card {
+		transition:
+			transform 0.2s var(--ease-spring),
+			box-shadow 0.2s var(--ease-spring),
+			border-color 0.2s ease;
+	}
+
+	.decade-card:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 14px 28px -18px oklch(from var(--color-base-100) l c h / 0.9);
+	}
+</style>

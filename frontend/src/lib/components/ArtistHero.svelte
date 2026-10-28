@@ -9,15 +9,30 @@
 	import FollowControl from './FollowControl.svelte';
 	import BackButton from './BackButton.svelte';
 	import HeroBackdrop from './HeroBackdrop.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import RatingStars from '$lib/ui/RatingStars.svelte';
+	import { outsideLink } from './outsideLink';
+	import { getArtistImageCreditQuery } from '$lib/queries/artist/ArtistImageCreditQuery.svelte';
 
 	interface Props {
 		artist: ArtistInfo;
 		showBackButton?: boolean;
 		refreshing?: boolean;
 		onrefresh?: () => void;
+		/** The caller's rating of the library artist, 0 when not rated. */
+		rating?: number;
+		/** Rate the library artist, or clear it with 0. The stars show only with this. */
+		onrate?: (rating: number) => void;
 	}
 
-	let { artist, showBackButton = false, refreshing = false, onrefresh }: Props = $props();
+	let {
+		artist,
+		showBackButton = false,
+		refreshing = false,
+		onrefresh,
+		rating = 0,
+		onrate
+	}: Props = $props();
 
 	let heroGradient = $state(DEFAULT_GRADIENT);
 	let heroImageLoaded = $state(false);
@@ -44,6 +59,14 @@
 		);
 	}
 
+	const creditQuery = getArtistImageCreditQuery(() => ({
+		mbid: artist.musicbrainz_id,
+		enabled: heroImageLoaded
+	}));
+	let credit = $derived(creditQuery.data ?? null);
+	let creditFileLink = $derived(outsideLink(credit?.file_url));
+	let creditLicenceLink = $derived(outsideLink(credit?.licence_url));
+
 	let validLinks = $derived(
 		artist.external_links.filter((link) => link.url && link.url.trim() !== '')
 	);
@@ -65,14 +88,14 @@
 
 	<div class="relative z-10 px-4 sm:px-8 lg:px-12 pt-6 pb-8 sm:pt-8 sm:pb-12">
 		{#if onrefresh && artist.in_library}
-			<button
-				class="absolute top-3 right-3 btn btn-sm btn-ghost btn-circle z-20"
+			<IconButton
+				size="sm"
+				icon={RefreshCw}
+				label="Refresh artist info"
+				class="absolute top-3 right-3 z-20"
+				loading={refreshing}
 				onclick={onrefresh}
-				disabled={refreshing}
-				title="Refresh artist info"
-			>
-				<RefreshCw class="h-5 w-5 {refreshing ? 'animate-spin' : ''}" />
-			</button>
+			/>
 		{/if}
 		<div class="max-w-7xl mx-auto">
 			{#if showBackButton}
@@ -92,6 +115,7 @@
 								alt={artist.name}
 								size="hero"
 								rounded="none"
+								priority
 								onload={onHeroImageLoad}
 							/>
 						</div>
@@ -130,6 +154,12 @@
 						<ArtistLinks links={validLinks} />
 					{/if}
 
+					{#if onrate}
+						<div class="mt-2">
+							<RatingStars size="md" value={rating} label={artist.name} onchange={onrate} />
+						</div>
+					{/if}
+
 					<div class="mt-3">
 						<FollowControl artistMbid={artist.musicbrainz_id} />
 					</div>
@@ -137,6 +167,31 @@
 			</div>
 		</div>
 	</div>
+
+	{#if credit && creditFileLink}
+		<p
+			class="absolute bottom-2 right-3 left-3 z-10 truncate text-right text-[0.7rem] text-base-content/50"
+		>
+			<a
+				href={creditFileLink}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="hover:text-base-content/80 hover:underline"
+				>Photo: {credit.author ?? 'Wikimedia Commons'}</a
+			>{#if credit.licence},
+				{#if creditLicenceLink}
+					<a
+						href={creditLicenceLink}
+						target="_blank"
+						rel="noopener noreferrer license"
+						class="hover:text-base-content/80 hover:underline">{credit.licence}</a
+					>
+				{:else}
+					{credit.licence}
+				{/if}
+			{/if}
+		</p>
+	{/if}
 </div>
 
 <style>

@@ -3,7 +3,7 @@
 //!
 //! Ports v2's `api/v1/routes/system.py` health route: same payload, same
 //! posture (any signed-in user, since every user sees the dot). The data
-//! comes from the process [`ServiceHealth`](crate::providers::health::ServiceHealth)
+//! comes from the process [`ServiceHealth`](droppedneedle_providers::health::ServiceHealth)
 //! registry the provider clients feed.
 
 use std::time::Instant;
@@ -13,7 +13,8 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 use super::AdminSetup;
-use crate::providers::health::DegradedService;
+use droppedneedle_auth::User;
+use droppedneedle_providers::health::DegradedService;
 
 /// One degraded service capability (v2 `ServiceHealthItem`).
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -38,7 +39,7 @@ impl From<DegradedService> for ServiceHealthItem {
             service: entry.service.to_owned(),
             capability: entry.capability.to_owned(),
             severity: "degraded".to_owned(),
-            message: entry.message.to_owned(),
+            message: entry.message,
             fallback: None,
             degraded_seconds: entry.degraded_for.as_secs(),
         }
@@ -56,13 +57,17 @@ pub struct SystemHealthResponse {
 /// Which external services are degraded right now.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/system/health",
     responses(
         (status = 200, description = "Degraded services", body = SystemHealthResponse),
         (status = 401, description = "Not authenticated"),
     )
 )]
-pub async fn system_health(State(admin): State<AdminSetup>) -> Json<SystemHealthResponse> {
+pub async fn system_health(
+    State(admin): State<AdminSetup>,
+    _caller: User,
+) -> Json<SystemHealthResponse> {
     let degraded = admin
         .providers
         .health

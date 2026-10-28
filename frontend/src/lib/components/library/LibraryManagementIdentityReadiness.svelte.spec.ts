@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -39,11 +39,10 @@ const h = vi.hoisted(() => ({
 						{
 							id: 'finding-1',
 							local_album_id: 'album-1',
-							album_title: 'Juturna',
-							album_artist_name: 'Circa Survive',
+							album_title: 'Low Tide',
+							album_artist_name: 'The Alphas',
 							album_year: 2005,
 							cover_available: false,
-							evidence_id: 'evidence-1',
 							review_id: null,
 							finding_code: 'mapping_ready',
 							reason_code: 'EXACT_RELEASE_MAPPING_SUPPORTED',
@@ -79,7 +78,10 @@ vi.mock('$lib/queries/library/LibraryIdentityPreparationMutations.svelte', () =>
 	discardLibraryIdentityPreparation: () => ({ mutateAsync: h.discard, isPending: false }),
 	undoLibraryAutomaticEdition: () => ({ mutateAsync: h.undo, isPending: false })
 }));
-vi.mock('$lib/queries/library/LibraryOperationMutations.svelte', () => ({
+vi.mock('$lib/queries/library/LibraryOperationMutations.svelte', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('$lib/queries/library/LibraryOperationMutations.svelte')
+	>()),
 	controlLibraryOperation: () => ({ mutateAsync: vi.fn(), isPending: false })
 }));
 vi.mock('$lib/queries/library/LibraryQueries.svelte', () => ({
@@ -163,11 +165,10 @@ beforeEach(() => {
 	h.findings.data.pages[0].items[0] = {
 		id: 'finding-1',
 		local_album_id: 'album-1',
-		album_title: 'Juturna',
-		album_artist_name: 'Circa Survive',
+		album_title: 'Low Tide',
+		album_artist_name: 'The Alphas',
 		album_year: 2005,
 		cover_available: false,
-		evidence_id: 'evidence-1',
 		review_id: null,
 		finding_code: 'mapping_ready',
 		reason_code: 'EXACT_RELEASE_MAPPING_SUPPORTED',
@@ -195,8 +196,8 @@ describe('LibraryManagementIdentityReadiness', () => {
 		};
 		await render(LibraryManagementIdentityReadiness, { roots });
 
-		await expect.element(page.getByText('Juturna')).toBeVisible();
-		await expect.element(page.getByText('Circa Survive')).toBeVisible();
+		await expect.element(page.getByText('Low Tide')).toBeVisible();
+		await expect.element(page.getByText('The Alphas')).toBeVisible();
 		await expect.element(page.getByText('2005')).toBeVisible();
 		await expect.element(page.getByText(/not all of them are placed yet/)).toBeVisible();
 		await expect.element(page.getByText('Apply the report to place them.')).toBeVisible();
@@ -275,11 +276,10 @@ describe('LibraryManagementIdentityReadiness', () => {
 		h.findings.data.pages[0].items[0] = {
 			id: 'finding-auto',
 			local_album_id: 'album-auto',
-			album_title: 'Juturna',
-			album_artist_name: 'Circa Survive',
+			album_title: 'Low Tide',
+			album_artist_name: 'The Alphas',
 			album_year: 2005,
 			cover_available: false,
-			evidence_id: 'evidence-auto',
 			review_id: null,
 			finding_code: 'exact_release_auto_accepted',
 			reason_code: 'EXACT_EDITION_AUTO_ACCEPTED',
@@ -317,5 +317,23 @@ describe('LibraryManagementIdentityReadiness', () => {
 			expectedAlbumRevision: 4,
 			expectedIdentityRevision: 2
 		});
+	});
+
+	it("links a finding that needs an edition to the album's edition sheet", async () => {
+		h.preparations = {
+			data: { pages: [{ items: [readyReport()] }] },
+			isLoading: false,
+			isError: false
+		};
+		h.findings.data.pages[0].items[0] = {
+			...h.findings.data.pages[0].items[0],
+			finding_code: 'exact_release_required'
+		};
+		await render(LibraryManagementIdentityReadiness, { roots });
+		await page.getByRole('button', { name: /^Choose edition/ }).click();
+
+		await expect
+			.element(page.getByRole('link', { name: 'Choose edition' }))
+			.toHaveAttribute('href', '/album/album-1?edition=choose');
 	});
 });

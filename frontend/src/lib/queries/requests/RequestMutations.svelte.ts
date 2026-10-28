@@ -4,7 +4,7 @@ import { api } from '$lib/api/client';
 import { LibraryQueryKeyFactory } from '$lib/queries/library/LibraryQueryKeyFactory';
 import { authStore } from '$lib/stores/authStore.svelte';
 import { toastStore } from '$lib/stores/toast';
-import type { RequestKind } from '$lib/constants';
+import type { RequestKind } from './types';
 import { notifyPendingApprovalCountChanged } from '$lib/utils/requestsApi';
 
 import { invalidateQueriesWithPersister } from '../QueryClient';
@@ -75,6 +75,25 @@ export const createRetryRequestMutation = () =>
 		},
 		onError: (err) =>
 			toastStore.show({ message: errorMessage(err, 'Could not retry that request'), type: 'error' })
+	}));
+
+// A single found only on its album: fetch it again and take the album's
+// track as the song.
+export const createFromAlbumMutation = () =>
+	createMutation(() => ({
+		mutationFn: (recordingMbid: string) =>
+			api.global.v3.POST(REQUESTS_ENDPOINTS.fromAlbum(recordingMbid)),
+		onMutate: () => ({ userId: authStore.user?.id }),
+		onSuccess: async (data, _mbid, context) => {
+			if (!sameUser(context.userId)) return;
+			await invalidateRequestSurface();
+			toastStore.show({ message: data.message || 'Getting it from the album', type: 'success' });
+		},
+		onError: (err) =>
+			toastStore.show({
+				message: errorMessage(err, 'Could not get it from the album'),
+				type: 'error'
+			})
 	}));
 
 export const createApproveRequestMutation = () =>

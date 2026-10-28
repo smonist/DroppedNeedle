@@ -2,7 +2,8 @@
 	import { goto } from '$app/navigation';
 	import { integrationStore } from '$lib/stores/integration';
 	import BackButton from '$lib/components/BackButton.svelte';
-	import Toast from '$lib/components/Toast.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
 	import LastFmAlbumEnrichmentComponent from '$lib/components/LastFmAlbumEnrichment.svelte';
 	import DeleteAlbumModal from '$lib/components/DeleteAlbumModal.svelte';
 	import RemoveTrackFileDialog from './RemoveTrackFileDialog.svelte';
@@ -19,8 +20,18 @@
 	import AlbumPluginDetails from './AlbumPluginDetails.svelte';
 	import { albumHref } from '$lib/utils/entityRoutes';
 	import LibraryAlbumCard from '$lib/components/library/LibraryAlbumCard.svelte';
-	import { getLibraryAlbumCopiesQuery } from '$lib/queries/library/LibraryQueries.svelte';
+	import ManagementHoldSection from '$lib/components/library/ManagementHoldSection.svelte';
+	import RecycledRemovals from '$lib/components/library/RecycledRemovals.svelte';
+	import AlbumHistory from '$lib/components/library/AlbumHistory.svelte';
+	import RetagPairCard from '$lib/components/library/RetagPairCard.svelte';
+	import { getRetagPairsQuery } from '$lib/queries/library/LibraryRetagPairQueries.svelte';
+	import {
+		getLibraryAlbumCopiesQuery,
+		getLibraryAlbumDetailQuery,
+		getLibraryAlbumStatusQuery
+	} from '$lib/queries/library/LibraryQueries.svelte';
 	import LocalAlbumPage from './LocalAlbumPage.svelte';
+	import { getRatingsQuery, ratingOf, setRating } from '$lib/queries/ratings/RatingQueries.svelte';
 
 	// The outage fallback only needs the local id; the v3 album view the
 	// route gate passes satisfies this, as does the v1 detail shape.
@@ -32,8 +43,41 @@
 	let { data, localAlbum }: Props = $props();
 
 	const state = createAlbumPageState(() => data.albumId);
-	const localCopiesQuery = getLibraryAlbumCopiesQuery(() => data.albumId);
-	const localCopies = $derived(localCopiesQuery.data?.items ?? []);
+	// The page is keyed by release group, but the library reads take local
+	// album ids: the album status names the local album holding the group,
+	// and its copies are the group's other local albums. A status that echoes
+	// the asked id back found no local album.
+	const libraryStatusQuery = getLibraryAlbumStatusQuery(() => data.albumId);
+	const localAlbumId = $derived.by(() => {
+		if (localAlbum) return localAlbum.id;
+		const statusAlbumId = libraryStatusQuery.data?.album_id;
+		return statusAlbumId && statusAlbumId !== data.albumId ? statusAlbumId : '';
+	});
+	const localAlbumQuery = getLibraryAlbumDetailQuery(() => localAlbumId);
+	const localCopiesQuery = getLibraryAlbumCopiesQuery(() => localAlbumId);
+	const fallbackAlbum = $derived(localAlbum ?? localAlbumQuery.data ?? null);
+	const localCopies = $derived(
+		localAlbumQuery.data ? [localAlbumQuery.data, ...(localCopiesQuery.data?.items ?? [])] : []
+	);
+	// One ratings read for the local album and the files behind its rows,
+	// once the album status is in. Only a library album is rated.
+	const ratingsQuery = getRatingsQuery(() =>
+		localAlbumId && libraryStatusQuery.isSuccess
+			? {
+					albumIds: [localAlbumId],
+					trackIds: (libraryStatusQuery.data?.tracks ?? []).map((track) => track.id)
+				}
+			: null
+	);
+	const rate = setRating();
+	const retagPairsQuery = getRetagPairsQuery(() => authStore.isAdmin);
+	const retagPairs = $derived(
+		localAlbumId
+			? (retagPairsQuery.data?.pairs ?? []).filter(
+					(pair) => pair.old_album.id === localAlbumId || pair.new_album.id === localAlbumId
+				)
+			: []
+	);
 	const primaryError = $derived(state.primaryError);
 	const albumNotFound = $derived(primaryError instanceof ApiError && primaryError.status === 404);
 	const providerUnavailable = $derived.by(() => {
@@ -60,7 +104,7 @@
 				<span>Album not found.</span>
 			</div>
 		</div>
-	{:else if providerUnavailable && localAlbum}
+	{:else if providerUnavailable && fallbackAlbum}
 		<div class="mb-4 flex justify-center">
 			<div class="alert alert-info text-sm">
 				<span
@@ -69,14 +113,12 @@
 				>
 			</div>
 		</div>
-		<LocalAlbumPage albumId={localAlbum.id} />
+		<LocalAlbumPage albumId={fallbackAlbum.id} />
 	{:else if providerUnavailable}
 		<div class="flex items-center justify-center min-h-[50vh]">
 			<div class="alert alert-error">
 				<span>MusicBrainz is temporarily unavailable.</span>
-				<button class="btn btn-sm btn-ghost" onclick={() => void state.refreshAll()}>
-					Retry
-				</button>
+				<Button variant="ghost" size="sm" onclick={() => void state.refreshAll()}>Retry</Button>
 			</div>
 		</div>
 	{:else if state.error || primaryError}
@@ -119,29 +161,46 @@
 				requesting={state.requesting}
 				refreshing={state.refreshing}
 				headerDownloadTask={state.headerDownloadTask}
-				managementHeld={state.headerManagementHeld}
+				heldFiles={state.headerHeldFiles}
 				downloadClientConfigured={$integrationStore.download_client}
 				libraryInLibrary={state.libraryInLibrary}
 				libraryTrackCount={state.libraryTrackCount}
 				libraryBelowCutoff={state.libraryBelowCutoff}
-				coverageExpected={state.coverageExpected}
-				coverageCovered={state.coverageCovered}
+				editionCounts={state.editionCounts}
 				mbTrackCount={state.tracksInfo?.total_tracks ?? 0}
 				releaseGroupMbid={album.musicbrainz_id}
 				{localCopies}
+				editionPick={state.editionPick}
 				downloadAllowed={state.localMatch?.download_allowed !== false}
+				rating={ratingOf(ratingsQuery.data, 'album', localAlbumId)}
+				onrate={localAlbumId
+					? (rating) => rate.mutate({ kind: 'album', itemId: localAlbumId, rating })
+					: undefined}
 				onrequest={state.handleRequest}
 				ondelete={state.handleDeleteClick}
 				onrefresh={state.refreshAll}
 				onartistclick={state.goToArtist}
 			/>
 
+			{#if authStore.isAdmin && localAlbumQuery.data}
+				<ManagementHoldSection album={localAlbumQuery.data} />
+			{/if}
+
+			{#if authStore.isTrusted && localAlbumId}
+				<RecycledRemovals
+					albumId={localAlbumId}
+					releaseGroupMbid={album.musicbrainz_id}
+					onputback={() => void state.refreshAll()}
+				/>
+			{/if}
+
+			{#each retagPairs as pair (`${pair.old_album.id}/${pair.new_album.id}`)}
+				<RetagPairCard {pair} currentAlbumId={localAlbumId} />
+			{/each}
+
 			{#if localCopies.length > 1}
-				<section
-					class="rounded-box border border-base-content/10 bg-base-200/35 p-4 sm:p-5"
-					aria-labelledby="owned-copies-title"
-				>
-					<h2 id="owned-copies-title" class="text-lg font-bold">Copies in your library</h2>
+				<Card variant="bordered" padding="md" as="section" aria-label="Copies in your library">
+					<h2 class="text-lg font-bold">Copies in your library</h2>
 					<p class="mt-1 max-w-2xl text-sm text-base-content/55">
 						This MusicBrainz release matches more than one local album. Choose the copy you want to
 						open.
@@ -151,7 +210,7 @@
 							<LibraryAlbumCard album={localCopy} />
 						{/each}
 					</div>
-				</section>
+				</Card>
 			{/if}
 
 			<WhereToBuy releaseGroupMbid={album.musicbrainz_id} enabled={!state.loadingTracks} />
@@ -246,8 +305,12 @@
 						heldByRecording={state.heldByRecording}
 						heldByPosition={state.heldByPosition}
 						trackDownloadTasks={state.trackDownloadTasks}
+						editionRows={state.editionRows}
 						releaseGroupMbid={album.musicbrainz_id}
 						releaseMbid={state.tracksInfo?.selected_release_mbid}
+						trackRatings={ratingsQuery.data?.tracks}
+						onRateTrack={(trackId, rating) =>
+							rate.mutate({ kind: 'track', itemId: trackId, rating })}
 						onPlaySourceTrack={state.playSourceTrack}
 						onTrackGenerated={state.handleTrackGenerated}
 						onQuotaUpdate={state.handleQuotaUpdate}
@@ -255,10 +318,15 @@
 					/>
 
 					<UnmatchedFilesSection
-						orphans={state.libraryOrphans}
+						files={state.libraryUnmatchedFiles}
 						albumMbid={album.musicbrainz_id}
+						albumId={localAlbumId}
 						canRemove={authStore.isTrusted}
 					/>
+
+					{#if localAlbumId}
+						<AlbumHistory albumId={localAlbumId} />
+					{/if}
 
 					<AddToPlaylistModal bind:this={state.playlistModalRef} />
 				</div>
@@ -267,7 +335,7 @@
 					<h2 class="text-xl sm:text-2xl font-bold">Tracks</h2>
 					<div class="alert alert-warning">
 						<span>Couldn't load the track list.</span>
-						<button class="btn btn-sm btn-ghost" onclick={state.retryTracks}> Retry </button>
+						<Button variant="ghost" size="sm" onclick={state.retryTracks}>Retry</Button>
 					</div>
 				</div>
 			{:else}
@@ -275,7 +343,7 @@
 					<h2 class="text-xl sm:text-2xl font-bold">Tracks</h2>
 					<div class="alert alert-warning">
 						<span>No tracks available.</span>
-						<button class="btn btn-sm btn-ghost" onclick={state.retryTracks}> Retry </button>
+						<Button variant="ghost" size="sm" onclick={state.retryTracks}>Retry</Button>
 					</div>
 				</div>
 			{/if}
@@ -313,8 +381,6 @@
 		</div>
 	{/if}
 </div>
-
-<Toast bind:show={state.showToast} message={state.toastMessage} type={state.toastType} />
 
 {#if state.removeFileTarget}
 	<RemoveTrackFileDialog

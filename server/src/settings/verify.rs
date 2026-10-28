@@ -8,8 +8,9 @@
 //! 5xx, and never echo the URL or host.
 //!
 //! Probes reuse the production clients (media adapters, slskd and
-//! Usenet clients, the ListenBrainz verifier), so a passing verify
-//! means the same code path the app uses can reach the upstream. The
+//! Usenet clients, the provider clients for MusicBrainz, ListenBrainz,
+//! YouTube, Ticketmaster and Skiddle), so a passing verify means the same
+//! code path the app uses can reach the upstream. The
 //! [`VerifyProbes`] port keeps tests hermetic: HTTP tests run against
 //! scripted fakes while the live probes prove themselves against
 //! loopback stubs with explicit base URLs.
@@ -18,10 +19,23 @@ use std::time::Duration;
 
 use futures_util::future::BoxFuture;
 
-use super::error::SettingsError;
+use droppedneedle_auth::federated::settings::InstallIds;
+use droppedneedle_kernel::http_client::read_capped;
+use droppedneedle_kernel::runtime_config::settings_error::SettingsError;
+use droppedneedle_media::remotes::adapter::RemoteHandle;
+use droppedneedle_media::remotes::connections::{ConnectionResolver, ResolvedConnection};
+use droppedneedle_media::remotes::models::SourceName;
+use droppedneedle_providers::listenbrainz::ListenBrainzClient;
+use droppedneedle_providers::musicbrainz::{MbSource, MusicBrainzClient};
+use droppedneedle_providers::skiddle::SkiddleClient;
+use droppedneedle_providers::ticketmaster::TicketmasterClient;
+use droppedneedle_providers::youtube::YouTubeApi;
+use droppedneedle_providers::{ProviderError, Providers, RequestPriority, TransportKind};
 
 /// Per-probe HTTP budget, matching the v2 repositories.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Largest probe answer read.
+const MAX_PROBE_BODY_BYTES: usize = 4 * 1024 * 1024;
 
 /// Plain connection-test verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +44,8 @@ pub struct ProbeVerdict {
     pub valid: bool,
     /// Human summary.
     pub message: String,
+    /// The provider's own failure, when a provider call failed.
+    pub error: Option<ProviderError>,
 }
 
 impl ProbeVerdict {
@@ -38,6 +54,7 @@ impl ProbeVerdict {
         Self {
             valid: true,
             message: message.into(),
+            error: None,
         }
     }
 
@@ -46,6 +63,15 @@ impl ProbeVerdict {
         Self {
             valid: false,
             message: message.into(),
+            error: None,
+        }
+    }
+
+    /// Failing verdict from a provider call that failed with `error`.
+    pub fn provider_failed(message: impl Into<String>, error: ProviderError) -> Self {
+        Self {
+            error: Some(error),
+            ..Self::failed(message)
         }
     }
 }
@@ -159,8 +185,8 @@ pub struct NewznabVerdict {
 }
 
 /// Connection probes. Every method tests explicitly passed values;
-/// fixed-host upstreams take their base URL so tests point them at
-/// loopback stubs while production passes the module constants. All
+/// services at a fixed address are reached through their provider
+/// client, which knows where they live. All
 /// failures are verdicts, never errors: only the Plex library listing
 /// (a GET over stored config) fails the request.
 pub trait VerifyProbes: Send + Sync {
@@ -184,16 +210,15 @@ pub trait VerifyProbes: Send + Sync {
     /// ListenBrainz token (or username-only) check.
     fn listenbrainz<'a>(
         &'a self,
-        base: &'a str,
         username: &'a str,
         token: &'a str,
     ) -> BoxFuture<'a, ListenBrainzVerdict>;
     /// YouTube Data API key check.
-    fn youtube<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
+    fn youtube<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
     /// Ticketmaster Discovery key check.
-    fn ticketmaster<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
+    fn ticketmaster<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
     /// Skiddle events key check.
-    fn skiddle<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
+    fn skiddle<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict>;
     /// slskd session health.
     fn slskd<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, VersionVerdict>;
     /// SABnzbd version plus categories, completed dir, and the mount
@@ -208,23 +233,76 @@ pub trait VerifyProbes: Send + Sync {
     fn prowlarr<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, ProwlarrVerdict>;
     /// Newznab `t=caps`.
     fn newznab<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, NewznabVerdict>;
-    /// MusicBrainz-compatible artist lookup (official, mirror,
-    /// community, or the pinned BrainzMash endpoint).
-    fn musicbrainz<'a>(&'a self, api_url: &'a str) -> BoxFuture<'a, ProbeVerdict>;
+    /// MusicBrainz-compatible artist search against `source` (official,
+    /// a mirror, or the pinned BrainzMash endpoint), sent through that
+    /// source's own pacing.
+    fn musicbrainz<'a>(&'a self, source: &'a MbSource) -> BoxFuture<'a, ProbeVerdict>;
     /// OIDC issuer discovery document.
     fn oidc<'a>(&'a self, issuer: &'a str) -> BoxFuture<'a, ProbeVerdict>;
 }
 
-/// Live probes over one shared HTTP client.
+/// Live probes over one shared HTTP client and the provider clients.
 pub struct LiveProbes {
     /// Outbound client.
     pub http: reqwest::Client,
+    /// The MusicBrainz client, over the official, BrainzMash and mirror
+    /// rows.
+    pub musicbrainz: MusicBrainzClient,
+    /// The one ListenBrainz client, which checks ListenBrainz credentials.
+    pub listenbrainz: ListenBrainzClient,
+    /// The YouTube Data API client.
+    pub youtube: YouTubeApi,
+    /// The Ticketmaster client.
+    pub ticketmaster: TicketmasterClient,
+    /// The Skiddle client.
+    pub skiddle: SkiddleClient,
+    /// The install ids presented to Plex. Without them the Plex checks
+    /// present no client id.
+    install: Option<InstallIds>,
 }
 
 impl LiveProbes {
-    /// Build over the shared client.
-    pub fn new(http: reqwest::Client) -> Self {
-        Self { http }
+    /// Build over the shared client and the providers' clients.
+    pub fn new(http: reqwest::Client, providers: &Providers) -> Self {
+        Self {
+            http,
+            musicbrainz: providers.musicbrainz.clone(),
+            listenbrainz: providers.listenbrainz.clone(),
+            youtube: providers.youtube.clone(),
+            ticketmaster: providers.ticketmaster.clone(),
+            skiddle: providers.skiddle.clone(),
+            install: None,
+        }
+    }
+
+    /// Present this install's stored Plex client id from `ids`, as every
+    /// other Plex call does.
+    pub fn presenting(mut self, ids: InstallIds) -> Self {
+        self.install = Some(ids);
+        self
+    }
+
+    /// A client for submitted values, outside any user's read bound.
+    fn client(&self, source: SourceName, url: &str, credential: &str) -> RemoteHandle {
+        ConnectionResolver::unsaved_client(
+            &self.http,
+            ResolvedConnection::unsaved(source, url.to_owned(), credential.to_owned()),
+        )
+    }
+
+    /// A Plex client for submitted values, presenting the stored client id.
+    fn plex_client(&self, url: &str, token: &str) -> RemoteHandle {
+        ConnectionResolver::unsaved_client(
+            &self.http,
+            ResolvedConnection {
+                client_id: self
+                    .install
+                    .as_ref()
+                    .map(InstallIds::plex_client_id)
+                    .unwrap_or_default(),
+                ..ResolvedConnection::unsaved(SourceName::Plex, url.to_owned(), token.to_owned())
+            },
+        )
     }
 }
 
@@ -245,29 +323,76 @@ pub fn require_service_url(url: &str, label: &str) -> Result<String, SettingsErr
     Ok(trimmed.trim_end_matches('/').to_owned())
 }
 
-/// Collapse a transport error to one line. URLs and hosts never ride
-/// in probe errors: reqwest's display can embed them, so only the
-/// error kind is ever rendered.
-fn transport_kind(error: &reqwest::Error) -> &'static str {
-    if error.is_timeout() {
-        "timed out"
-    } else if error.is_connect() {
-        "connection refused"
-    } else if error.is_body() || error.is_decode() {
-        "unreadable response"
-    } else {
-        "request failed"
+/// The HTTP status behind a failed provider call, when it had one.
+fn status_of(error: &ProviderError) -> Option<u16> {
+    match error {
+        ProviderError::Unauthorized { .. } => Some(401),
+        ProviderError::Forbidden { .. } => Some(403),
+        ProviderError::NotFound { .. } => Some(404),
+        ProviderError::RateLimited { .. } => Some(429),
+        ProviderError::Unavailable { .. } => Some(503),
+        ProviderError::BadRequest { status, .. }
+        | ProviderError::Redirect { status, .. }
+        | ProviderError::Server { status, .. } => Some(*status),
+        ProviderError::Transport { .. }
+        | ProviderError::Payload { .. }
+        | ProviderError::Disabled { .. }
+        | ProviderError::NotConfigured { .. }
+        | ProviderError::Invalid { .. } => None,
+    }
+}
+
+/// The verdict when `service` asked us to slow down, or its row still
+/// rests after it did: the key may be fine, so say when to try again.
+fn asked_to_wait(service: &str, error: &ProviderError) -> Option<String> {
+    let ProviderError::RateLimited { retry_after, .. } = error else {
+        return None;
+    };
+    Some(match retry_after {
+        Some(wait) => {
+            let minutes = wait.as_secs().div_ceil(60).max(1);
+            let unit = if minutes == 1 { "minute" } else { "minutes" };
+            format!("{service} asked us to wait; try again in about {minutes} {unit}.")
+        }
+        None => format!("{service} asked us to wait; try again shortly."),
+    })
+}
+
+/// The YouTube verdict for a failed key check. Only the status or the
+/// kind of transport failure is rendered, never the URL, which holds the
+/// key.
+fn youtube_failure(error: &ProviderError) -> String {
+    if let Some(wait) = asked_to_wait("YouTube", error) {
+        return wait;
+    }
+    match error {
+        ProviderError::Forbidden { .. } => {
+            "API key is invalid or YouTube Data API is not enabled.".to_owned()
+        }
+        ProviderError::Transport { kind, .. } => {
+            let kind = match kind {
+                TransportKind::Timeout => "timed out",
+                TransportKind::Connect => "connection refused",
+                TransportKind::Other => "request failed",
+            };
+            format!("Connection error: {kind}.")
+        }
+        ProviderError::Payload { .. } => "Connection error: unreadable response.".to_owned(),
+        other => match status_of(other) {
+            Some(status) => format!("Unexpected response: {status}."),
+            None => "Connection error: request failed.".to_owned(),
+        },
     }
 }
 
 /// Map a media-adapter failure to a v2-shaped verdict message. The URL
 /// is never echoed.
 fn adapter_message(
-    error: &crate::remotes::adapter::AdapterError,
+    error: &droppedneedle_media::remotes::adapter::AdapterError,
     unconfigured: &str,
     auth: &str,
 ) -> String {
-    use crate::remotes::adapter::AdapterError as Source;
+    use droppedneedle_media::remotes::adapter::AdapterError as Source;
     match error {
         Source::NotConfigured => unconfigured.to_owned(),
         Source::Auth => auth.to_owned(),
@@ -290,7 +415,6 @@ fn adapter_message(
 impl VerifyProbes for LiveProbes {
     fn jellyfin<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, JellyfinVerdict> {
         Box::pin(async move {
-            use crate::remotes::jellyfin::JellyfinAdapter;
             if url.trim().is_empty() || key.is_empty() {
                 return JellyfinVerdict {
                     valid: false,
@@ -298,13 +422,8 @@ impl VerifyProbes for LiveProbes {
                     users: Vec::new(),
                 };
             }
-            let adapter = JellyfinAdapter::new(
-                self.http.clone(),
-                url.to_owned(),
-                key.to_owned(),
-                String::new(),
-            );
-            let message = match adapter.validate_connection().await {
+            let handle = self.client(SourceName::Jellyfin, url, key);
+            let message = match handle.validate_connection().await {
                 Ok(message) => message,
                 Err(error) => {
                     return JellyfinVerdict {
@@ -319,7 +438,10 @@ impl VerifyProbes for LiveProbes {
                 }
             };
             // The user list fails open: the connection verdict stands.
-            let users = jellyfin_users(&self.http, url, key).await;
+            let users = match handle.jellyfin("user list") {
+                Ok(adapter) => adapter.users().await.unwrap_or_default(),
+                Err(_) => Vec::new(),
+            };
             JellyfinVerdict {
                 valid: true,
                 message,
@@ -335,14 +457,18 @@ impl VerifyProbes for LiveProbes {
         password: &'a str,
     ) -> BoxFuture<'a, ProbeVerdict> {
         Box::pin(async move {
-            use crate::remotes::navidrome::NavidromeAdapter;
-            let adapter = NavidromeAdapter::new(
-                self.http.clone(),
-                url.to_owned(),
-                username.to_owned(),
-                password.to_owned(),
+            let handle = ConnectionResolver::unsaved_client(
+                &self.http,
+                ResolvedConnection {
+                    username: username.to_owned(),
+                    ..ResolvedConnection::unsaved(
+                        SourceName::Navidrome,
+                        url.to_owned(),
+                        password.to_owned(),
+                    )
+                },
             );
-            match adapter.validate_connection().await {
+            match handle.validate_connection().await {
                 Ok(message) => ProbeVerdict::ok(message),
                 Err(error) => ProbeVerdict::failed(adapter_message(
                     &error,
@@ -355,15 +481,8 @@ impl VerifyProbes for LiveProbes {
 
     fn plex<'a>(&'a self, url: &'a str, token: &'a str) -> BoxFuture<'a, PlexVerdict> {
         Box::pin(async move {
-            use crate::remotes::plex::PlexAdapter;
-            let adapter = PlexAdapter::new(
-                self.http.clone(),
-                url.to_owned(),
-                token.to_owned(),
-                String::new(),
-                Vec::new(),
-            );
-            let message = match adapter.validate_connection().await {
+            let handle = self.plex_client(url, token);
+            let message = match handle.validate_connection().await {
                 Ok(message) => message,
                 Err(error) => {
                     return PlexVerdict {
@@ -378,7 +497,10 @@ impl VerifyProbes for LiveProbes {
                 }
             };
             // The library list fails open: the connection verdict stands.
-            let libraries = adapter.music_libraries().await.unwrap_or_default();
+            let libraries = match handle.plex("music libraries") {
+                Ok(adapter) => adapter.music_libraries().await.unwrap_or_default(),
+                Err(_) => Vec::new(),
+            };
             PlexVerdict {
                 valid: true,
                 message,
@@ -393,36 +515,29 @@ impl VerifyProbes for LiveProbes {
         token: &'a str,
     ) -> BoxFuture<'a, Result<Vec<(String, String)>, String>> {
         Box::pin(async move {
-            use crate::remotes::plex::PlexAdapter;
             if url.trim().is_empty() || token.is_empty() {
                 return Err("Plex is not configured.".to_owned());
             }
-            let adapter = PlexAdapter::new(
-                self.http.clone(),
-                url.to_owned(),
-                token.to_owned(),
-                String::new(),
-                Vec::new(),
-            );
-            adapter
-                .music_libraries()
-                .await
-                .map_err(|_| "Could not fetch libraries from Plex.".to_owned())
+            let handle = self.plex_client(url, token);
+            let libraries = match handle.plex("music libraries") {
+                Ok(adapter) => adapter.music_libraries().await,
+                Err(error) => Err(error),
+            };
+            libraries.map_err(|_| "Could not fetch libraries from Plex.".to_owned())
         })
     }
 
     fn listenbrainz<'a>(
         &'a self,
-        base: &'a str,
         username: &'a str,
         token: &'a str,
     ) -> BoxFuture<'a, ListenBrainzVerdict> {
         Box::pin(async move {
-            use crate::providers::listenbrainz::{
-                HttpListenBrainzVerifier, ListenBrainzVerifier as _,
-            };
-            let verifier = HttpListenBrainzVerifier::new(self.http.clone(), base);
-            let outcome = verifier.verify(username, token).await;
+            // An admin waits on the Verify button.
+            let outcome = self
+                .listenbrainz
+                .verify(username, token, RequestPriority::UserInitiated)
+                .await;
             ListenBrainzVerdict {
                 valid: outcome.valid,
                 message: outcome.message,
@@ -431,96 +546,66 @@ impl VerifyProbes for LiveProbes {
         })
     }
 
-    fn youtube<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+    fn youtube<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
         Box::pin(async move {
             if key.trim().is_empty() {
                 return ProbeVerdict::failed("An API key is required.");
             }
-            let url = format!("{}/youtube/v3/videos", base.trim_end_matches('/'));
-            let response = self
-                .http
-                .get(&url)
-                .query(&[("part", "id"), ("id", "dQw4w9WgXcQ"), ("key", key.trim())])
-                .timeout(PROBE_TIMEOUT)
-                .send()
-                .await;
-            match response {
-                Ok(response) if response.status().is_success() => {
-                    ProbeVerdict::ok("YouTube API key is valid.")
-                }
-                Ok(response) if response.status() == reqwest::StatusCode::FORBIDDEN => {
-                    ProbeVerdict::failed("API key is invalid or YouTube Data API is not enabled.")
-                }
-                Ok(response) => ProbeVerdict::failed(format!(
-                    "Unexpected response: {}.",
-                    response.status().as_u16()
-                )),
-                Err(error) => {
-                    ProbeVerdict::failed(format!("Connection error: {}.", transport_kind(&error)))
-                }
-            }
-        })
-    }
-
-    fn ticketmaster<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
-        Box::pin(async move {
-            if key.trim().is_empty() {
-                return ProbeVerdict::failed("An API key is required.");
-            }
-            let url = format!("{}/attractions.json", base.trim_end_matches('/'));
-            let reached = self
-                .http
-                .get(&url)
-                .query(&[("keyword", "test"), ("size", "1"), ("apikey", key.trim())])
-                .timeout(PROBE_TIMEOUT)
-                .send()
+            // An admin waits on the Verify button.
+            match self
+                .youtube
+                .check_key(key.trim(), RequestPriority::UserInitiated)
                 .await
-                .is_ok_and(|response| response.status().is_success());
-            if reached {
-                ProbeVerdict::ok("Connected to Ticketmaster.")
-            } else {
-                ProbeVerdict::failed("Ticketmaster rejected the key or is unreachable.")
+            {
+                Ok(()) => ProbeVerdict::ok("YouTube API key is valid."),
+                Err(error) => ProbeVerdict::failed(youtube_failure(&error)),
             }
         })
     }
 
-    fn skiddle<'a>(&'a self, base: &'a str, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+    fn ticketmaster<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
         Box::pin(async move {
             if key.trim().is_empty() {
                 return ProbeVerdict::failed("An API key is required.");
             }
-            let url = format!("{}/events/search/", base.trim_end_matches('/'));
-            let response = self
-                .http
-                .get(&url)
-                .query(&[("limit", "1"), ("api_key", key.trim())])
-                .timeout(PROBE_TIMEOUT)
-                .send()
+            let checked = self
+                .ticketmaster
+                .check_key(key.trim(), RequestPriority::UserInitiated)
                 .await;
-            let ok = match response {
-                Ok(response) => {
-                    if !response.status().is_success() {
-                        false
-                    } else {
-                        decode_body(response)
-                            .await
-                            .and_then(|body| body.get("error").and_then(|error| error.as_i64()))
-                            == Some(0)
-                    }
+            match checked {
+                Ok(()) => ProbeVerdict::ok("Connected to Ticketmaster."),
+                Err(error) => {
+                    ProbeVerdict::failed(asked_to_wait("Ticketmaster", &error).unwrap_or_else(
+                        || "Ticketmaster rejected the key or is unreachable.".to_owned(),
+                    ))
                 }
-                Err(_) => false,
-            };
-            if ok {
-                ProbeVerdict::ok("Connected to Skiddle.")
-            } else {
-                ProbeVerdict::failed("Skiddle rejected the key or is unreachable.")
+            }
+        })
+    }
+
+    fn skiddle<'a>(&'a self, key: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+        Box::pin(async move {
+            if key.trim().is_empty() {
+                return ProbeVerdict::failed("An API key is required.");
+            }
+            let checked = self
+                .skiddle
+                .check_key(key.trim(), RequestPriority::UserInitiated)
+                .await;
+            match checked {
+                Ok(()) => ProbeVerdict::ok("Connected to Skiddle."),
+                Err(error) => {
+                    ProbeVerdict::failed(asked_to_wait("Skiddle", &error).unwrap_or_else(|| {
+                        "Skiddle rejected the key or is unreachable.".to_owned()
+                    }))
+                }
             }
         })
     }
 
     fn slskd<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, VersionVerdict> {
         Box::pin(async move {
-            use crate::acquire::slskd::{
+            use droppedneedle_acquire::slskd::{
                 ReqwestSlskdHttp, SlskdClient, policy::DownloadPolicy as SlskdPolicy,
                 repository::SlskdRepository,
             };
@@ -557,7 +642,7 @@ impl VerifyProbes for LiveProbes {
         downloads_mount: &'a str,
     ) -> BoxFuture<'a, SabnzbdVerdict> {
         Box::pin(async move {
-            use crate::acquire::usenet::{
+            use droppedneedle_acquire::usenet::{
                 policy::UsenetPolicy,
                 sabnzbd::{SabnzbdClient, SabnzbdQueue},
             };
@@ -643,7 +728,7 @@ impl VerifyProbes for LiveProbes {
 
     fn prowlarr<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, ProwlarrVerdict> {
         Box::pin(async move {
-            use crate::acquire::usenet::prowlarr::ProwlarrClient;
+            use droppedneedle_acquire::usenet::prowlarr::ProwlarrClient;
             if url.trim().is_empty() || key.is_empty() {
                 return ProwlarrVerdict {
                     valid: false,
@@ -684,7 +769,7 @@ impl VerifyProbes for LiveProbes {
 
     fn newznab<'a>(&'a self, url: &'a str, key: &'a str) -> BoxFuture<'a, NewznabVerdict> {
         Box::pin(async move {
-            use crate::acquire::usenet::newznab::NewznabClient;
+            use droppedneedle_acquire::usenet::newznab::NewznabClient;
             if url.trim().is_empty() {
                 return NewznabVerdict {
                     valid: false,
@@ -733,25 +818,26 @@ impl VerifyProbes for LiveProbes {
         })
     }
 
-    fn musicbrainz<'a>(&'a self, api_url: &'a str) -> BoxFuture<'a, ProbeVerdict> {
+    fn musicbrainz<'a>(&'a self, source: &'a MbSource) -> BoxFuture<'a, ProbeVerdict> {
         Box::pin(async move {
-            let url = format!("{}/artist", api_url.trim_end_matches('/'));
-            let response = self
-                .http
-                .get(&url)
-                .query(&[("query", "test"), ("limit", "1"), ("fmt", "json")])
-                .timeout(PROBE_TIMEOUT)
-                .send()
+            // An admin waits on the Test Connection button.
+            let checked = self
+                .musicbrainz
+                .fixed(source.clone(), RequestPriority::UserInitiated)
+                .check_reachable()
                 .await;
-            match response {
-                Ok(response) if response.status().is_success() => {
-                    ProbeVerdict::ok("Connected to MusicBrainz.")
-                }
-                Ok(response) => ProbeVerdict::failed(format!(
-                    "MusicBrainz verification returned HTTP {}.",
-                    response.status().as_u16()
-                )),
-                Err(_) => ProbeVerdict::failed("Could not connect to MusicBrainz."),
+            match checked {
+                Ok(()) => ProbeVerdict::ok("Connected to MusicBrainz."),
+                Err(error) => ProbeVerdict::provider_failed(
+                    asked_to_wait("MusicBrainz", &error)
+                        .or_else(|| {
+                            status_of(&error).map(|status| {
+                                format!("MusicBrainz verification returned HTTP {status}.")
+                            })
+                        })
+                        .unwrap_or_else(|| "Could not connect to MusicBrainz.".to_owned()),
+                    error,
+                ),
             }
         })
     }
@@ -763,14 +849,15 @@ impl VerifyProbes for LiveProbes {
                 return ProbeVerdict::failed("Issuer URL is required.");
             }
             // Same transport rule the login applies, so Test fails early.
-            if let Err(reason) = crate::auth::federated::transport::check_provider_url(issuer).await
+            if let Err(reason) =
+                droppedneedle_auth::federated::transport::check_provider_url(issuer).await
             {
                 return ProbeVerdict::failed(reason);
             }
             let url = format!(
                 "{}{}",
                 issuer.trim_end_matches('/'),
-                crate::auth::federated::oidc::DISCOVERY_SUFFIX
+                droppedneedle_auth::federated::oidc::DISCOVERY_SUFFIX
             );
             let response = self.http.get(&url).timeout(PROBE_TIMEOUT).send().await;
             match response {
@@ -826,8 +913,8 @@ async fn newznab_failure(
 /// Prowlarr failure mapping: auth and rate-limit verdicts name the
 /// cause; anything else is a reachability verdict. The URL is never
 /// echoed.
-fn prowlarr_failure(error: &crate::acquire::usenet::prowlarr::ProwlarrError) -> ProwlarrVerdict {
-    use crate::acquire::usenet::prowlarr::ProwlarrError as Source;
+fn prowlarr_failure(error: &droppedneedle_acquire::client_error::ClientError) -> ProwlarrVerdict {
+    use droppedneedle_acquire::client_error::ClientError as Source;
     let message = match error {
         Source::Auth { .. } => {
             "Prowlarr rejected the API key. Check the key in Prowlarr.".to_owned()
@@ -845,46 +932,11 @@ fn prowlarr_failure(error: &crate::acquire::usenet::prowlarr::ProwlarrError) -> 
     }
 }
 
-/// Decode a JSON body. The reqwest `json` feature is off, so this
-/// reads bytes and decodes with serde directly; anything unreadable
-/// is `None`.
+/// Decode a JSON body read under the probe cap; anything unreadable or
+/// too large is `None`.
 async fn decode_body(response: reqwest::Response) -> Option<serde_json::Value> {
-    let bytes = response.bytes().await.ok()?;
+    let bytes = read_capped(response, MAX_PROBE_BODY_BYTES).await.ok()?;
     serde_json::from_slice(&bytes).ok()
-}
-
-/// Jellyfin `/Users` as `(id, name)` pairs. Fails open to empty: the
-/// connection verdict stands without the picker.
-async fn jellyfin_users(http: &reqwest::Client, url: &str, key: &str) -> Vec<(String, String)> {
-    let response = http
-        .get(format!("{}/Users", url.trim_end_matches('/')))
-        .header(
-            reqwest::header::AUTHORIZATION,
-            format!("MediaBrowser Token=\"{key}\""),
-        )
-        .timeout(PROBE_TIMEOUT)
-        .send()
-        .await;
-    let body: serde_json::Value = match response {
-        Ok(response) if response.status().is_success() => match decode_body(response).await {
-            Some(body) => body,
-            None => return Vec::new(),
-        },
-        _ => return Vec::new(),
-    };
-    body.as_array()
-        .cloned()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|user| {
-            let id = user.get("Id")?.as_str()?;
-            let name = user.get("Name")?.as_str().unwrap_or("");
-            if id.is_empty() {
-                return None;
-            }
-            Some((id.to_owned(), name.to_owned()))
-        })
-        .collect()
 }
 
 /// A bare site URL (no path) is almost never the Newznab endpoint: the
@@ -905,18 +957,21 @@ fn api_path_suggestion(url: &str) -> Option<String> {
 /// auth error, or a rate limit all mean the API was reached; anything
 /// else means the suggestion is wrong too.
 async fn reaches_newznab(http: &reqwest::Client, url: &str, key: &str) -> bool {
-    use crate::acquire::usenet::newznab::{NewznabClient, NewznabError};
+    use droppedneedle_acquire::client_error::ClientError;
+    use droppedneedle_acquire::usenet::newznab::{NewznabClient, NewznabError};
     let client = NewznabClient::new(http.clone(), url, key, "", "");
     match client.caps(PROBE_TIMEOUT).await {
         Ok(caps) => !caps_are_empty(&caps),
-        Err(NewznabError::Auth { .. } | NewznabError::RateLimited { .. }) => true,
+        Err(NewznabError::Client(ClientError::Auth { .. } | ClientError::RateLimited { .. })) => {
+            true
+        }
         Err(_) => false,
     }
 }
 
 /// Empty caps (no server, no searching, no categories) mean the URL
 /// answered something other than a caps document.
-fn caps_are_empty(caps: &crate::acquire::usenet::newznab::NewznabCaps) -> bool {
+fn caps_are_empty(caps: &droppedneedle_acquire::usenet::newznab::NewznabCaps) -> bool {
     caps.server_title.is_none()
         && caps.server_version.is_none()
         && !caps.supports_audio_search

@@ -1,16 +1,13 @@
-/** Album vs track request lane, carried on request query strings. */
-export type RequestKind = 'album' | 'track';
-
 export const AUTH_FREE_PATHS = ['/login', '/setup', '/auth/callback', '/recover-password'];
 
-// concert distances are stored in km but displayed in miles (owner decision U6)
+// concert distances are stored in km but displayed in miles
 export const KM_PER_MILE = 1.609;
 
 const CACHE_KEY_GROUPS = {
 	core: {
 		RECENTLY_ADDED: 'droppedneedle_recently_added',
 		HOME_CACHE: 'droppedneedle_home_cache',
-		DISCOVER_QUEUE: 'droppedneedle_discover_queue',
+		DISCOVER_QUEUE: 'droppedneedle_discover_deck',
 		SEARCH: 'droppedneedle_search_cache'
 	},
 	library: {
@@ -25,12 +22,6 @@ const CACHE_KEY_GROUPS = {
 		LOCAL_FILES_ALBUMS_LIST: 'droppedneedle_local_files_albums_list'
 	},
 	detail: {
-		ALBUM_BASIC_CACHE: 'droppedneedle_album_basic_cache',
-		ALBUM_TRACKS_CACHE: 'droppedneedle_album_tracks_cache',
-		ALBUM_DISCOVERY_CACHE: 'droppedneedle_album_discovery_cache',
-		ALBUM_LASTFM_CACHE: 'droppedneedle_album_lastfm_cache',
-		ALBUM_YOUTUBE_CACHE: 'droppedneedle_album_youtube_cache',
-		ALBUM_SOURCE_MATCH_CACHE: 'droppedneedle_album_source_match_cache',
 		ARTIST_BASIC_CACHE: 'droppedneedle_artist_basic_cache',
 		ARTIST_EXTENDED_CACHE: 'droppedneedle_artist_extended_cache',
 		ARTIST_LASTFM_CACHE: 'droppedneedle_artist_lastfm_cache'
@@ -71,12 +62,6 @@ const CACHE_TTL_GROUPS = {
 	},
 	library: {
 		LOCAL_FILES_SIDEBAR: 2 * 60 * 1000,
-		JELLYFIN_SIDEBAR: 2 * 60 * 1000,
-		JELLYFIN_ALBUMS_LIST: 2 * 60 * 1000,
-		NAVIDROME_SIDEBAR: 2 * 60 * 1000,
-		NAVIDROME_ALBUMS_LIST: 2 * 60 * 1000,
-		PLEX_SIDEBAR: 2 * 60 * 1000,
-		PLEX_ALBUMS_LIST: 2 * 60 * 1000,
 		LOCAL_FILES_ALBUMS_LIST: 2 * 60 * 1000,
 		PLAYLIST_SOURCES: 15 * 60 * 1000
 	},

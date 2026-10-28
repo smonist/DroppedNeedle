@@ -1,51 +1,83 @@
-//! Router assembly. Registration order matters and is documented here:
-//! specific routes first, then the conditional test hooks, then the 404 and
-//! 405 fallbacks. The request-scope layer wraps everything including the
-//! fallbacks.
+//! Router assembly, and the order a request passes through, outermost
+//! first:
 //!
-//! The `/api/v3` router carries two middleware layers, innermost first:
-//! the rate limiter, then the deny-by-default session gate, so the limiter
-//! keys signed-in callers by user and everyone else by client address. The
-//! debug-only CORS layer mounts outermost and only when the constructor
-//! enables it.
+//! 1. HSTS, so every response can carry the header, the 404 outside the
+//!    base included. It adds one only when the Security settings ask.
+//! 2. The base-path split. `BASE_PATH` is stripped once, on a segment
+//!    boundary, so everything below (layers, session gate, routes, web UI)
+//!    sees base-relative paths. A request outside the base gets the 404
+//!    envelope, with its own request scope and content-security header.
+//! 3. The content-security layer (every native response; the compat shims
+//!    are left alone), compression, and `request_scope` (request id, span,
+//!    the 5xx boundary). They wrap steps 4 and 5, fallbacks included.
+//! 4. Pre-routing. On a compat path (`/subsonic`, `/jellyfin`, in any
+//!    case) a preflight answers 204 with compat CORS before auth, a
+//!    case-variant path is rewritten to the casing its compat route
+//!    recorded (Feishin posts lower-case Jellyfin paths), and every answer
+//!    carries compat CORS, so a native 404 or 405 there looks like a
+//!    disabled protocol's 404 and the enabled protocols cannot be
+//!    enumerated. Any other path goes through the debug-only CORS layer
+//!    when the constructor enables it.
+//! 5. The router: the routes, a plain 404 fallback that serves the web UI
+//!    for a GET outside the API and compat paths, and a plain 405.
 //!
-//! The wrapped trio nests under `/api/v3` on its own router outside the
-//! session gate: its `X-Wrapped-API-Key` extractor is the only credential,
-//! and allowlisting those paths would wrongly make them public. It keeps
-//! the shared rate limiter.
+//! Step 4 has to come before routing. The router's
+//! `method_not_allowed_fallback` replaces every route's default method
+//! fallback, layered ones included, so no layer on an inner router sees an
+//! OPTIONS or wrong-method request on an existing path: it goes straight to
+//! the 405. A layer also runs after its route matched, so a path it
+//! rewrote would never match again. Subsonic keeps its own 405 envelope
+//! because it sets its fallback before its layers, and a fallback that is
+//! not the default is never replaced.
 //!
-//! The compat shims (`/subsonic`, `/jellyfin`) merge outside the session
-//! gate too: they carry their own app-password auth plus the compat layers
-//! (CORS, limits), and never inherit `/api` session auth. Case-variant
-//! compat paths and preflights match no route, so the 404/405 fallbacks
-//! redispatch them into the compat router (preflight 204, canonical
-//! rewrite) before answering natively. Native OPTIONS preflights on
-//! existing paths land in the 405 fallback too, so under debug CORS it
-//! answers them directly with the pinned localhost headers.
-//!
-//! The web UI is the last stop of the 404 fallback: after the compat
-//! redispatch, a GET that is not an API path gets a static file or the
-//! SPA `index.html`. Everything above sits under `BASE_PATH` when one is
-//! set: the prefix is stripped once, up front, so routes, the session gate
-//! and the UI all see the same base-relative path, and requests outside
-//! the base get the 404 envelope.
-//!
-//! The HSTS layer is the outermost of all, outside the base-path split, so
-//! every response can carry the header: routes, fallbacks, the web UI, the
-//! compat shims and the 404 outside the base. It only adds a header and
-//! only when the Security settings ask for it.
+//! Inside the router, matching does not follow registration order (an
+//! overlap panics at build). Every route is registered through the kernel's
+//! mount API (`route_gate` in the server tests refuses any other). What is
+//! load-bearing is which layers wrap which routes:
+//! - Areas declare their routes as [`Routes`], in posture groups (public,
+//!   user, curator, admin, own credential), and [`mount`] lists them once.
+//!   Each group is layered on its own and merged at the root: the user,
+//!   curator and admin groups get the rate limiter, then the session gate
+//!   outside it, so the limiter keys signed-in callers by user; the public
+//!   group gets the limiter alone. The API document comes from the same
+//!   list.
+//! - A path may carry methods from several groups (a user GET beside an
+//!   admin DELETE); each method keeps its own group's layers.
+//! - The wrapped trio is the wrapped-key group: outside the session gate,
+//!   with the shared rate limiter alone. Its `X-Wrapped-API-Key` extractor
+//!   is the only credential, and moving those routes to the public group
+//!   would wrongly make them public.
+//! - The callbacks at their old paths (the v1 Spotify and MusicBrainz
+//!   contribution ones, the v2 OIDC one) stay plain routers outside the
+//!   session gate, rate-limited like the public group, until they are
+//!   removed.
+//! - The compat shims register through the compat mount and merge outside
+//!   the session gate too: they carry their own app-password auth plus the
+//!   compat layers (CORS, limits), and never inherit `/api` session auth.
 
-use axum::{Router, extract::Request, middleware, response::IntoResponse, routing::get};
+use axum::{Router, extract::Request, middleware, response::IntoResponse};
+use tower::{Layer as _, ServiceExt as _};
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 
 use crate::{
-    auth::session::{middleware::require_session, rate_limit::rate_limit},
-    compat::http::fallback_redispatch,
     handlers,
-    middleware::{TransportSecurity, request_scope, strict_transport_security},
+    middleware::request_scope,
+    security_headers::{
+        ContentSecurity, TransportSecurity, content_security, strict_transport_security,
+    },
     state::AppState,
     web::WebUi,
 };
+use droppedneedle_auth::session::{
+    event_stream, middleware::require_session, rate_limit::rate_limit,
+};
+use droppedneedle_catalog::reads;
+use droppedneedle_compat::{
+    http::{canonicalize_case, preflight, stamp_cors},
+    shared::path_case::is_compat_path,
+};
+use droppedneedle_kernel::mount::{Postures, Routes, routes};
+use utoipa::openapi::OpenApi;
 
 /// Build the application router without a web UI.
 pub fn create_app(state: AppState) -> Router {
@@ -58,31 +90,35 @@ pub fn create_app_with_web(state: AppState, web: Option<WebUi>) -> Router {
     let base_path = state.config.base_path.clone();
     let outside_base = Router::new()
         .fallback(handlers::fallback_404)
-        .layer(middleware::from_fn_with_state(state.clone(), request_scope));
+        .layer(middleware::from_fn_with_state(state.clone(), request_scope))
+        .layer(middleware::from_fn_with_state(
+            ContentSecurity::from_state(&state),
+            content_security,
+        ));
     let hsts = middleware::from_fn_with_state(
         TransportSecurity::from_state(&state),
         strict_transport_security,
     );
-    let app = base_relative_app(state, web);
+    let app = pre_routing(&state, routes(&state, web))
+        .layer(middleware::from_fn_with_state(state.clone(), request_scope))
+        .layer(compression_layer())
+        .layer(middleware::from_fn_with_state(
+            ContentSecurity::from_state(&state),
+            content_security,
+        ));
     let app = if base_path.is_empty() {
         app
     } else {
         // Strip the base by hand rather than with `Router::nest`, which
         // does not route `{base}/` (the SPA's own root URL) into the app.
         Router::new().fallback(move |request: Request| async move {
-            use tower::ServiceExt as _;
-
-            let target = match base_relative_uri(&base_path, request.uri()) {
+            match base_relative_uri(&base_path, request.uri()) {
                 Some(uri) => {
                     let (mut parts, body) = request.into_parts();
                     parts.uri = uri;
-                    app.oneshot(Request::from_parts(parts, body)).await
+                    answer(app.oneshot(Request::from_parts(parts, body)).await)
                 }
-                None => outside_base.oneshot(request).await,
-            };
-            match target {
-                Ok(response) => response,
-                Err(never) => match never {},
+                None => answer(outside_base.oneshot(request).await),
             }
         })
     };
@@ -106,54 +142,233 @@ fn base_relative_uri(base_path: &str, uri: &axum::http::Uri) -> Option<axum::htt
     target.parse().ok()
 }
 
-/// Every route, fallback and layer, at base-relative paths.
-fn base_relative_app(state: AppState, web: Option<WebUi>) -> Router {
-    let mut v3 = Router::new()
-        .nest(
-            "/api/v3",
-            state
-                .auth
-                .router()
-                .merge(state.reads.gated_router())
-                .merge(state.media.gated_router())
-                .merge(state.acquire.gated_router())
-                .merge(state.library.gated_router())
-                .merge(state.admin.gated_router())
-                .merge(state.plugins.gated_router())
-                .merge(state.settings.gated_router())
-                .merge(state.settings.me_router())
-                .merge(state.jobs.settings_router())
-                .merge(state.concerts.gated_router())
-                .merge(crate::events::router(
-                    state.events.clone(),
-                    crate::events::session_check(state.auth.session_auth.store.clone()),
-                )),
+/// The pre-routing step in front of `routes` (step 4 in the module docs).
+fn pre_routing(state: &AppState, routes: Router) -> Router {
+    let native = if state.config.debug_cors {
+        Router::new().fallback_service(debug_cors_layer().layer(routes.clone()))
+    } else {
+        routes.clone()
+    };
+    let templates = state.compat.templates();
+    Router::new().fallback(move |mut request: Request| async move {
+        if !is_compat_path(request.uri().path()) {
+            return answer(native.oneshot(request).await);
+        }
+        if let Some(preflight) = preflight(&request) {
+            return preflight;
+        }
+        canonicalize_case(&templates, &mut request);
+        let mut response = answer(routes.oneshot(request).await);
+        stamp_cors(&mut response);
+        response
+    })
+}
+
+/// The response of a service that cannot fail.
+fn answer(
+    result: Result<axum::response::Response, std::convert::Infallible>,
+) -> axum::response::Response {
+    match result {
+        Ok(response) => response,
+        Err(never) => match never {},
+    }
+}
+
+/// Every area mounted through [`Routes`], listed once. Serving and the API
+/// document both read this list.
+fn mount(m: Mount<'_>) -> Mount<'_> {
+    m.area(server_routes(), |_| ())
+        .area(crate::admin::routes(), |state| state.admin.clone())
+        .area(crate::settings::wiring::routes(), |state| {
+            state.settings.clone()
+        })
+        .area(droppedneedle_plugins::wiring::routes(), |state| {
+            state.plugins.clone()
+        })
+        .area(droppedneedle_auth::wiring::routes(), |state| {
+            state.auth.clone()
+        })
+        .area(event_stream::routes(), |state| {
+            event_stream::StreamRoute::new(
+                state.events.clone(),
+                event_stream::session_check(
+                    state.auth.session_auth.store.clone(),
+                    state.auth.session_auth.clock.clone(),
+                ),
+            )
+        })
+        .area(droppedneedle_media::routes(), |state| state.media.clone())
+        .area(
+            droppedneedle_media::remotes::playlist_sync::routes(),
+            |state| state.jobs.playlist_sync(),
         )
-        .merge(state.reads.search_router())
-        .layer(middleware::from_fn_with_state(
+        .area(droppedneedle_library::wiring::routes(), |state| {
+            state.library_services.clone()
+        })
+        .area(reads::library::routes(), |state| {
+            state.reads.library.clone()
+        })
+        .area(reads::discover::routes(), |state| {
+            state.reads.discover.clone()
+        })
+        .area(reads::collections::routes(), |state| {
+            state.reads.collections.clone()
+        })
+        .area(reads::platform::covers::routes(), |state| {
+            state.reads.platform.covers.clone()
+        })
+        .area(reads::platform::version::routes(), |state| {
+            state.reads.platform.version.clone()
+        })
+        .area(reads::platform::wrapped::routes(), |state| {
+            state.reads.platform.wrapped.clone()
+        })
+        .area(reads::youtube::routes(), |state| {
+            state.reads.youtube.clone()
+        })
+        .area(reads::search::routes(), |state| state.reads.search.clone())
+        .optional_area(reads::catalog::routes(), |state| {
+            state.reads.catalog.clone()
+        })
+        .optional_area(
+            droppedneedle_catalog::concerts::handlers::routes(),
+            |state| state.concerts.service(),
+        )
+        .area(droppedneedle_acquire::requests::routes(), |state| {
+            state.acquire.requests.clone()
+        })
+        .area(droppedneedle_acquire::follows::routes(), |state| {
+            state.acquire.requests.follows.clone()
+        })
+        .area(droppedneedle_acquire::downloads::routes(), |state| {
+            state.acquire.downloads_routes()
+        })
+        .area(droppedneedle_acquire::downloads::search_routes(), |state| {
+            state.acquire.search_jobs.clone()
+        })
+        .area(
+            droppedneedle_acquire::drop_import::http::routes(),
+            |state| state.acquire.drops.clone(),
+        )
+        .area(droppedneedle_acquire::held::http::routes(), |state| {
+            state.acquire.held.clone()
+        })
+        .area(
+            droppedneedle_acquire::imports::handlers::routes(),
+            |state| state.acquire.imports.clone(),
+        )
+}
+
+/// The server crate's own routes.
+fn server_routes() -> Routes {
+    Routes::new()
+        .public(routes!(handlers::health))
+        .public(routes!(handlers::openapi_json))
+}
+
+/// The document entries of every mounted area, built without state.
+pub(crate) fn document() -> OpenApi {
+    mount(Mount::document()).document
+}
+
+/// Collects the areas: their routes when serving, their document always.
+struct Mount<'a> {
+    state: Option<&'a AppState>,
+    routes: Routes,
+    document: OpenApi,
+}
+
+impl<'a> Mount<'a> {
+    fn serve(state: &'a AppState) -> Self {
+        Self {
+            state: Some(state),
+            routes: Routes::new(),
+            document: OpenApi::default(),
+        }
+    }
+
+    fn document() -> Self {
+        Self {
+            state: None,
+            routes: Routes::new(),
+            document: OpenApi::default(),
+        }
+    }
+
+    fn area<S: Clone + Send + Sync + 'static>(
+        mut self,
+        routes: Routes<S>,
+        state: impl FnOnce(&AppState) -> S,
+    ) -> Self {
+        self.document.merge(routes.openapi());
+        if let Some(app) = self.state {
+            self.routes = self.routes.merge(routes.with_state(state(app)));
+        }
+        self
+    }
+
+    /// An area whose state is absent on an unwired setup: always in the
+    /// document, served only when the state is there.
+    fn optional_area<S: Clone + Send + Sync + 'static>(
+        mut self,
+        routes: Routes<S>,
+        state: impl FnOnce(&AppState) -> Option<S>,
+    ) -> Self {
+        self.document.merge(routes.openapi());
+        if let Some(served) = self.state.and_then(state) {
+            self.routes = self.routes.merge(routes.with_state(served));
+        }
+        self
+    }
+}
+
+/// Each posture group with its own layers, merged at the root. User,
+/// curator and admin routes get the rate limiter inside the session gate,
+/// so the limiter keys signed-in callers by user; public and wrapped-key
+/// routes get the limiter alone, keyed by client address. A group with no
+/// routes is left out: `route_layer` refuses an empty router.
+fn layered(state: &AppState, routes: Routes) -> Router {
+    let Postures {
+        public,
+        user,
+        curator,
+        admin,
+        wrapped_key,
+    } = routes.into_postures();
+    let limited = |group: Router| {
+        group.route_layer(middleware::from_fn_with_state(
             state.auth.limits.clone(),
             rate_limit,
         ))
-        .layer(middleware::from_fn_with_state(
-            state.auth.session_auth.clone(),
-            require_session,
-        ));
-    if state.config.debug_cors {
-        v3 = v3.layer(debug_cors_layer());
+    };
+    let mut app = Router::new();
+    for group in [public, wrapped_key] {
+        let group = Router::from(group);
+        if group.has_routes() {
+            app = app.merge(limited(group));
+        }
     }
-    let wrapped = Router::new()
-        .nest("/api/v3", state.reads.wrapped_router())
-        .layer(middleware::from_fn_with_state(
-            state.auth.limits.clone(),
-            rate_limit,
-        ));
-    // Spotify OAuth and MusicBrainz contribution callbacks: outside the
-    // session gate (token identified), still rate-limited like the
-    // wrapped trio.
-    let acquire_public = Router::new()
-        .nest("/api/v3", state.acquire.callback_router())
-        .merge(state.acquire.legacy_callback_router())
-        .merge(state.library.contrib_callback_router())
+    for group in [user, curator, admin] {
+        let group = Router::from(group);
+        if group.has_routes() {
+            app = app.merge(limited(group).route_layer(middleware::from_fn_with_state(
+                state.auth.session_auth.clone(),
+                require_session,
+            )));
+        }
+    }
+    app
+}
+
+/// Every route and the 404 and 405 fallbacks, at base-relative paths.
+fn routes(state: &AppState, web: Option<WebUi>) -> Router {
+    let mounted = layered(state, mount(Mount::serve(state)).routes);
+    // The v1 Spotify and MusicBrainz contribution callbacks: outside the
+    // session gate (token identified), rate-limited like the public group.
+    let legacy_callbacks = state
+        .acquire
+        .legacy_callback_router()
+        .merge(state.library_services.legacy_contrib_callback_router())
         .layer(middleware::from_fn_with_state(
             state.auth.limits.clone(),
             rate_limit,
@@ -167,25 +382,22 @@ fn base_relative_app(state: AppState, web: Option<WebUi>) -> Router {
             state.auth.limits.clone(),
             rate_limit,
         ));
-    let app = Router::new()
-        .route(
-            "/health",
-            get(handlers::health).with_state(state.admin.checkpoint.clone()),
-        )
-        .route("/openapi.json", get(handlers::openapi_json))
-        .merge(v3)
-        .merge(wrapped)
-        .merge(acquire_public)
+    let app = mounted
+        .merge(legacy_callbacks)
         .merge(oidc_legacy)
         .merge(state.compat.router());
     // Dev-only tooling routes (covers-debug). The debug-build gate
     // compiles this mount out of release binaries entirely, so no
     // production process can serve tooling however it was configured.
     #[cfg(debug_assertions)]
-    let app = if crate::tooling::covers_debug::tooling_routes_enabled(&state.config) {
-        app.merge(crate::tooling::covers_debug::router(
-            state.reads.platform.covers.clone(),
-        ))
+    let app = if droppedneedle_catalog::reads::platform::covers_debug::tooling_routes_enabled(
+        &state.config,
+    ) {
+        app.merge(
+            droppedneedle_catalog::reads::platform::covers_debug::router(
+                state.reads.platform.covers.clone(),
+            ),
+        )
     } else {
         app
     };
@@ -193,81 +405,49 @@ fn base_relative_app(state: AppState, web: Option<WebUi>) -> Router {
     let app = if state.config.test_hooks {
         app.route(
             "/__test__/typed-error",
-            get(handlers::test_hooks::typed_error),
+            axum::routing::get(handlers::test_hooks::typed_error),
         )
         .route(
             "/__test__/panic",
-            get(handlers::test_hooks::panicking_handler),
+            axum::routing::get(handlers::test_hooks::panicking_handler),
         )
-        .route("/__test__/raw-500", get(handlers::test_hooks::raw_500))
-        .route("/__test__/raw-503", get(handlers::test_hooks::raw_503))
+        .route(
+            "/__test__/raw-500",
+            axum::routing::get(handlers::test_hooks::raw_500),
+        )
+        .route(
+            "/__test__/raw-503",
+            axum::routing::get(handlers::test_hooks::raw_503),
+        )
+        .route(
+            "/__test__/unavailable/{code}",
+            axum::routing::get(handlers::test_hooks::unavailable),
+        )
+        .route(
+            "/subsonic/rest/__test__/raw-503",
+            axum::routing::get(handlers::test_hooks::raw_503),
+        )
+        .route(
+            "/jellyfin/__test__/raw-503",
+            axum::routing::get(handlers::test_hooks::raw_503),
+        )
     } else {
         app
     };
-    // Compat-aware fallbacks: preflights and case-variant compat paths
-    // redispatch into the compat router; everything else answers natively.
-    // Closures carry the compat router (fallbacks take handlers, and the
-    // app router itself stays stateless).
-    let compat_router = state.compat.router();
-    // Native fallbacks on compat paths still stamp compat CORS: a bare
-    // 404 without `*` next to a disabled-protocol 404 with `*` would let
-    // callers enumerate which protocol is enabled.
-    let fallback_404 = {
-        let compat_router = compat_router.clone();
-        move |request: Request| async move {
-            let path = request.uri().path().to_owned();
-            let compat_path = crate::compat::shared::path_case::is_compat_path(&path);
-            let method = request.method().clone();
-            let headers = web.as_ref().map(|_| request.headers().clone());
-            if let Some(redispatch) = fallback_redispatch(&compat_router, request).await {
-                return redispatch;
-            }
-            if !compat_path
-                && let (Some(web), Some(headers)) = (&web, &headers)
-                && let Some(page) = web.respond(&method, &path, headers).await
-            {
-                return page;
-            }
-            let mut response = handlers::fallback_404().await.into_response();
-            if compat_path {
-                crate::compat::http::stamp_cors(&mut response);
-            }
-            response
+    // The web UI answers a GET that no route took, outside the API and the
+    // compat shims.
+    let fallback_404 = move |request: Request| async move {
+        let path = request.uri().path();
+        if !is_compat_path(path)
+            && let Some(web) = &web
+            && let Some(page) = web.respond(request.method(), path, request.headers()).await
+        {
+            return page;
         }
-    };
-    // Captured before `state` moves into the request-scope layer below.
-    let debug_cors = state.config.debug_cors;
-    let fallback_405 = {
-        let compat_router = compat_router.clone();
-        move |request: Request| async move {
-            // Read before `request` moves into the redispatch: OPTIONS
-            // matches no route, so native preflights land here without ever
-            // seeing `debug_cors_layer` (same reason compat preflights
-            // short-circuit inside `fallback_redispatch`).
-            let is_options = request.method() == axum::http::Method::OPTIONS;
-            let origin = request.headers().get(axum::http::header::ORIGIN).cloned();
-            let compat_path =
-                crate::compat::shared::path_case::is_compat_path(request.uri().path());
-            if let Some(redispatch) = fallback_redispatch(&compat_router, request).await {
-                return redispatch;
-            }
-            if debug_cors
-                && is_options
-                && let Some(preflight) = debug_preflight_response(origin.as_ref())
-            {
-                return preflight;
-            }
-            let mut response = handlers::fallback_405().await.into_response();
-            if compat_path {
-                crate::compat::http::stamp_cors(&mut response);
-            }
-            response
-        }
+        handlers::fallback_404().await.into_response()
     };
     app.fallback(fallback_404)
-        .method_not_allowed_fallback(fallback_405)
-        .layer(middleware::from_fn_with_state(state, request_scope))
-        .layer(compression_layer())
+        .method_not_allowed_fallback(handlers::fallback_405)
 }
 
 /// Response compression (brotli or gzip, as the client accepts) for API,
@@ -299,7 +479,7 @@ fn compression_layer() -> tower_http::compression::CompressionLayer<impl Predica
 fn debug_cors_layer() -> tower_http::cors::CorsLayer {
     use tower_http::cors::AllowOrigin;
 
-    use crate::auth::session::cors::DEBUG_CORS_ORIGINS;
+    use droppedneedle_auth::session::cors::DEBUG_CORS_ORIGINS;
 
     let origins: Vec<axum::http::HeaderValue> = DEBUG_CORS_ORIGINS
         .iter()
@@ -330,48 +510,4 @@ fn debug_cors_layer() -> tower_http::cors::CorsLayer {
             axum::http::header::ACCEPT_RANGES,
             axum::http::header::CONTENT_LENGTH,
         ])
-}
-
-/// Native preflight answer for debug CORS. Mirrors `debug_cors_layer`
-/// (same origin allowlist, methods, and headers) because the layer never
-/// sees OPTIONS requests: they land in the 405 fallback instead. Returns
-/// `None` for a missing or disallowed `Origin` so the bare 405 still
-/// answers non-browser callers.
-fn debug_preflight_response(
-    origin: Option<&axum::http::HeaderValue>,
-) -> Option<axum::response::Response> {
-    use crate::auth::session::cors::DEBUG_CORS_ORIGINS;
-
-    let origin = origin?;
-    let allowed = DEBUG_CORS_ORIGINS
-        .iter()
-        .any(|pinned| pinned.as_bytes() == origin.as_bytes());
-    if !allowed {
-        return None;
-    }
-    let mut response = axum::http::StatusCode::NO_CONTENT.into_response();
-    let headers = response.headers_mut();
-    headers.insert(
-        axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        origin.clone(),
-    );
-    headers.insert(
-        axum::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
-        axum::http::HeaderValue::from_static("true"),
-    );
-    headers.insert(
-        axum::http::header::ACCESS_CONTROL_ALLOW_METHODS,
-        axum::http::HeaderValue::from_static("GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS"),
-    );
-    headers.insert(
-        axum::http::header::ACCESS_CONTROL_ALLOW_HEADERS,
-        axum::http::HeaderValue::from_static("authorization, content-type, range"),
-    );
-    headers.insert(
-        axum::http::header::VARY,
-        axum::http::HeaderValue::from_static(
-            "origin, access-control-request-method, access-control-request-headers",
-        ),
-    );
-    Some(response)
 }

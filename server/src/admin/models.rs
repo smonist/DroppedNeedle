@@ -1,5 +1,7 @@
 //! Admin-UX wire shapes. Clean-slate v3; no v2 byte compatibility is kept.
 
+use droppedneedle_kernel::db::{CheckpointMode, JobState};
+use droppedneedle_providers::{CallOutcome, RequestPriority};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -19,6 +21,10 @@ pub struct BackupView {
     /// Manifest creation time as unix seconds, when present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at_unix: Option<u64>,
+    /// Size of the undo copies the backup holds beside it, from the
+    /// manifest, when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub undo_bytes: Option<u64>,
 }
 
 /// Backup listing, oldest first.
@@ -70,30 +76,52 @@ pub struct RestoreReport {
     pub checks: Vec<RestoreCheck>,
 }
 
-/// Provider byte-cache counters.
+/// Provider data and image cache counters.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CacheStatsResponse {
-    /// Entries currently held.
-    pub entries: usize,
-    /// Registered invalidation roots by source.
-    pub sources: Vec<String>,
+    /// Provider answers held.
+    pub entries: u64,
+    /// Rows and bytes per provider.
+    pub sources: Vec<ProviderSourceStats>,
+    /// Whether the provider cache file is working. When it is not, every
+    /// provider answer is fetched each time.
+    pub provider_data_on: bool,
     /// Cover and artist images on disk.
     pub cover_images: u64,
     /// Their total size in bytes.
     pub cover_bytes: u64,
 }
 
-/// Cache-clear request. Empty scope clears everything.
+/// What one provider holds in the cache file.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ProviderSourceStats {
+    /// The provider.
+    pub source: droppedneedle_providers::Source,
+    /// Answers held.
+    pub rows: u64,
+    /// Their size in bytes.
+    pub bytes: u64,
+}
+
+/// What a cache clear drops.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheClearScope {
+    /// Provider data and images.
+    #[default]
+    All,
+    /// Provider answers only.
+    ProviderData,
+    /// Cover and artist images only.
+    Covers,
+}
+
+/// Cache-clear request. No scope clears everything.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct CacheClearBody {
-    /// `all` (default: provider responses and images), `source` (one
-    /// provider's responses), `covers` (cover and artist images only) or
-    /// `audiodb` (TheAudioDB answers and album thumbnails).
+    /// What to clear.
     #[serde(default)]
-    pub scope: Option<String>,
-    /// Source name when `scope` is `source`.
-    #[serde(default)]
-    pub source: Option<String>,
+    pub scope: CacheClearScope,
 }
 
 /// What one cache clear dropped.
@@ -101,12 +129,11 @@ pub struct CacheClearBody {
 pub struct CacheClearResponse {
     /// Plain-language summary.
     pub message: String,
-    /// Entries dropped.
-    pub cleared_entries: usize,
-    /// Entries left behind.
-    pub remaining_entries: usize,
-    /// Cover and artist images deleted from disk (for the `audiodb`
-    /// scope, AudioDB album thumbnails forgotten).
+    /// Provider answers dropped.
+    pub cleared_entries: u64,
+    /// Provider answers left behind.
+    pub remaining_entries: u64,
+    /// Cover and artist images deleted from disk.
     pub cleared_cover_images: u64,
 }
 
@@ -117,43 +144,46 @@ pub struct CacheSyncCancelResponse {
     pub status: String,
 }
 
-/// One durable-work channel's demand.
-#[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct WakeupChannelView {
-    /// Channel name.
-    pub channel: String,
-    /// Wakeups requested.
-    pub requested_seq: i64,
-    /// Wakeups consumed.
-    pub consumed_seq: i64,
-    /// True when requested work is still unconsumed.
-    pub pending: bool,
-}
-
-/// One registered background job.
+/// One background loop.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct JobView {
-    /// Job name, the registry key.
+    /// Loop name.
     pub name: String,
-    /// `durable` or `ephemeral`.
-    pub kind: String,
-    /// Waking channel, when the job has one.
+    /// Liveness now.
+    pub state: JobState,
+    /// Last heartbeat as unix milliseconds, when the loop ever beat.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub wakeup_channel: Option<String>,
-    /// `idle`, `running`, `stopped`, or `failed`.
-    pub state: String,
-    /// Last heartbeat as unix seconds, when the job ever beat.
+    pub last_heartbeat_at: Option<i64>,
+    /// Code of the last failure, such as `CHECKPOINT_FAILED`, until a
+    /// clean turn clears it.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_heartbeat_at: Option<f64>,
+    pub last_error: Option<String>,
 }
 
-/// Queue and job-registry snapshot.
+/// How deep one job kind's queue is.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct QueueDepthView {
+    /// Job kind, such as `scrobble.lastfm`.
+    pub kind: String,
+    /// Jobs waiting to run.
+    pub queued: u64,
+    /// Jobs running now.
+    pub running: u64,
+    /// Jobs that failed for good and are still kept.
+    pub failed: u64,
+}
+
+/// Background loops, job queues and the latest checkpoint pass.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct QueueStatsResponse {
-    /// Demand per durable-work channel.
-    pub channels: Vec<WakeupChannelView>,
-    /// Registered background jobs in name order.
+    /// Background loops in name order.
     pub jobs: Vec<JobView>,
+    /// Job kinds with queued, running or failed jobs, in kind order.
+    pub queues: Vec<QueueDepthView>,
+    /// Latest database checkpoint pass, once the checkpoint loop has
+    /// recorded one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<CheckpointView>,
 }
 
 /// One provider's limiter posture.
@@ -169,28 +199,31 @@ pub struct ProviderLimiterView {
     pub remaining: u32,
 }
 
-/// Slot-lane posture.
+/// The calls one rate row sent at one priority that ended one way, since
+/// the server started.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct SlotView {
-    /// Free user-lane permits.
-    pub user_slots_available: usize,
-    /// Free image-lane permits.
-    pub image_slots_available: usize,
-    /// Free background-lane permits.
-    pub background_slots_available: usize,
-    /// Whether user activity is inside the quiet window.
-    pub user_active: bool,
-    /// Background callers currently waiting for quiet.
-    pub background_waiters: usize,
+pub struct ProviderCallsView {
+    /// Rate row name, as in the limiter rows, e.g. `musicbrainz`.
+    pub source: String,
+    /// How urgent the callers were.
+    pub priority: RequestPriority,
+    /// What came back.
+    pub outcome: CallOutcome,
+    /// Calls sent, retries included.
+    pub calls: u64,
+    /// Calls sent in the last minute.
+    pub calls_last_minute: u64,
+    /// Answer body bytes read, headers excluded.
+    pub body_bytes: u64,
 }
 
-/// Provider limiter and slot snapshot.
+/// Provider limiters and the outbound calls counted since start.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProviderStatsResponse {
-    /// Limiter posture per provider.
-    pub providers: Vec<ProviderLimiterView>,
-    /// Slot-lane posture.
-    pub slots: SlotView,
+    /// Limiter posture per rate row, in name order.
+    pub limiters: Vec<ProviderLimiterView>,
+    /// Call counts per rate row, priority and outcome, in row order.
+    pub calls: Vec<ProviderCallsView>,
 }
 
 /// Per-user quota overrides. `None` fields inherit the global download-policy
@@ -247,12 +280,11 @@ pub struct PrecacheRunResponse {
     pub status: String,
 }
 
-/// Latest checkpoint pass, for the health payload. `None` on `/health`
-/// until the checkpoint loop records its first pass.
+/// One database checkpoint pass, for the queue stats.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct CheckpointView {
-    /// `passive` or `truncate`.
-    pub mode: String,
+    /// Mode that ran.
+    pub mode: CheckpointMode,
     /// True when a lock contender blocked the pass.
     pub busy: bool,
     /// Uncheckpointed bytes, or -1 on an unmeasured pass.
@@ -263,7 +295,8 @@ pub struct CheckpointView {
     pub suspended: bool,
     /// Pass time as unix seconds.
     pub at_unix: u64,
-    /// Non-lock failure text, when the pass failed.
+    /// `CHECKPOINT_FAILED` when the pass failed on something other than a
+    /// lock. The cause is in the server log.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

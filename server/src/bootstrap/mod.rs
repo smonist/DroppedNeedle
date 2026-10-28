@@ -8,61 +8,84 @@
 //! parses arguments, tunes the allocator, starts the runtime and hands in
 //! the stop signal.
 
+pub mod data_dirs;
+pub mod jobs;
+pub mod key_check;
 mod outbound;
+pub mod platform;
 mod serve;
 
-use std::sync::Arc;
+use std::{fmt::Display, future::Future, sync::Arc, time::Duration};
 
 use axum::Router;
 use thiserror::Error;
 
 pub use outbound::{Outbound, Port};
-pub use serve::{Background, ServeError, bind, serve};
+pub use platform::{Opened, open_platform};
+pub use serve::{Background, ServeError, Stopped, bind, serve};
+
+use data_dirs::BootRefusal;
+use jobs::JobsSetup;
 
 use crate::{
-    AppConfig, AppState,
-    acquire::AcquireSetup,
+    AppState,
     admin::{AdminDb, AdminSetup, quota::reload_overrides},
     app::create_app_with_web,
-    auth::{prod::ProdAuth, users::stores::SystemClock, wiring::AuthSetup},
-    compat::{CompatSetup, settings::LiveSettings, setup::CompatDeps},
-    db::{BackupService, DbConfig, error::DbError, open_runtime},
-    events::EventHub,
-    http_client::{HttpClientError, HttpClientFactory},
-    ids::UuidGenerator,
-    jobs::{media::MediaJobs, wiring::JobsSetup},
-    library::wiring::LibrarySetup,
-    media::MediaSetup,
-    plugins::{scrobble::SqliteListenBrainzLinkStore, wiring::PluginsSetup},
-    providers::{InMemoryProviderCache, Providers},
-    reads::{
-        ReadsInputs, ReadsSetup,
-        catalog::{
-            Catalog,
-            library::LocalCatalog,
-            upstream::{Upstream, instance_lastfm_key},
-        },
-        collections::db::CollectionsDb,
-        enrichment::live::production_enrichment,
-    },
-    remotes::adapter::PlaylistImportSink,
-    runtime_config::{
-        ConfigStore, Crypto, crypto::CryptoError, quota::QUOTA_FILE_NAME,
-        secret_sections::ListenBrainzConnection, sections::LyricsSettings,
-    },
     settings::{
-        effects::{LiveSaveEffects, SaveEffects},
+        effects::{Effects, LiveSaveEffects},
         library_catalog::SqliteLibraryPolicyCatalog,
         section_prefs::{SqliteLinkStatus, SqliteSectionPrefsStore},
-        services::SqliteImpactBuckets,
         wiring::SettingsSetup,
-    },
-    tooling::{
-        datalock::{DataLock, DataLockError},
-        upgrade::{BootRefusal, DataDirs, check_bootable},
     },
     web::{WebError, WebUi},
 };
+use droppedneedle_acquire::{
+    AcquireSetup,
+    library_removal::{self, AcquireAlbumCleanup},
+    requests::discovery::DiscoveryBatchRequests,
+    wiring::{AcquirePorts, AcquireStores},
+};
+use droppedneedle_auth::{
+    federated::{MediaLinks, settings::InstallIds},
+    prod::ProdAuth,
+    wiring::AuthSetup,
+};
+use droppedneedle_catalog::reads::{
+    ReadsInputs, ReadsPorts, ReadsSetup,
+    catalog::{
+        Catalog,
+        library::LocalCatalog,
+        plugin_sources::{PluginDetailsSource, PluginPurchaseLinks},
+        upstream::{LiveCatalogSettings, Upstream},
+    },
+    collections::{
+        CollectionsState, db::CollectionsDb, remote_import::PlaylistImportSink, store::Stores,
+    },
+    enrichment::{library::LiveEnrichment, live::production_enrichment},
+    lyrics::OnlineLyrics,
+    platform::artwork::ArtworkService,
+};
+use droppedneedle_compat::{CompatSetup, setup::CompatDeps};
+use droppedneedle_kernel::{
+    config::AppConfig,
+    db::{BOOT_WAIT, BackupService, datalock::DataLockError, error::DbError},
+    http_client::HttpClientError,
+    platform::Platform,
+    runtime_config::crypto::CryptoError,
+};
+use droppedneedle_library::wiring::{LibraryServices, LibrarySetup};
+use droppedneedle_media::playback::listening::ListeningStore;
+use droppedneedle_media::{
+    MediaSetup,
+    remotes::{
+        connections::{ConnectionResolver, SignInLinks},
+        plex::ConfiguredPlexServer,
+    },
+    stream::local_files::LibraryFiles,
+};
+use droppedneedle_plugins::wiring::PluginsSetup;
+use droppedneedle_providers::Providers;
+use droppedneedle_providers::youtube::QUOTA_FILE_NAME;
 
 /// Why the server could not boot.
 #[derive(Debug, Error)]
@@ -86,9 +109,9 @@ pub enum BootError {
     /// stopped halfway.
     #[error(transparent)]
     DataDir(#[from] BootRefusal),
-    /// The settings file could not be opened.
+    /// The settings could not be opened.
     #[error("settings: {0}")]
-    Settings(#[from] crate::runtime_config::ConfigError),
+    Settings(#[from] droppedneedle_kernel::runtime_config::ConfigError),
     /// One bundle failed to wire or recover.
     #[error("{stage}: {message}")]
     Stage {
@@ -103,12 +126,64 @@ fn stage(stage: &'static str) -> impl FnOnce(String) -> BootError {
     move |message| BootError::Stage { stage, message }
 }
 
-/// What [`build_with`] hands back.
-///
-/// Some workers stop when the last handle on their queue is dropped, not
-/// on the stop signal, and `state` holds those handles. Drop `state`, and
-/// any clone of the router, before stopping: while one is alive, [`serve`]
-/// waits out the whole shutdown grace and then aborts those workers.
+/// The first pause before a boot step runs again on a busy database. Each
+/// later pause doubles, up to [`LONGEST_BOOT_PAUSE`].
+const FIRST_BOOT_PAUSE: Duration = Duration::from_millis(250);
+/// The longest pause between two runs of a boot step.
+const LONGEST_BOOT_PAUSE: Duration = Duration::from_secs(5);
+
+/// Run one boot step, and run it again while it fails because the database
+/// is busy, for up to [`BOOT_WAIT`]. Boot serves nothing yet, so a slow or
+/// swapping disk is waited out rather than refused, as the migration
+/// connection is. Any other failure, or a busy one past the wait, stops at
+/// once with `stage` named. The step must be safe to run again.
+pub async fn wait_out_busy<T, E, F, Fut>(
+    stage: &'static str,
+    is_busy: fn(&E) -> bool,
+    mut step: F,
+) -> Result<T, BootError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+    E: Display,
+{
+    let deadline = tokio::time::Instant::now() + BOOT_WAIT;
+    let mut pause = FIRST_BOOT_PAUSE;
+    loop {
+        let error = match step().await {
+            Ok(value) => return Ok(value),
+            Err(error) => error,
+        };
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if !is_busy(&error) || left.is_zero() {
+            return Err(BootError::Stage {
+                stage,
+                message: error.to_string(),
+            });
+        }
+        let wait = pause.min(left);
+        tracing::warn!(
+            stage,
+            %error,
+            wait_ms = u64::try_from(wait.as_millis()).unwrap_or(u64::MAX),
+            "database busy during boot; trying the step again"
+        );
+        tokio::time::sleep(wait).await;
+        pause = (pause * 2).min(LONGEST_BOOT_PAUSE);
+    }
+}
+
+/// The media links a Plex or Jellyfin sign-in saves, written to the
+/// per-user connections table (the rows the remotes routes read) in the
+/// platform's database. It only stores links and reads no remote server.
+pub fn sign_in_links(platform: &Platform) -> MediaLinks {
+    MediaLinks::new(Arc::new(SignInLinks::new(Arc::new(
+        ConnectionResolver::over(platform),
+    ))))
+}
+
+/// What [`build_with`] hands back. Every background loop stops on the one
+/// stop [`serve`] gives at shutdown.
 pub struct Built {
     /// The app, ready to serve.
     pub router: Router,
@@ -129,545 +204,457 @@ pub async fn build(config: AppConfig) -> Result<(Router, Background), BootError>
 /// every outside service with an address fixed in code at the one
 /// `outbound` gives.
 pub async fn build_with(config: AppConfig, outbound: Outbound) -> Result<Built, BootError> {
-    let endpoints = outbound.catalog();
-    let http = HttpClientFactory::with_settings(&config.http)?;
-    // Held until shutdown, and taken before the database opens (so before
-    // the pre-upgrade backup and the migrations): the offline import and
-    // restore refuse to run while it is held, and a running one keeps the
-    // server from starting.
-    let data_lock = DataLock::shared(&config.library_db_path)?;
-    refuse_foreign_data_dir(&config).await?;
-    let runtime = open_runtime(&DbConfig::new(&config.library_db_path)).await?;
-    let web = prepare_web(&config).await?;
+    // The data lock, the key, the database, the supervisor, the settings
+    // and the one event hub: every bundle below publishes into it from the
+    // moment it is built, and the revision loops feed it after each commit.
+    let Opened {
+        platform,
+        runtime,
+        cache_db,
+        web,
+        data_lock,
+    } = open_platform(config).await?;
+    let p = &platform;
+    let (db, config_store, config, http) = (&p.db, &p.settings, &p.config, &p.http);
+    let (crypto, supervisor, events) = (&p.crypto, &p.supervisor, &p.events);
+    // The jobs table areas enqueue through; its kinds' runners start with
+    // the other loops.
+    let queues = jobs::QueueSetup::new(p);
+    // Pages queue the background warm of their covers and artist images.
+    let cover_warm = droppedneedle_catalog::reads::platform::artwork::warm::CoverWarm::new(
+        db.clone(),
+        queues.queue().clone(),
+    );
 
-    let crypto = Arc::new(Crypto::load_or_generate(&config.config_dir())?);
-    // The store owns its own key handle; the file exists after the line above.
-    let config_store = Arc::new(ConfigStore::open(
-        &config.config_file,
-        Crypto::load(&config.config_dir())?,
-    )?);
-    // A fresh install has no MusicBrainz section; its default mints a source
-    // id, so store it once or every read reports a new source (and clients
-    // keyed on it refetch without end).
-    config_store.seed_default::<crate::runtime_config::sections::MusicBrainzSettings>()?;
-    let ids = Arc::new(UuidGenerator);
-    let clock = Arc::new(SystemClock);
-    // One live event hub for the process. Bundles built below publish into
-    // it once the state attaches it; the revision poller feeds it too.
-    let events = EventHub::new();
-    // The plugin host exists early so playback, acquisition and streaming
-    // can hold it; no plugin starts until `PluginsSetup::build` loads it.
-    let plugin_host = crate::plugins::wiring::new_host(config.plugins_dir(), config_store.clone());
-    let auth_bundle = ProdAuth::new(
-        runtime.pool(),
-        runtime.lane(),
-        crypto.clone(),
-        ids.clone(),
-        clock.clone(),
-        &config.cache_dir,
-    );
-    let auth = AuthSetup::build_with_upstreams(
-        auth_bundle,
-        config_store.clone(),
-        crypto.clone(),
-        &http,
-        ids.clone(),
-        clock,
-        &config.base_path,
-        &outbound.sign_in(),
-    )?
-    .with_trusted_proxies(config.trusted_proxies.clone());
-
-    // Shared provider deps first: the reads enrichment pair paces through
-    // these same limiters, so production holds one limiter set. The byte
-    // cache stays shared with the admin stats and clear routes.
-    let provider_cache = Arc::new(InMemoryProviderCache::new());
-    let providers = Arc::new(Providers::new(provider_cache.clone()));
-    // Read per call so turning ListenBrainz on or off takes effect at once.
-    let listenbrainz_store = config_store.clone();
-    let listenbrainz_enabled: crate::reads::enrichment::live::Switch = Arc::new(move || {
-        listenbrainz_store
-            .get_raw::<ListenBrainzConnection>()
-            .map(|settings| settings.enabled)
-            .unwrap_or_else(|error| {
-                tracing::warn!(%error, "cannot read listenbrainz settings; popularity enrichment off");
-                false
-            })
-    });
-    // Read per call so turning lyrics on or off takes effect at once.
-    let lyrics_store = config_store.clone();
-    let lyrics_enabled: crate::reads::enrichment::live::Switch = Arc::new(move || {
-        lyrics_store
-            .get::<LyricsSettings>()
-            .map(|settings| settings.enabled)
-            .unwrap_or_else(|error| {
-                tracing::warn!(%error, "cannot read lyrics settings; lyrics enrichment off");
-                false
-            })
-    });
-    let enrichment = production_enrichment(
-        http.shared(),
-        &providers,
-        &endpoints,
-        listenbrainz_enabled,
-        lyrics_enabled,
-    );
-    let mut reads = ReadsSetup::build(
-        runtime.pool(),
-        auth.users.clone(),
-        ids.clone(),
-        ReadsInputs {
-            config: config_store.clone(),
-            lane: runtime.lane().clone(),
-            covers_dir: config.cache_dir.join("covers"),
-            cover_cache_max_bytes: config.cover_cache_max_bytes,
-            http: http.shared().clone(),
-            no_redirect: http.no_redirect().clone(),
-            providers: providers.clone(),
-            listenbrainz_links: Arc::new(SqliteListenBrainzLinkStore::new(
-                runtime.pool().clone(),
-                runtime.lane().clone(),
-                crypto.clone(),
-            )),
-            youtube_quota_path: config.cache_dir.join(QUOTA_FILE_NAME),
-            lastfm_key: instance_lastfm_key(auth.users.lastfm_switch.clone()),
-            discover_warmer: config.discover_warmer,
-            endpoints: endpoints.clone(),
-        },
-        Some(enrichment),
-    )
-    .with_collections(CollectionsDb::new(
-        runtime.pool().clone(),
-        runtime.lane().clone(),
-    ))
-    .with_catalog(
-        Catalog::new(
-            Upstream::new(
-                &http,
-                providers.clone(),
-                config_store.clone(),
-                auth.users.clone(),
-            )
-            .with_instance_lastfm_key(instance_lastfm_key(auth.users.lastfm_switch.clone()))
-            .with_endpoints(endpoints.clone()),
-            LocalCatalog::new(runtime.pool().clone()),
-        )
-        .with_purchase_links(Arc::new(
-            crate::plugins::capabilities::purchase::PluginPurchaseLinks(plugin_host.clone()),
-        ))
-        .with_details(Arc::new(
-            crate::plugins::capabilities::metadata::PluginDetailsSource(plugin_host.clone()),
-        )),
-    );
-    // Read per request, so a source switch in Settings reaches the
-    // long-lived clients without a restart.
-    let mb_source: crate::providers::musicbrainz::SourceFn = {
-        let settings = config_store.clone();
-        let outbound = outbound.clone();
-        Arc::new(move || {
-            outbound.musicbrainz_source(
-                &crate::reads::catalog::upstream::CatalogSettings::musicbrainz(settings.as_ref()),
-            )
-        })
-    };
-    let library = LibrarySetup::build(
-        auth.users.clone(),
-        &http,
-        ids.clone(),
-        providers.clone(),
-        mb_source.clone(),
-        &config.library_db_path,
-        config_store.clone(),
-        &outbound,
+    // The library's write side (the publish cell, its roots and leases):
+    // the library and plugin library writes share it, so it is built
+    // before the plugin host.
+    let library_core = droppedneedle_library::wiring::LibraryCore::build(
+        p,
+        queues.queue().clone(),
+        droppedneedle_acquire::wiring::recycle_guard(&p.settings, p.config.imports_dir()),
     )
     .map_err(stage("library setup"))?;
-    // Plugin library writes hold the same root leases as the publisher.
-    plugin_host.set_library_fs(library.fs.clone());
-    reads = reads.with_library_files(crate::stream::local_files::LibraryFiles::new(
-        runtime.pool().clone(),
-        library.root_source(),
-    ));
-    reads = reads.with_edition_choices(Arc::new(
-        crate::library::operations::service::Operations::new(&library),
-    ));
-    let (media, media_workers) = MediaSetup::build(
-        &config.library_db_path,
-        &config,
-        auth.users.clone(),
-        crypto.clone(),
-        &http,
-        ids.clone(),
-        Some(library.root_source()),
-        runtime.pool().clone(),
-        runtime.lane().clone(),
-        config_store.clone(),
-        // Remote playlist imports land in the user's playlists.
-        Arc::new(PlaylistImportSink::new(reads.collections.clone())),
-        &outbound,
+    // The plugin host exists early so playback, acquisition and streaming
+    // can hold it; no plugin starts until `PluginsSetup::build` loads it.
+    let plugin_ticks = droppedneedle_plugins::wiring::tick_store(p);
+    let plugin_host =
+        droppedneedle_plugins::wiring::new_host(p, &plugin_ticks, library_core.clone());
+    // Shared provider deps first: auth links Last.fm accounts through the
+    // one Last.fm client, and the reads enrichment pair paces through these
+    // same limiters, so production holds one limiter set. The answer cache
+    // stays shared with the admin stats and clear routes.
+    let providers = Arc::new(Providers::build(p, outbound.providers(), cache_db.clone()));
+    let provider_cache = providers.cache.clone();
+    let auth = AuthSetup::build(
+        p,
+        ProdAuth::new(p),
+        &outbound.sign_in(),
+        &providers.lastfm,
+        Arc::new(ConfiguredPlexServer::new(
+            http.shared().clone(),
+            config_store.live(),
+            InstallIds::new(config_store.clone()),
+        )),
+        sign_in_links(p),
+    );
+
+    // Read live so turning ListenBrainz, Last.fm or lyrics on or off takes effect
+    // at once.
+    let enrichment = production_enrichment(
+        &providers,
+        config_store.live(),
+        config_store.live(),
+        config_store.live(),
+    );
+    let reads_inputs = ReadsInputs {
+        covers_dir: config.cache_dir.join("covers"),
+        cover_cache_max_bytes: config.cover_cache_max_bytes,
+        http: http.shared().clone(),
+        providers: providers.clone(),
+        listenbrainz_links: Arc::new(ListeningStore::new(
+            db.clone(),
+            crypto.clone(),
+            p.clock.clone(),
+        )),
+        youtube_quota_path: config.cache_dir.join(QUOTA_FILE_NAME),
+        discover_warmer: config.discover_warmer,
+    };
+    // The artist and album pages, with plugin purchase links and details.
+    // The artwork service names artist images through it, and the library
+    // plans covers through that service.
+    // The one local catalog: the catalog pages, the library reads,
+    // collections' ratings and the player apps all read through it.
+    let local = LocalCatalog::new(db.clone());
+    let catalog = Catalog::new(
+        Upstream::new(
+            providers.clone(),
+            Arc::new(LiveCatalogSettings::new(config_store)),
+            auth.users.clone(),
+        ),
+        local.clone(),
     )
-    .map_err(stage("media setup"))?;
-    let media = media.with_play_events(Arc::new(
-        crate::plugins::capabilities::events::PluginPlayEvents(plugin_host.clone()),
-    ));
-    media
-        .stream
-        .engine
-        .attach_plugins(plugin_host.clone(), http.direct_no_redirect().clone());
-    let acquire = AcquireSetup::build(
-        crate::acquire::db::AcquireDb::from_runtime(&runtime),
-        &config,
-        auth.users.clone(),
-        &http,
-        ids.clone(),
-        config_store.clone(),
-        &mut reads.collections,
-        &outbound,
-    )
-    .map_err(stage("acquire setup"))?
-    .with_plugins(plugin_host.clone())
-    .with_release_poll(Arc::new(crate::acquire::search::live_release_poll(
-        &http,
+    .with_purchase_links(Arc::new(PluginPurchaseLinks(plugin_host.clone())))
+    .with_details(Arc::new(PluginDetailsSource(plugin_host.clone())))
+    .with_cover_warm(cover_warm.clone());
+    let artwork = droppedneedle_catalog::reads::artwork(p, &reads_inputs, catalog.clone());
+    let collections_db = CollectionsDb::new(db.clone(), p.clock.clone());
+    let collections = Stores::new(&collections_db);
+    // Flow outcomes (fulfilled requests among them) go to plugins and the
+    // event stream.
+    let acquire_stores = AcquireStores::open(
+        p,
+        Arc::new(droppedneedle_acquire::plugin_events::FlowTicks::new(
+            Some(plugin_host.clone()),
+            p.events.clone(),
+        )),
+    );
+    let album_cleanup = Arc::new(AcquireAlbumCleanup::new(&acquire_stores));
+    // Read live, so a source switch in Settings reaches the long-lived
+    // clients without a restart.
+    let mb_source = providers.musicbrainz.live_source(config_store.live());
+    let scans = jobs::ScansEnded::default();
+    let library = LibrarySetup::build(
+        p,
         providers.clone(),
         mb_source.clone(),
-    )))
-    .with_album_lookup(Arc::new(crate::acquire::target::lookup::live_albums(
-        &http,
-        providers.clone(),
-        mb_source,
-    )));
-    // Finished downloads reach the library through its import seam.
-    let acquire = match library.releases.clone() {
-        Some(releases) => acquire.with_library(Arc::new(
-            crate::acquire::landing::library::LibraryLanding::new(
-                library.clone(),
-                releases,
-                runtime.pool().clone(),
-            ),
-        )),
-        None => acquire,
-    };
-    // "Get missing tracks" asks the library which tracks the chosen
-    // edition lacks.
-    if acquire
-        .requests
-        .edition_plans
-        .set(Arc::new(
-            crate::library::operations::service::Operations::new(&library),
-        ))
-        .is_err()
-    {
-        tracing::warn!("edition plans were already attached");
-    }
-    // Removing an album also clears its download and wanted state.
-    if library
-        .removal_hook
-        .set(Arc::new(
-            crate::acquire::library_removal::AcquireAlbumCleanup::new(
-                acquire.journal.clone(),
-                acquire.requests.wanted.clone(),
-            ),
-        ))
-        .is_err()
-    {
-        tracing::warn!("album removal cleanup was already attached");
-    }
-    // Discovery batches file their albums through the requests service.
-    if reads
-        .discover_requests
-        .set(Arc::new(
-            crate::acquire::requests::discovery::DiscoveryBatchRequests::new(
+        queues.queue().clone(),
+        outbound.library(),
+        library_ports(
+            p,
+            &providers,
+            &auth,
+            &artwork,
+            &scans,
+            enrichment.lyrics.clone(),
+            library_core,
+        ),
+    )
+    .map_err(stage("library setup"))?;
+    let library_services = LibraryServices::build(&library);
+    let acquire = AcquireSetup::build(
+        p,
+        auth.users.clone(),
+        acquire_stores,
+        acquire_ports(
+            &library_services,
+            &providers,
+            mb_source,
+            &plugin_host,
+            &collections,
+        ),
+        &outbound.spotify(),
+        queues.queue().clone(),
+    )
+    .map_err(stage("acquire setup"))?;
+    // The one connection resolver every remote read goes through, so the
+    // reads people trigger share one bound per source.
+    let remotes = MediaSetup::remotes(p, outbound.plex_tv.clone());
+    let reads = ReadsSetup::build(
+        p,
+        auth.users.clone(),
+        reads_inputs,
+        Some(enrichment),
+        ReadsPorts {
+            remotes: remotes.clone(),
+            collections: CollectionsState::over(collections_db, collections, local),
+            catalog,
+            artwork,
+            library_files: LibraryFiles::new(db.sqlx().clone(), library.core.root_source()),
+            // Discovery batches file their albums through the requests
+            // service.
+            batch_requests: Arc::new(DiscoveryBatchRequests::new(
                 acquire.requests.clone(),
-                Some(library.clone()),
-            ),
-        ))
-        .is_err()
-    {
-        tracing::warn!("discovery batch requests were already attached");
-    }
+                Some(library_services.mutations.clone()),
+            )),
+            download_readiness: Arc::new(acquire.readiness.clone()),
+            cover_warm: Some(cover_warm),
+        },
+    );
+    // Your Weekly Mix: one builder behind the refresh route, the daily
+    // loop and the listening-settings toggle.
+    let mix_hooks = Arc::new(droppedneedle_acquire::requests::mix::MixGrantHooks::new(
+        acquire.requests.mixer.clone(),
+    ));
+    let (media, media_workers) = MediaSetup::build(
+        p,
+        auth.users.clone(),
+        library.core.root_source(),
+        // Remote playlist imports land in the user's playlists.
+        Arc::new(PlaylistImportSink::new(reads.collections.clone())),
+        plugin_host.clone(),
+        remotes,
+        outbound.ffmpeg.clone(),
+        &providers,
+        mix_hooks.clone(),
+        queues.queue().clone(),
+        queues.clock(),
+    )
+    .map_err(stage("media setup"))?;
     // Startup recovery before serving traffic. Re-running after a clean
     // shutdown is a no-op: nothing destructive repeats.
-    let recovery = acquire
-        .run_recovery()
-        .await
-        .map_err(stage("acquire recovery"))?;
+    let recovery = wait_out_busy(
+        "acquire recovery",
+        droppedneedle_acquire::wiring::RecoveryError::is_busy,
+        || acquire.run_recovery(),
+    )
+    .await?;
     tracing::info!(
         redispatched = recovery.redispatched,
         resumed = recovery.resumed,
         restarted = recovery.restarted,
         "acquire recovery complete"
     );
-    // Publish journal reconciliation and contribution lease recovery; scan
-    // recovery runs when the scan supervisor starts.
-    let library_recovery = library.run_recovery().await;
+    // Publish journal reconciliation; scan recovery runs when the scan
+    // supervisor starts.
+    let library_recovery = library_services.run_recovery().await;
     tracing::info!(
         publish_bundles = library_recovery.publish_recoveries.len(),
-        contrib_recovered = library_recovery.contrib_recovered,
         "library recovery complete"
     );
     let compat = CompatSetup::build(CompatDeps::over_reads(
+        p,
         auth.users.clone(),
-        crypto.clone(),
         media.playback.clone(),
         media.stream.engine.clone(),
-        library.clone(),
+        library.scans.clone(),
         &reads,
-        LiveSettings::from_config(config_store.clone()),
-    ))
-    .with_trusted_proxies(config.trusted_proxies.clone());
+    ));
     let admin = AdminSetup::new(
         auth.users.clone(),
         acquire.requests.quota.clone(),
         provider_cache.clone(),
         providers.clone(),
     )
-    .with_db(AdminDb::new(runtime.pool().clone(), runtime.lane().clone()))
+    .with_db(AdminDb::new(db.clone()))
     .with_backups(BackupService::new(
         &config.library_db_path,
         runtime.backups().backup_dir(),
+        platform.clock.clone(),
     ))
     .with_checkpoint(runtime.checkpoint().clone());
     // Durable quota overrides back into the live ledger. A failure warns
     // instead of stopping the boot; the admin can re-save.
-    match reload_overrides(runtime.pool(), &acquire.requests.quota).await {
+    match wait_out_busy(
+        "quota overrides",
+        |error: &DbError| matches!(error, DbError::Busy { .. }),
+        || reload_overrides(db.sqlx(), &acquire.requests.quota),
+    )
+    .await
+    {
         Ok(loaded) => tracing::info!(loaded, "quota overrides reloaded"),
         Err(error) => tracing::warn!(%error, "quota overrides failed to reload; defaults apply"),
     }
-    let concerts = crate::concerts::ConcertsSetup::from_runtime(
-        &runtime,
-        &http,
-        &config_store,
-        outbound.concerts(),
-    )
-    .with_events(Arc::new(events.clone()));
-    // Your Weekly Mix: one builder behind the refresh route, the daily
-    // loop and the scrobble-settings toggle.
-    let mix_events = crate::events::EventSink::default();
-    mix_events.attach(&events);
-    if let Some(builder) = crate::acquire::requests::mix_sources::live_builder(
-        &acquire.requests,
-        providers.clone(),
-        http.shared().clone(),
-        Arc::new(SqliteListenBrainzLinkStore::new(
-            runtime.pool().clone(),
-            runtime.lane().clone(),
-            crypto.clone(),
-        )),
-        Arc::new(crate::plugins::scrobble::SqliteScrobblePrefsStore::new(
-            runtime.pool().clone(),
-            runtime.lane().clone(),
-        )),
-        reads.collections.stores.playlists.clone(),
-        mix_events,
-        &outbound.listenbrainz,
-    ) && acquire.requests.mixer.set(builder).is_err()
-    {
-        tracing::warn!("personal mix builder was already set");
-    }
-    let mix_hooks = Arc::new(crate::acquire::requests::mix::MixGrantHooks::new(
-        acquire.requests.mixer.clone(),
-    ));
-    // The one registry every background job registers on.
+    let concerts = droppedneedle_catalog::concerts::ConcertsSetup::from_platform(p, &providers);
     let jobs = JobsSetup::build(
-        auth.users.clone(),
-        runtime.wakeups().clone(),
-        runtime.lane().clone(),
+        p,
         runtime.checkpoint().clone(),
-        config_store.clone(),
-        MediaJobs {
-            presence: media.playback.presence.clone(),
-            resolver: Some(media.remotes.service.resolver().clone()),
-            http: http.shared().clone(),
-            pool: Some(runtime.pool().clone()),
-        },
+        media.jobs(p),
         concerts.sweep(),
+        scans.clone(),
     )
-    .with_mixer(mix_hooks.clone())
-    .with_precache_sources_from(&reads, &config_store)
-    .with_discovery_demand(Arc::new(crate::jobs::discovery_demand::ContentDemand(
-        reads.discover.content.clone(),
-    )));
-    // Library Management plans genres, lyrics and covers through the same
-    // clients and artwork cache the pages use.
-    let enrichment = crate::library::management::enrich::LiveEnrichment {
-        upstream: Upstream::new(
-            &http,
-            providers.clone(),
-            config_store.clone(),
-            auth.users.clone(),
-        )
-        .with_instance_lastfm_key(instance_lastfm_key(auth.users.lastfm_switch.clone()))
-        .with_endpoints(endpoints),
-        http: http.shared().clone(),
-        artwork: reads.artwork.clone(),
-        lrclib: Default::default(),
-    };
-    if library.enrichment.set(Arc::new(enrichment)).is_err() {
-        tracing::warn!("library management enrichment was already attached");
-    }
+    .with_queue(queues)
+    .with_jobs(media.scrobble_jobs())
+    .with_job(
+        droppedneedle_library::contrib::worker::SPEC,
+        library.contrib_worker.handler(),
+    )
+    .with_job(
+        droppedneedle_library::recycle_bin::SPEC,
+        droppedneedle_library::recycle_bin::handler(&library.publishing),
+    )
+    .with_mixer(mix_hooks)
+    .with_precache_sources_from(&reads, config_store)
+    .with_cover_warm_jobs(&reads)
+    .with_job(
+        droppedneedle_acquire::imports::jobs::SPEC,
+        acquire.spotify_import_jobs.clone(),
+    )
+    .with_job(library_removal::SPEC, album_cleanup)
+    .with_discovery_demand(Arc::new(
+        droppedneedle_catalog::reads::discover::demand::ContentDemand(
+            reads.discover.content.clone(),
+        ),
+    ));
     let admin = match &reads.artwork {
         Some(artwork) => admin.with_covers(artwork.cache().clone()),
         None => admin,
     }
     .with_precache(jobs.precache_trigger());
-    // Completed scans refresh the library's images, as v2 did after a sync.
-    if library
-        .scan_completed
-        .set(jobs.precache_trigger().after_scan_hook())
+    let download_worker = acquire.worker.clone();
+    let roots_library = library.scans.clone();
+    // Each section's declared effects run after every committed change to
+    // it, whoever saved it; settings routes wait for them before answering.
+    let (effects, effects_runner) = Effects::new(
+        config_store.clone(),
+        Arc::new(
+            LiveSaveEffects::new(jobs.events_kick())
+                .with_download_wake(Arc::new(move || download_worker.wake()))
+                .with_library_roots(Arc::new(move || roots_library.roots_saved())),
+        ),
+    );
+    if supervisor
+        .one_shot("settings_effects", move |ctx| async move {
+            effects_runner.run(ctx.token().clone()).await;
+            Ok(())
+        })
         .is_err()
     {
-        tracing::warn!("scan completion hook was already set");
+        tracing::warn!("the settings effects loop was already running");
     }
-    let download_worker = acquire.worker.clone();
-    let effects: Arc<dyn SaveEffects> = Arc::new(
-        LiveSaveEffects::new(provider_cache.clone(), jobs.events_kick())
-            .with_download_wake(Arc::new(move || download_worker.wake())),
-    );
+    let scans = Arc::new(LocalCatalog::new(db.clone()));
     let settings = SettingsSetup::build(
-        config_store.clone(),
+        p,
         effects,
-        ids.clone(),
-        auth.users.clone(),
-        http.shared().clone(),
-        config.timezone.clone(),
         &outbound,
+        library.management_settings.clone(),
+        scans,
+        &providers,
+        library.bins.clone(),
     )
     .with_section_prefs(
-        Arc::new(SqliteSectionPrefsStore {
-            pool: runtime.pool().clone(),
-            lane: Arc::new(runtime.lane().clone()),
-        }),
+        Arc::new(SqliteSectionPrefsStore { db: db.clone() }),
         Arc::new(SqliteLinkStatus {
-            pool: runtime.pool().clone(),
+            pool: db.sqlx().clone(),
             lastfm: auth.users.lastfm.clone(),
         }),
     )
-    .with_impact_buckets(Arc::new(SqliteImpactBuckets {
-        pool: runtime.pool().clone(),
-    }))
     .with_library_catalog(Arc::new(SqliteLibraryPolicyCatalog {
-        pool: runtime.pool().clone(),
+        pool: db.sqlx().clone(),
     }));
-    // Activation dry runs save the settings through the same service as
-    // the settings page, so the two never save over each other.
-    if library
-        .management_settings
-        .set(settings.library_management_shared())
-        .is_err()
-    {
-        tracing::warn!("library management settings service was already attached");
-    }
-    let plugins = PluginsSetup::build(
-        plugin_host,
-        auth.users.clone(),
-        http.shared().clone(),
-        ids.clone(),
-        crypto,
-        provider_cache,
-        jobs.registry().clone(),
-        runtime.pool().clone(),
-        runtime.lane().clone(),
-        &outbound,
-    )
-    .with_presence(Arc::new(media.playback.presence.clone()))
-    .with_mix_grants(mix_hooks.clone(), mix_hooks);
+    let plugins = PluginsSetup::build(p, plugin_host, plugin_ticks, outbound.plugin_hosts());
     plugins.sync_ticks().await;
 
-    let mut background = Background::new(config.shutdown_grace);
-    let stop = background.stop_signal();
-    // Plugin processes get `shutdown`, then a kill, when the server stops.
-    let plugin_host = plugins.host().clone();
-    let mut plugin_stop = background.stop_signal();
-    background.push(
-        "plugins",
-        tokio::spawn(async move {
-            let _ = plugin_stop.wait_for(|stopping| *stopping).await;
-            plugin_host.stop_all().await;
-        }),
-    );
-    // Attribution and scrobble drains: exit once the app drops its queue handles.
-    background.push(
-        "media-workers",
-        tokio::spawn(async move { media_workers.run().await }),
-    );
+    // Attribution and scrobble drains: they deliver what is queued and end
+    // on the stop, or once the app drops its queue handles.
+    supervisor
+        .one_shot(droppedneedle_media::MEDIA_WORKERS, move |ctx| async move {
+            media_workers.run(ctx.token().clone()).await;
+            Ok(())
+        })
+        .map_err(|error| stage("media workers")(error.to_string()))?;
 
-    // The state attaches the hub to every publishing bundle (presence,
-    // acquisition, library), so it is built before any loop starts: the
-    // first wanted sweep, scan or presence poll already reaches the hub.
+    let grace = config.shutdown_grace;
+    // Every publishing bundle took the hub when it was built, so what the
+    // loops started above (plugin sync, settings effects, media drains)
+    // and the ones started below publish reaches open streams.
     let state = AppState::new(
-        ids,
-        http,
-        config,
+        p.ids.clone(),
+        config.clone(),
         auth,
         reads,
-        providers,
         media,
         acquire,
-        library,
+        library_services,
         compat,
         admin,
         settings,
         jobs.clone(),
         plugins,
         concerts,
-    )
-    .with_events(events.clone());
-    let acquire_loops = state
+        events.clone(),
+    );
+    state
         .acquire
-        .spawn_loops(
-            runtime.wakeups().clone(),
-            runtime.lane().clone(),
-            stop.clone(),
-        )
-        .await
-        .map_err(stage("acquire loops"))?;
-    background.extend(acquire_loops);
-    background.extend(state.library.spawn_loops(stop.clone()));
-    // `activity.changed` for every open stream.
-    background.push(
-        "event-revisions",
-        tokio::spawn(crate::events::revisions::run(
-            events.clone(),
-            runtime.pool().clone(),
-            stop.clone(),
-        )),
-    );
-    // `downloads.changed` for every open stream.
-    background.push(
-        "event-downloads",
-        tokio::spawn(crate::events::downloads::run(
-            events.clone(),
-            runtime.pool().clone(),
-            stop,
-        )),
-    );
-    // Registry jobs stop through the registry at shutdown, not the watch.
-    jobs.spawn_loops().await.map_err(stage("jobs loops"))?;
+        .spawn_loops(supervisor)
+        .map_err(|error| stage("acquire loops")(error.to_string()))?;
+    state
+        .library_services
+        .start_loops(supervisor)
+        .map_err(|error| stage("library loops")(error.to_string()))?;
+    state
+        .compat
+        .start_loops(supervisor)
+        .map_err(|error| stage("compat loops")(error.to_string()))?;
+    // `activity.changed` and `downloads.changed` for every open stream.
+    droppedneedle_kernel::events::revisions::start(supervisor, events.clone(), db.clone())
+        .map_err(|error| stage("event loops")(error.to_string()))?;
+    droppedneedle_kernel::events::downloads::start(supervisor, events.clone(), db.clone())
+        .map_err(|error| stage("event loops")(error.to_string()))?;
+    jobs.spawn_loops().map_err(stage("jobs loops"))?;
+    jobs::spawn_provider_cache_sweep(supervisor, providers.cache.clone()).map_err(|_| {
+        stage("jobs loops")("the provider cache sweep is already running".to_owned())
+    })?;
 
     let router = create_app_with_web(state.clone(), web);
     Ok(Built {
         router,
         state,
-        background: background
-            .with_events(events)
-            .with_jobs(jobs)
-            .with_runtime(runtime)
-            .with_data_lock(data_lock),
+        background: Background::new(
+            grace,
+            supervisor.clone(),
+            events.clone(),
+            runtime,
+            cache_db,
+            data_lock,
+        ),
     })
 }
 
-/// Refuse a v2 data directory, or one an upgrade left halfway, before the
-/// database is opened, backed up or migrated: migrating would run v3's
-/// schema over the v2 database. Runs under the data lock, so the upgrade
-/// tool cannot be moving files while this looks.
-async fn refuse_foreign_data_dir(config: &AppConfig) -> Result<(), BootError> {
-    let dirs = DataDirs::from_config(config);
-    tokio::task::spawn_blocking(move || check_bootable(&dirs))
-        .await
-        .map_err(|error| BootError::Stage {
-            stage: "data directory check",
-            message: error.to_string(),
-        })?
-        .map_err(BootError::from)
+/// What the library calls outside itself. Completed scans refresh the library's
+/// images, as v2 did after a sync. Library Management plans genres, lyrics
+/// and covers through the same clients, online lyrics and artwork cache the
+/// pages use, and AcoustID ids on identification's shared rate limit.
+#[allow(clippy::too_many_arguments)]
+fn library_ports(
+    p: &Platform,
+    providers: &Arc<Providers>,
+    auth: &AuthSetup,
+    artwork: &ArtworkService,
+    scans: &jobs::ScansEnded,
+    lyrics: OnlineLyrics,
+    core: droppedneedle_library::wiring::LibraryCore,
+) -> droppedneedle_library::wiring::LibraryPorts {
+    let enrichment = LiveEnrichment {
+        acoustid: providers.acoustid.clone(),
+        library: p.settings.live(),
+        upstream: Upstream::new(
+            providers.clone(),
+            Arc::new(LiveCatalogSettings::new(&p.settings)),
+            auth.users.clone(),
+        ),
+        artwork: Some(artwork.clone()),
+        lyrics,
+    };
+    let scans = scans.clone();
+    droppedneedle_library::wiring::LibraryPorts {
+        enrichment: Some(Arc::new(enrichment)),
+        scan_completed: Arc::new(move || scans.bump()),
+        core,
+    }
+}
+
+/// What acquisition calls outside itself. Finished downloads land through
+/// the library's import seam, and "get missing tracks" asks the library
+/// which tracks the chosen edition lacks. Release polls and album lookups
+/// pace through the shared limiters. Plugins act as download sources, feed
+/// usenet and hear acquisition events.
+fn acquire_ports(
+    library: &LibraryServices,
+    providers: &Arc<Providers>,
+    mb_source: droppedneedle_providers::musicbrainz::LiveSource,
+    plugin_host: &Arc<droppedneedle_plugins::host::PluginHost>,
+    collections: &Stores,
+) -> AcquirePorts {
+    AcquirePorts {
+        library: Arc::new(
+            droppedneedle_acquire::landing::library::LibraryLanding::new(
+                &library.setup,
+                library.setup.imports.releases.clone(),
+            ),
+        ),
+        edition_plans: Arc::new(library.operations.clone()),
+        album_lookup: Arc::new(droppedneedle_acquire::target::lookup::live_albums(
+            providers,
+            mb_source.clone(),
+        )),
+        release_poll: Arc::new(droppedneedle_acquire::search::live_release_poll(
+            providers, mb_source,
+        )),
+        plugins: plugin_host.clone(),
+        collections: collections.clone(),
+        providers: providers.clone(),
+    }
 }
 
 /// Stamp the shipped web UI into the cache, off the async workers.

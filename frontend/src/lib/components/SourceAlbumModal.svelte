@@ -1,36 +1,31 @@
 <script lang="ts">
 	import { REMOTE_ENDPOINTS } from '$lib/queries/remotes/endpoints';
 	import { remoteApi } from '$lib/queries/remotes/remoteApi';
-	import {
-		toJellyfinTrack,
-		toNavidromeTrack,
-		toPlexTrack
-	} from '$lib/queries/remotes/remoteAdapters';
 	import { fetchLocalAlbumMatch } from '$lib/queries/albumMatch';
-	import { Shuffle, Play, X, ListPlus, ListStart, ListMusic, Info, Download } from 'lucide-svelte';
+	import { Shuffle, Play, ListPlus, ListStart, ListMusic, Info, Download } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { LocalDownloadsApi } from '$lib/queries/local/LocalDownloadsApi';
 	import { gatewayStreamUrl } from '$lib/player/playbackGateway';
 	import { downloadAlbumArchive, downloadTrackFile } from '$lib/utils/downloadActions';
 	import { playerStore } from '$lib/stores/player.svelte';
-	import { launchJellyfinPlayback } from '$lib/player/launchJellyfinPlayback';
 	import { launchLocalPlayback } from '$lib/player/launchLocalPlayback';
-	import { launchNavidromePlayback } from '$lib/player/launchNavidromePlayback';
-	import { launchPlexPlayback } from '$lib/player/launchPlexPlayback';
+	import { launchRemotePlayback } from '$lib/player/launchRemotePlayback';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import type { MenuItem } from '$lib/components/ContextMenu.svelte';
 	import AddToPlaylistModal from '$lib/components/AddToPlaylistModal.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import MetadataPanel from '$lib/components/MetadataPanel.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Modal from '$lib/ui/Modal.svelte';
 	import {
 		buildQueueItem,
-		buildQueueItemsFromJellyfin,
 		buildQueueItemsFromLocal,
-		buildQueueItemsFromNavidrome,
-		buildQueueItemsFromPlex,
+		buildRemoteQueueItems,
 		compareDiscTrack,
-		normalizeCodec,
 		normalizeDiscNumber,
+		recordingFor,
+		REMOTE_FORMAT,
+		remoteStreamKey,
 		type TrackMeta,
 		type TrackSourceData
 	} from '$lib/player/queueHelpers';
@@ -39,35 +34,23 @@
 	import { withBasePath } from '$lib/utils/basePath';
 	import { api } from '$lib/api/client';
 	import NowPlayingIndicator from '$lib/components/NowPlayingIndicator.svelte';
-	import AudioQualityBadge from '$lib/components/AudioQualityBadge.svelte';
 	import { Radio } from 'lucide-svelte';
-	import type {
-		JellyfinTrackInfo,
-		LocalTrackInfo,
-		NavidromeTrackInfo,
-		PlexTrackInfo,
-		JellyfinAlbumSummary,
-		LocalAlbumSummary,
-		NavidromeAlbumSummary,
-		PlexAlbumSummary
-	} from '$lib/types';
-
-	type SourceType = 'jellyfin' | 'local' | 'navidrome' | 'plex';
+	import type { LocalTrackInfo, LocalAlbumSummary } from '$lib/types';
+	import type { RemoteAlbum, RemoteSource, RemoteTrack } from '$lib/queries/remotes/types';
 
 	interface Props {
 		open: boolean;
-		sourceType: SourceType;
-		album:
-			JellyfinAlbumSummary | LocalAlbumSummary | NavidromeAlbumSummary | PlexAlbumSummary | null;
+		sourceType: RemoteSource | 'local';
+		album: RemoteAlbum | LocalAlbumSummary | null;
 		onclose: () => void;
 	}
 
 	let { open = $bindable(), sourceType, album, onclose }: Props = $props();
 
-	let jellyfinTracks = $state<JellyfinTrackInfo[]>([]);
+	let remoteAlbum = $derived(album && 'source' in album ? album : null);
+	let localAlbum = $derived(album && !('source' in album) ? album : null);
+	let remoteTracks = $state<RemoteTrack[]>([]);
 	let localTracks = $state<LocalTrackInfo[]>([]);
-	let navidromeTracks = $state<NavidromeTrackInfo[]>([]);
-	let plexTracks = $state<PlexTrackInfo[]>([]);
 	let loadingTracks = $state(false);
 	let trackError = $state('');
 	let fetchId = 0;
@@ -80,79 +63,39 @@
 	let infoImageUrl = $state('');
 	let infoLoading = $state(false);
 
-	let albumName = $derived(album?.name ?? '');
+	let albumName = $derived(remoteAlbum?.title ?? localAlbum?.name ?? '');
 	let artistName = $derived(album?.artist_name ?? '');
 	let year = $derived(album?.year);
-	let albumId = $derived(getAlbumId());
-	let mbid = $derived(getMbid());
-	let artistMbid = $derived(getArtistMbid());
-	let coverUrl = $derived(getCoverUrl(getAlbumCoverUrl() || null, mbid ?? albumId));
-	let canNavigate = $derived(!!mbid || !!albumName);
-	let canNavigateArtist = $derived(!!artistMbid);
-	let trackCount = $derived(
-		sourceType === 'jellyfin'
-			? jellyfinTracks.length
-			: sourceType === 'navidrome'
-				? navidromeTracks.length
-				: sourceType === 'plex'
-					? plexTracks.length
-					: localTracks.length
+	let albumId = $derived(remoteAlbum?.id ?? localAlbum?.musicbrainz_id ?? '');
+	let mbid = $derived(
+		remoteAlbum ? (remoteAlbum.release_group_mbid ?? null) : (localAlbum?.musicbrainz_id ?? null)
 	);
+	let artistMbid = $derived(
+		remoteAlbum ? (remoteAlbum.artist_mbid ?? null) : (localAlbum?.artist_mbid ?? null)
+	);
+	let albumCoverUrl = $derived(remoteAlbum?.image_url ?? localAlbum?.cover_url ?? '');
+	let coverUrl = $derived(getCoverUrl(albumCoverUrl || null, mbid ?? albumId));
+	let canNavigate = $derived(!!mbid || !!albumName);
+	let albumHref = $derived(
+		mbid
+			? withBasePath(`/album/${mbid}`)
+			: albumName
+				? withBasePath(`/search?q=${encodeURIComponent(albumName)}`)
+				: undefined
+	);
+	let canNavigateArtist = $derived(!!artistMbid);
+	let trackCount = $derived(remoteAlbum ? remoteTracks.length : localTracks.length);
 	// Album-level viewer permission gates both the bulk and per-track Download
 	// items (mirrors the album-page menus); fail-open on a missing bit.
-	let localDownloadAllowed = $derived(
-		sourceType !== 'local' || (album as LocalAlbumSummary | null)?.download_allowed !== false
-	);
-
-	function getAlbumCoverUrl(): string {
-		if (!album) return '';
-		if (sourceType === 'jellyfin') {
-			return (album as JellyfinAlbumSummary).image_url ?? '';
-		}
-		if (sourceType === 'navidrome') {
-			return (album as NavidromeAlbumSummary).image_url ?? '';
-		}
-		if (sourceType === 'plex') {
-			return (album as PlexAlbumSummary).image_url ?? '';
-		}
-		return (album as LocalAlbumSummary).cover_url ?? '';
-	}
-
-	function getAlbumId(): string {
-		if (!album) return '';
-		if (sourceType === 'jellyfin') return (album as JellyfinAlbumSummary).jellyfin_id;
-		if (sourceType === 'navidrome') return (album as NavidromeAlbumSummary).navidrome_id;
-		if (sourceType === 'plex') return (album as PlexAlbumSummary).plex_id;
-		return (album as LocalAlbumSummary).musicbrainz_id;
-	}
-
-	function getMbid(): string | null {
-		if (!album) return null;
-		if (sourceType === 'jellyfin') return (album as JellyfinAlbumSummary).musicbrainz_id ?? null;
-		if (sourceType === 'navidrome') return (album as NavidromeAlbumSummary).musicbrainz_id ?? null;
-		if (sourceType === 'plex') return (album as PlexAlbumSummary).musicbrainz_id ?? null;
-		return (album as LocalAlbumSummary).musicbrainz_id ?? null;
-	}
-
-	function getArtistMbid(): string | null {
-		if (!album) return null;
-		if (sourceType === 'jellyfin')
-			return (album as JellyfinAlbumSummary).artist_musicbrainz_id ?? null;
-		if (sourceType === 'navidrome')
-			return (album as NavidromeAlbumSummary).artist_musicbrainz_id ?? null;
-		if (sourceType === 'plex') return (album as PlexAlbumSummary).artist_musicbrainz_id ?? null;
-		return (album as LocalAlbumSummary).artist_mbid ?? null;
-	}
+	let localDownloadAllowed = $derived(localAlbum?.download_allowed !== false);
 
 	$effect(() => {
 		if (open && album) {
 			fetchTracks();
 		}
 		if (!open) {
-			jellyfinTracks = [];
+			remoteTracks = [];
 			localTracks = [];
-			navidromeTracks = [];
-			plexTracks = [];
 			trackError = '';
 		}
 	});
@@ -162,25 +105,11 @@
 		loadingTracks = true;
 		trackError = '';
 		try {
-			if (sourceType === 'jellyfin') {
-				const jfAlbum = album as JellyfinAlbumSummary;
-				const page = await remoteApi.albumTracks('jellyfin', jfAlbum.jellyfin_id, { limit: 500 });
+			if (remoteAlbum) {
+				const page = await remoteApi.albumTracks(remoteAlbum.source, remoteAlbum.id);
 				if (id !== fetchId) return;
-				jellyfinTracks = page.items.map(toJellyfinTrack);
-			} else if (sourceType === 'navidrome') {
-				const ndAlbum = album as NavidromeAlbumSummary;
-				const page = await remoteApi.albumTracks('navidrome', ndAlbum.navidrome_id, {
-					limit: 500
-				});
-				if (id !== fetchId) return;
-				navidromeTracks = page.items.map(toNavidromeTrack);
-			} else if (sourceType === 'plex') {
-				const plexAlbum = album as PlexAlbumSummary;
-				const page = await remoteApi.albumTracks('plex', plexAlbum.plex_id, { limit: 500 });
-				if (id !== fetchId) return;
-				plexTracks = page.items.map(toPlexTrack);
-			} else {
-				const localAlbum = album as LocalAlbumSummary;
+				remoteTracks = page.items;
+			} else if (localAlbum) {
 				const match = await fetchLocalAlbumMatch(localAlbum.musicbrainz_id);
 				if (id !== fetchId) return;
 				localTracks = match.tracks;
@@ -199,15 +128,10 @@
 	}
 
 	function goToAlbum(): void {
-		if (!canNavigate) return;
-		if (mbid) {
-			const target = mbid;
-			handleClose();
-			goto(withBasePath(`/album/${target}`));
-		} else if (albumName) {
-			handleClose();
-			goto(withBasePath(`/search?q=${encodeURIComponent(albumName)}`));
-		}
+		if (!albumHref) return;
+		const target = albumHref;
+		handleClose();
+		goto(target);
 	}
 
 	function goToArtist(): void {
@@ -218,12 +142,11 @@
 	}
 
 	async function launchInstantMix() {
-		if (sourceType !== 'jellyfin' || !album || !('jellyfin_id' in album)) return;
+		const seed = remoteAlbum;
+		if (seed?.source !== 'jellyfin') return;
 		mixLoading = true;
 		try {
-			const mix = await api.v3.GET(
-				REMOTE_ENDPOINTS.mix('jellyfin', album.jellyfin_id, { limit: 50 })
-			);
+			const mix = await api.v3.GET(REMOTE_ENDPOINTS.mix('jellyfin', seed.id, { limit: 50 }));
 			if (mix.items.length > 0) {
 				const items: QueueItem[] = mix.items.map((t) => ({
 					trackSourceId: t.id,
@@ -236,7 +159,8 @@
 					coverUrl: t.image_url ?? null,
 					sourceType: 'jellyfin' as const,
 					streamUrl: gatewayStreamUrl('jellyfin', t.id),
-					format: normalizeCodec(undefined)
+					format: REMOTE_FORMAT,
+					recordingIds: recordingFor('jellyfin', t.recording_mbid)
 				}));
 				playerStore.playQueue(items, 0, false);
 			}
@@ -248,11 +172,12 @@
 	}
 
 	async function openAlbumInfo() {
-		if (sourceType !== 'navidrome' || !album || !('navidrome_id' in album)) return;
+		const target = remoteAlbum;
+		if (target?.source !== 'navidrome') return;
 		infoLoading = true;
 		infoOpen = true;
 		try {
-			const info = await api.v3.GET(REMOTE_ENDPOINTS.infoAlbum('navidrome', album.navidrome_id));
+			const info = await api.v3.GET(REMOTE_ENDPOINTS.infoAlbum('navidrome', target.id));
 			infoNotes = info.biography;
 			infoLastfmUrl = info.lastfm_url;
 			infoMbid = info.musicbrainz_id;
@@ -273,13 +198,9 @@
 			coverUrl
 		};
 
-		if (sourceType === 'jellyfin' && jellyfinTracks.length > 0) {
-			launchJellyfinPlayback([...jellyfinTracks].sort(compareDiscTrack), 0, shuffle, meta);
-		} else if (sourceType === 'navidrome' && navidromeTracks.length > 0) {
-			launchNavidromePlayback([...navidromeTracks].sort(compareDiscTrack), 0, shuffle, meta);
-		} else if (sourceType === 'plex' && plexTracks.length > 0) {
-			launchPlexPlayback([...plexTracks].sort(compareDiscTrack), 0, shuffle, meta);
-		} else if (sourceType === 'local' && localTracks.length > 0) {
+		if (remoteAlbum && remoteTracks.length > 0) {
+			launchRemotePlayback([...remoteTracks].sort(compareDiscTrack), 0, shuffle, meta);
+		} else if (localAlbum && localTracks.length > 0) {
 			launchLocalPlayback([...localTracks].sort(compareDiscTrack), 0, shuffle, meta);
 		}
 	}
@@ -293,27 +214,12 @@
 			coverUrl
 		};
 
-		if (sourceType === 'jellyfin') {
-			const sorted = [...jellyfinTracks].sort(compareDiscTrack);
-			const track = jellyfinTracks[index];
-			const sortedIdx = track ? sorted.indexOf(track) : index;
-			launchJellyfinPlayback(sorted, sortedIdx >= 0 ? sortedIdx : index, false, meta);
-		} else if (sourceType === 'navidrome') {
-			const sorted = [...navidromeTracks].sort(compareDiscTrack);
-			const track = navidromeTracks[index];
-			const sortedIdx = track ? sorted.indexOf(track) : index;
-			launchNavidromePlayback(sorted, sortedIdx >= 0 ? sortedIdx : index, false, meta);
-		} else if (sourceType === 'plex') {
-			const streamable = plexTracks.filter((t) => t.part_key);
-			const sorted = [...streamable].sort(compareDiscTrack);
-			const track = plexTracks[index];
-			if (track && !track.part_key) return;
+		if (remoteAlbum) {
+			const track = remoteTracks[index];
+			if (track && remoteStreamKey(track) === null) return;
+			const sorted = [...remoteTracks].sort(compareDiscTrack);
 			const sortedIdx = track ? sorted.indexOf(track) : -1;
-			if (sortedIdx === -1 && sorted.length > 0) {
-				launchPlexPlayback(sorted, 0, false, meta);
-			} else if (sortedIdx >= 0) {
-				launchPlexPlayback(sorted, sortedIdx, false, meta);
-			}
+			launchRemotePlayback(sorted, Math.max(sortedIdx, 0), false, meta);
 		} else {
 			const sorted = [...localTracks].sort(compareDiscTrack);
 			const track = localTracks[index];
@@ -327,48 +233,30 @@
 			albumId: mbid ?? albumId,
 			albumName,
 			artistName,
-			coverUrl: getAlbumCoverUrl() || null,
+			coverUrl: albumCoverUrl || null,
 			artistId: artistMbid ?? undefined
 		};
 	}
 
+	function remoteTrackSlot(
+		track: RemoteTrack
+	): Pick<TrackSourceData, 'jellyfinTrack' | 'navidromeTrack' | 'plexTrack'> {
+		if (track.source === 'jellyfin') return { jellyfinTrack: track };
+		if (track.source === 'navidrome') return { navidromeTrack: track };
+		return { plexTrack: track };
+	}
+
 	function buildTrackQueueItem(index: number): QueueItem | null {
 		const meta = getTrackMeta();
-		if (sourceType === 'jellyfin') {
-			const track = jellyfinTracks[index];
+		if (remoteAlbum) {
+			const track = remoteTracks[index];
 			if (!track) return null;
 			const sourceData: TrackSourceData = {
-				trackPosition: track.track_number,
+				trackPosition: track.track_number ?? 0,
 				discNumber: normalizeDiscNumber(track.disc_number),
 				trackTitle: track.title,
-				trackLength: track.duration_seconds,
-				jellyfinTrack: track
-			};
-			return buildQueueItem(meta, sourceData);
-		}
-
-		if (sourceType === 'navidrome') {
-			const track = navidromeTracks[index];
-			if (!track) return null;
-			const sourceData: TrackSourceData = {
-				trackPosition: track.track_number,
-				discNumber: normalizeDiscNumber(track.disc_number),
-				trackTitle: track.title,
-				trackLength: track.duration_seconds,
-				navidromeTrack: track
-			};
-			return buildQueueItem(meta, sourceData);
-		}
-
-		if (sourceType === 'plex') {
-			const track = plexTracks[index];
-			if (!track) return null;
-			const sourceData: TrackSourceData = {
-				trackPosition: track.track_number,
-				discNumber: normalizeDiscNumber(track.disc_number),
-				trackTitle: track.title,
-				trackLength: track.duration_seconds,
-				plexTrack: track
+				trackLength: track.duration_secs ?? 0,
+				...remoteTrackSlot(track)
 			};
 			return buildQueueItem(meta, sourceData);
 		}
@@ -387,14 +275,8 @@
 
 	function buildAlbumQueueItems(): QueueItem[] {
 		const meta = getTrackMeta();
-		if (sourceType === 'jellyfin') {
-			return buildQueueItemsFromJellyfin([...jellyfinTracks].sort(compareDiscTrack), meta);
-		}
-		if (sourceType === 'navidrome') {
-			return buildQueueItemsFromNavidrome([...navidromeTracks].sort(compareDiscTrack), meta);
-		}
-		if (sourceType === 'plex') {
-			return buildQueueItemsFromPlex([...plexTracks].sort(compareDiscTrack), meta);
+		if (remoteAlbum) {
+			return buildRemoteQueueItems([...remoteTracks].sort(compareDiscTrack), meta);
 		}
 		return buildQueueItemsFromLocal([...localTracks].sort(compareDiscTrack), meta);
 	}
@@ -429,16 +311,13 @@
 			{ label: 'Play All Next', icon: ListStart, onclick: playAllNext },
 			{ label: 'Add All to Playlist', icon: ListMusic, onclick: addAllToPlaylist }
 		];
-		if (sourceType === 'local' && album) {
-			const localAlbum = album as import('$lib/types').LocalAlbumSummary;
-			if (localAlbum.download_allowed !== false) {
-				items.push({
-					label: 'Download Album',
-					icon: Download,
-					onclick: () =>
-						void downloadAlbumArchive(LocalDownloadsApi.albumByMbid(localAlbum.musicbrainz_id))
-				});
-			}
+		if (localAlbum && localAlbum.download_allowed !== false) {
+			const albumMbid = localAlbum.musicbrainz_id;
+			items.push({
+				label: 'Download Album',
+				icon: Download,
+				onclick: () => void downloadAlbumArchive(LocalDownloadsApi.albumByMbid(albumMbid))
+			});
 		}
 		return items;
 	}
@@ -470,7 +349,7 @@
 				disabled: !hasQueueItem
 			}
 		];
-		if (sourceType === 'local' && localDownloadAllowed) {
+		if (localAlbum && localDownloadAllowed) {
 			const track = localTracks[index];
 			if (track) {
 				items.push({
@@ -485,23 +364,17 @@
 	}
 
 	function getTrackName(index: number): string {
-		if (sourceType === 'jellyfin') return jellyfinTracks[index]?.title ?? '';
-		if (sourceType === 'navidrome') return navidromeTracks[index]?.title ?? '';
-		if (sourceType === 'plex') return plexTracks[index]?.title ?? '';
+		if (remoteAlbum) return remoteTracks[index]?.title ?? '';
 		return localTracks[index]?.title ?? '';
 	}
 
 	function getTrackNumber(index: number): number {
-		if (sourceType === 'jellyfin') return jellyfinTracks[index]?.track_number ?? 0;
-		if (sourceType === 'navidrome') return navidromeTracks[index]?.track_number ?? 0;
-		if (sourceType === 'plex') return plexTracks[index]?.track_number ?? 0;
+		if (remoteAlbum) return remoteTracks[index]?.track_number ?? 0;
 		return localTracks[index]?.track_number ?? 0;
 	}
 
 	function getTrackDiscNumber(index: number): number {
-		if (sourceType === 'jellyfin') return normalizeDiscNumber(jellyfinTracks[index]?.disc_number);
-		if (sourceType === 'navidrome') return normalizeDiscNumber(navidromeTracks[index]?.disc_number);
-		if (sourceType === 'plex') return normalizeDiscNumber(plexTracks[index]?.disc_number);
+		if (remoteAlbum) return normalizeDiscNumber(remoteTracks[index]?.disc_number);
 		return normalizeDiscNumber(localTracks[index]?.disc_number);
 	}
 
@@ -527,232 +400,187 @@
 	}
 </script>
 
-{#if open && album}
-	<dialog class="modal modal-open">
-		<div class="modal-box max-w-4xl p-0 overflow-hidden">
-			<div class="flex gap-5 p-6 pb-4">
-				<div class="shrink-0">
-					{#if canNavigate}
-						<button
-							onclick={goToAlbum}
-							class="block rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow cursor-pointer"
-							aria-label="Go to album"
-						>
-							<AlbumImage
-								mbid={mbid ?? albumId}
-								customUrl={coverUrl || null}
-								alt={albumName}
-								size="xl"
-								requestSize={250}
-								rounded="none"
-								className="w-36 h-36"
-							/>
-						</button>
-					{:else}
-						<div class="rounded-lg overflow-hidden shadow-lg">
-							<AlbumImage
-								mbid={albumId}
-								customUrl={coverUrl || null}
-								alt={albumName}
-								size="xl"
-								requestSize={250}
-								rounded="none"
-								className="w-36 h-36"
-							/>
-						</div>
-					{/if}
-				</div>
-
-				<div class="flex flex-col justify-center min-w-0 flex-1">
-					{#if canNavigate}
-						<button
-							onclick={goToAlbum}
-							class="text-xl font-bold truncate text-left hover:text-accent transition-colors cursor-pointer"
-						>
-							{albumName}
-						</button>
-					{:else}
-						<h3 class="text-xl font-bold truncate">{albumName}</h3>
-					{/if}
-					{#if canNavigateArtist}
-						<button
-							onclick={goToArtist}
-							class="text-base opacity-70 truncate text-left hover:text-accent transition-colors cursor-pointer"
-						>
-							{artistName}
-						</button>
-					{:else}
-						<p class="text-base opacity-70 truncate">{artistName}</p>
-					{/if}
-					<div class="flex items-center gap-2 mt-2 flex-wrap">
-						{#if year}
-							<span class="badge badge-sm badge-ghost">{year}</span>
-						{/if}
-						{#if sourceType === 'jellyfin'}
-							<span class="badge badge-sm badge-info">Jellyfin</span>
-						{:else if sourceType === 'navidrome'}
-							<span class="badge badge-sm badge-primary">Navidrome</span>
-						{:else if sourceType === 'plex'}
-							<span class="badge badge-sm badge-warning">Plex</span>
-						{:else}
-							{@const localAlbum = album as LocalAlbumSummary}
-							<span class="badge badge-sm badge-accent">Local</span>
-							{#if localAlbum.primary_format}
-								<span class="badge badge-sm badge-ghost">{localAlbum.primary_format}</span>
-							{/if}
-							{#if localAlbum.total_size_bytes > 0}
-								<span class="badge badge-sm badge-ghost"
-									>{formatSize(localAlbum.total_size_bytes)}</span
-								>
-							{/if}
-						{/if}
-						{#if !mbid && albumName}
-							<span class="badge badge-sm badge-info badge-outline">Search result</span>
-						{/if}
-					</div>
-				</div>
-
-				<button class="btn btn-sm btn-circle btn-ghost self-start -mr-2 -mt-2" onclick={handleClose}
-					><X class="h-4 w-4" /></button
-				>
-			</div>
-
-			<div class="flex items-center gap-2 px-6 pb-4 flex-wrap">
-				{#if trackCount > 0}
-					<button class="btn btn-sm btn-accent gap-1" onclick={() => playAll(false)}>
-						<Play class="h-4 w-4 fill-current" />
-						Play All
+{#if album}
+	<Modal bind:open title={albumName} titleHref={albumHref} size="xl" closeButton {onclose}>
+		<div class="flex gap-4 sm:gap-5">
+			<div class="shrink-0">
+				{#if canNavigate}
+					<button
+						type="button"
+						onclick={goToAlbum}
+						class="block cursor-pointer overflow-hidden rounded-lg shadow-lg transition-shadow hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+						aria-label="Go to album"
+					>
+						<AlbumImage
+							mbid={mbid ?? albumId}
+							customUrl={coverUrl || null}
+							alt={albumName}
+							size="xl"
+							requestSize={250}
+							rounded="none"
+							className="w-36 h-36"
+						/>
 					</button>
-					<button class="btn btn-sm btn-ghost gap-1" onclick={() => playAll(true)}>
-						<Shuffle class="h-4 w-4" />
-						Shuffle
-					</button>
-					{#if sourceType === 'jellyfin'}
-						<button
-							class="btn btn-sm btn-outline gap-1"
-							onclick={launchInstantMix}
-							disabled={mixLoading}
-						>
-							<span class:animate-pulse={mixLoading}>
-								<Radio class="h-4 w-4" />
-							</span>
-							Instant Mix
-						</button>
-					{/if}
-					{#if sourceType === 'navidrome'}
-						<button
-							class="btn btn-sm btn-ghost gap-1"
-							onclick={openAlbumInfo}
-							disabled={infoLoading}
-						>
-							<Info class="h-4 w-4" />
-							Info
-						</button>
-					{/if}
-					<ContextMenu items={getBulkMenuItems()} position="end" size="sm" />
-				{/if}
-			</div>
-
-			<div class="divider my-0 px-6"></div>
-
-			<div class="px-6 pt-3 pb-5 max-h-112 overflow-y-auto">
-				{#if loadingTracks}
-					<div class="flex justify-center py-6">
-						<span class="loading loading-spinner loading-md"></span>
-					</div>
-				{:else if trackError}
-					<div role="alert" class="alert alert-error alert-soft">
-						<span>{trackError}</span>
-						<button class="btn btn-sm btn-ghost" onclick={fetchTracks}>Try again</button>
-					</div>
-				{:else if trackCount > 0}
-					<div class="flex flex-col">
-						{#each { length: trackCount } as _, i (`track-${i}`)}
-							{@const trackNum = getTrackNumber(i)}
-							{@const discNum = getTrackDiscNumber(i)}
-							{@const playing = isTrackPlaying(trackNum, discNum)}
-							<div
-								class="group/row flex items-center gap-2 w-full py-1 px-1 rounded-lg transition-colors {playing
-									? 'bg-accent/10'
-									: 'hover:bg-base-200'}"
-							>
-								<button
-									class="flex items-center gap-3 flex-1 py-1.5 px-1 rounded-lg text-left group/track"
-									onclick={() => playTrack(i)}
-								>
-									<span
-										class="font-mono w-6 text-right text-sm shrink-0 {playing
-											? 'text-accent'
-											: 'opacity-40'}"
-									>
-										{#if playing}
-											<NowPlayingIndicator />
-										{:else}
-											{trackNum}
-										{/if}
-									</span>
-									<span class="text-sm truncate flex-1 {playing ? 'text-accent' : ''}"
-										>{getTrackName(i)}</span
-									>
-									{#if sourceType === 'jellyfin'}
-										{@const dur = jellyfinTracks[i]?.duration_seconds}
-										{#if dur}
-											<span class="text-xs opacity-40 shrink-0">{formatDuration(dur)}</span>
-										{/if}
-									{:else if sourceType === 'navidrome'}
-										{@const dur = navidromeTracks[i]?.duration_seconds}
-										{#if dur}
-											<span class="text-xs opacity-40 shrink-0">{formatDuration(dur)}</span>
-										{/if}
-									{:else if sourceType === 'plex'}
-										{@const dur = plexTracks[i]?.duration_seconds}
-										{@const pt = plexTracks[i]}
-										{#if dur}
-											<span class="text-xs opacity-40 shrink-0">{formatDuration(dur)}</span>
-										{/if}
-										{#if pt}
-											<span class="hidden sm:inline-flex shrink-0">
-												<AudioQualityBadge
-													codec={pt.codec}
-													bitrate={pt.bitrate}
-													audioChannels={pt.audio_channels}
-													container={pt.container}
-													compact
-												/>
-											</span>
-										{/if}
-									{:else}
-										{@const lt = localTracks[i]}
-										{#if lt?.duration_seconds}
-											<span class="text-xs opacity-40 shrink-0"
-												>{formatDuration(lt.duration_seconds)}</span
-											>
-										{/if}
-									{/if}
-									<span class={playing ? 'text-accent' : ''}>
-										<Play
-											class="h-4 w-4 shrink-0 transition-opacity {playing
-												? 'opacity-100'
-												: 'text-accent opacity-0 group-hover/track:opacity-100'} fill-current"
-										/>
-									</span>
-								</button>
-								<div>
-									<ContextMenu items={getTrackContextMenuItems(i)} position="end" size="xs" />
-								</div>
-							</div>
-						{/each}
-					</div>
 				{:else}
-					<p class="text-sm opacity-50 text-center py-6">No tracks found for this album.</p>
+					<div class="overflow-hidden rounded-lg shadow-lg">
+						<AlbumImage
+							mbid={albumId}
+							customUrl={coverUrl || null}
+							alt={albumName}
+							size="xl"
+							requestSize={250}
+							rounded="none"
+							className="w-36 h-36"
+						/>
+					</div>
 				{/if}
+			</div>
+
+			<div class="flex min-w-0 flex-1 flex-col justify-center">
+				{#if canNavigateArtist}
+					<button
+						type="button"
+						onclick={goToArtist}
+						class="cursor-pointer truncate text-left text-base opacity-70 transition-colors hover:text-accent"
+					>
+						{artistName}
+					</button>
+				{:else}
+					<p class="truncate text-base opacity-70">{artistName}</p>
+				{/if}
+				<div class="mt-2 flex flex-wrap items-center gap-2">
+					{#if year}
+						<span class="badge badge-sm badge-ghost">{year}</span>
+					{/if}
+					{#if sourceType === 'jellyfin'}
+						<span class="badge badge-sm badge-info">Jellyfin</span>
+					{:else if sourceType === 'navidrome'}
+						<span class="badge badge-sm badge-primary">Navidrome</span>
+					{:else if sourceType === 'plex'}
+						<span class="badge badge-sm badge-warning">Plex</span>
+					{:else if localAlbum}
+						<span class="badge badge-sm badge-accent">Local</span>
+						{#if localAlbum.primary_format}
+							<span class="badge badge-sm badge-ghost">{localAlbum.primary_format}</span>
+						{/if}
+						{#if localAlbum.total_size_bytes > 0}
+							<span class="badge badge-sm badge-ghost"
+								>{formatSize(localAlbum.total_size_bytes)}</span
+							>
+						{/if}
+					{/if}
+					{#if !mbid && albumName}
+						<span class="badge badge-sm badge-info badge-outline">Search result</span>
+					{/if}
+				</div>
 			</div>
 		</div>
 
-		<form method="dialog" class="modal-backdrop">
-			<button onclick={handleClose}>Close</button>
-		</form>
-	</dialog>
+		{#if trackCount > 0}
+			<div class="mt-4 flex flex-wrap items-center gap-2">
+				<Button variant="accent" size="sm" onclick={() => playAll(false)}>
+					<Play class="size-4 fill-current" aria-hidden="true" />
+					Play All
+				</Button>
+				<Button variant="ghost" size="sm" icon={Shuffle} onclick={() => playAll(true)}
+					>Shuffle</Button
+				>
+				{#if sourceType === 'jellyfin'}
+					<Button
+						variant="outline"
+						size="sm"
+						icon={Radio}
+						loading={mixLoading}
+						onclick={launchInstantMix}>Instant Mix</Button
+					>
+				{/if}
+				{#if sourceType === 'navidrome'}
+					<Button
+						variant="ghost"
+						size="sm"
+						icon={Info}
+						disabled={infoLoading}
+						onclick={openAlbumInfo}>Info</Button
+					>
+				{/if}
+				<ContextMenu items={getBulkMenuItems()} position="end" size="sm" />
+			</div>
+		{/if}
+
+		<div class="divider my-2"></div>
+
+		<div class="max-h-112 overflow-y-auto">
+			{#if loadingTracks}
+				<div class="flex justify-center py-6">
+					<span class="loading loading-spinner loading-md"></span>
+				</div>
+			{:else if trackError}
+				<div role="alert" class="alert alert-error alert-soft">
+					<span>{trackError}</span>
+					<Button variant="ghost" size="sm" onclick={fetchTracks}>Try again</Button>
+				</div>
+			{:else if trackCount > 0}
+				<div class="flex flex-col">
+					{#each { length: trackCount } as _, i (`track-${i}`)}
+						{@const trackNum = getTrackNumber(i)}
+						{@const discNum = getTrackDiscNumber(i)}
+						{@const playing = isTrackPlaying(trackNum, discNum)}
+						<div
+							class="group/row flex items-center gap-2 w-full py-1 px-1 rounded-lg transition-colors {playing
+								? 'bg-accent/10'
+								: 'hover:bg-base-200'}"
+						>
+							<button
+								type="button"
+								class="flex items-center gap-3 flex-1 min-w-0 py-1.5 px-1 rounded-lg text-left group/track"
+								onclick={() => playTrack(i)}
+							>
+								<span
+									class="font-mono w-6 text-right text-sm shrink-0 {playing
+										? 'text-accent'
+										: 'opacity-40'}"
+								>
+									{#if playing}
+										<NowPlayingIndicator />
+									{:else}
+										{trackNum}
+									{/if}
+								</span>
+								<span class="text-sm truncate flex-1 {playing ? 'text-accent' : ''}"
+									>{getTrackName(i)}</span
+								>
+								{#if remoteAlbum}
+									{@const dur = remoteTracks[i]?.duration_secs}
+									{#if dur}
+										<span class="text-xs opacity-40 shrink-0">{formatDuration(dur)}</span>
+									{/if}
+								{:else}
+									{@const lt = localTracks[i]}
+									{#if lt?.duration_seconds}
+										<span class="text-xs opacity-40 shrink-0"
+											>{formatDuration(lt.duration_seconds)}</span
+										>
+									{/if}
+								{/if}
+								<span class={playing ? 'text-accent' : ''}>
+									<Play
+										class="h-4 w-4 shrink-0 transition-opacity {playing
+											? 'opacity-100'
+											: 'text-accent opacity-0 group-hover/track:opacity-100'} fill-current"
+									/>
+								</span>
+							</button>
+							<div>
+								<ContextMenu items={getTrackContextMenuItems(i)} position="end" size="xs" />
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-sm opacity-50 text-center py-6">No tracks found for this album.</p>
+			{/if}
+		</div>
+	</Modal>
 {/if}
 
 <AddToPlaylistModal bind:this={playlistModalRef} />

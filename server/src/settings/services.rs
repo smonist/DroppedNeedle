@@ -4,8 +4,8 @@
 //! sections as they are, secret sections as [`Masked`] (secrets swapped
 //! for their mask on read; a mask that comes back keeps the stored
 //! secret). Reads never mutate the store. Saves run on the blocking pool
-//! (the store writes and fsyncs the config file) and then fan out
-//! through [`SaveEffects`] (provider-cache invalidation, events kick).
+//! (one durable write on the settings database) and answer once the
+//! section's effects have run (see [`Effects`]).
 //!
 //! Verify methods test the submitted values, not the stored config, so
 //! Test works before the first save and reflects edits. A secret that
@@ -15,61 +15,61 @@
 
 use std::sync::Arc;
 
-use super::effects::{SaveEffects, SavedSection};
-use super::error::SettingsError;
-use super::library_policy;
+use droppedneedle_kernel::clock::Clock;
+
+use super::effects::Effects;
 use super::models::{
-    AdvancedSettingsForm, DownloadPolicyView, FrontendCacheTTLs, IndexerSavedResponse,
-    IndexerTestResponse, JellyfinUserInfo, JellyfinVerifyResponse, LibraryScanScheduleResponse,
-    LibrarySettingsResponse, LibrarySettingsSaveRequest, PlexLibrarySectionInfo,
-    PlexVerifyResponse, PolicyImpactResponse, PolicySummaryResponse, ProwlarrTestResponse,
-    SabnzbdTestResponse, SourcePriorityOrder, TestConnectionResponse, UsenetSearchBackend,
-    VerifyConnectionResponse,
+    DownloadPolicyView, FrontendCacheTTLs, IndexerSavedResponse, IndexerTestResponse,
+    JellyfinUserInfo, JellyfinVerifyResponse, LibraryScanScheduleResponse,
+    LibrarySettingsSaveRequest, PlexLibrarySectionInfo, PlexVerifyResponse, PolicySummaryResponse,
+    ProwlarrTestResponse, SabnzbdTestResponse, SourcePriorityOrder, TestConnectionResponse,
+    UsenetSearchBackend, VerifyConnectionResponse,
 };
 use super::quality;
 use super::verify::{VerifyProbes, check_hibp_file, require_service_url};
-use crate::bootstrap::Outbound;
-use crate::ids::IdGenerator;
-use crate::runtime_config::secret_sections::{
+use droppedneedle_kernel::ids::IdGenerator;
+use droppedneedle_kernel::runtime_config::secret_sections::{
     AdvancedSettings, DownloadClients, EventsSettings, IdentificationPolicy, JellyfinConnection,
     LibraryRoot, ListenBrainzConnection, NavidromeConnection, NewznabIndexer, OidcConnection,
     PlexConnection, ProwlarrConnection, SabnzbdConnection, SlskdConnection, TypedLibrary,
     YouTubeConnection,
 };
-use crate::runtime_config::sections::{
+use droppedneedle_kernel::runtime_config::sections::{
     DownloadPolicy, LibraryScanSchedule, PlainSection, SecuritySettings, SourcePriority,
     UsenetBackendSetting, derive_default_order, validate_quality_recipe,
 };
-use crate::runtime_config::{
-    ConfigError, ConfigStore, Masked, SecretSection, Section, UpdateError,
+use droppedneedle_kernel::runtime_config::settings_error::SettingsError;
+use droppedneedle_kernel::runtime_config::{
+    ConfigError, ConfigStore, Masked, Plain, SecretSection, Section, UpdateError,
 };
+use droppedneedle_library::policy as library_policy;
+use droppedneedle_library::settings_models::LibrarySettingsResponse;
 
 /// Settings reads, writes, and verify probes. Built once at boot; every
 /// call reads the store, so a save takes effect on the next call.
 pub struct SettingsService {
     /// Config store.
     pub store: Arc<ConfigStore>,
-    /// Post-save fan-out.
-    pub effects: Arc<dyn SaveEffects>,
-    /// Error-id mint.
+    /// Tells when a save's effects have run.
+    pub effects: Effects,
+    /// Id mint for new library roots.
     pub ids: Arc<dyn IdGenerator>,
     /// `TZ` from the deployment config, when set.
     pub timezone: Option<String>,
     /// Connection probes behind the verify methods.
     probes: Arc<dyn VerifyProbes>,
-    /// Where the probes of services with a fixed address are sent.
-    outbound: Outbound,
+    /// Wall time, which picks the zone label (summer or winter time).
+    clock: Arc<dyn Clock>,
 }
 
 impl SettingsService {
-    /// Build over the shared store, effects, ids, and probes. `outbound`
-    /// says where the probes of services with a fixed address are sent.
+    /// Build over the shared store, effects, ids, probes and clock.
     pub fn new(
         store: Arc<ConfigStore>,
-        effects: Arc<dyn SaveEffects>,
+        effects: Effects,
         ids: Arc<dyn IdGenerator>,
         probes: Arc<dyn VerifyProbes>,
-        outbound: Outbound,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             store,
@@ -77,7 +77,7 @@ impl SettingsService {
             ids,
             timezone: None,
             probes,
-            outbound,
+            clock,
         }
     }
 
@@ -89,11 +89,11 @@ impl SettingsService {
     }
 
     fn config(&self, error: ConfigError) -> SettingsError {
-        SettingsError::from_config(error, self.ids.as_ref())
+        SettingsError::from_config(error)
     }
 
-    /// Run one store write on the blocking pool (it writes and fsyncs the
-    /// config file).
+    /// Run one store write on the blocking pool (it waits for its turn on
+    /// the writer lane and syncs the commit to disk).
     async fn write<T, F>(&self, op: F) -> Result<T, SettingsError>
     where
         T: Send + 'static,
@@ -102,10 +102,9 @@ impl SettingsService {
         let store = self.store.clone();
         match tokio::task::spawn_blocking(move || op(&store)).await {
             Ok(result) => result.map_err(|error| self.config(error)),
-            Err(cause) => Err(SettingsError::internal(
-                &format!("settings write task failed: {cause}"),
-                self.ids.as_ref(),
-            )),
+            Err(cause) => Err(SettingsError::internal(&format!(
+                "settings write task failed: {cause}"
+            ))),
         }
     }
 
@@ -123,8 +122,11 @@ impl SettingsService {
         &self,
         section: S,
     ) -> Result<S, SettingsError> {
-        let saved = self.write(move |store| store.save(section)).await?;
-        self.effects.after_save(SavedSection::for_key(S::KEY)).await;
+        let mark = self.effects.mark(S::KEY);
+        let saved = self
+            .write(move |store| store.save_blocking(section))
+            .await?;
+        self.effects.saved(mark).await;
         Ok(saved)
     }
 
@@ -148,12 +150,15 @@ impl SettingsService {
         &self,
         incoming: S,
     ) -> Result<Masked<S>, SettingsError> {
-        let saved = self.write(move |store| store.save_secret(incoming)).await?;
-        self.effects.after_save(SavedSection::for_key(S::KEY)).await;
+        let mark = self.effects.mark(S::KEY);
+        let saved = self
+            .write(move |store| store.save_secret_blocking(incoming))
+            .await?;
+        self.effects.saved(mark).await;
         Ok(saved)
     }
 
-    fn unmask<S: SecretSection>(&self, incoming: Masked<S>) -> Result<S, SettingsError> {
+    fn unmask<S: SecretSection>(&self, incoming: Masked<S>) -> Result<Plain<S>, SettingsError> {
         self.store
             .unmask(incoming)
             .map_err(|error| self.config(error))
@@ -165,7 +170,8 @@ impl SettingsService {
     pub fn get_schedule(&self) -> Result<LibraryScanScheduleResponse, SettingsError> {
         Ok(LibraryScanScheduleResponse {
             schedule: self.get()?,
-            server_timezone: server_timezone(self.timezone.as_deref()),
+            server_timezone: server_timezone(self.timezone.as_deref(), self.clock.now_unix()),
+            last_scan_at: None,
         })
     }
 
@@ -176,7 +182,8 @@ impl SettingsService {
     ) -> Result<LibraryScanScheduleResponse, SettingsError> {
         Ok(LibraryScanScheduleResponse {
             schedule: self.save(schedule).await?,
-            server_timezone: server_timezone(self.timezone.as_deref()),
+            server_timezone: server_timezone(self.timezone.as_deref(), self.clock.now_unix()),
+            last_scan_at: None,
         })
     }
 
@@ -224,44 +231,30 @@ impl SettingsService {
         &self,
         incoming: Masked<SabnzbdConnection>,
     ) -> Result<Masked<SabnzbdConnection>, SettingsError> {
-        let mut clients = self.get_masked::<DownloadClients>()?.into_inner();
-        clients.sabnzbd = incoming.into_inner();
-        let saved = self.save_submitted(clients).await?;
+        let incoming = incoming.into_inner();
+        let store = self.store.clone();
+        let mark = self.effects.mark(DownloadClients::KEY);
+        let saved = self
+            .write(move |_| {
+                store
+                    .update_secret_blocking::<DownloadClients, ConfigError, _>(|stored| {
+                        let mut clients = stored.into_inner();
+                        clients.sabnzbd = incoming;
+                        Ok(clients)
+                    })
+                    .map_err(|error| match error {
+                        UpdateError::Rejected(error) | UpdateError::Config(error) => error,
+                    })
+            })
+            .await?;
+        self.effects.saved(mark).await;
         Ok(saved.map(|clients| clients.sabnzbd))
     }
 
-    /// The advanced tunables in form units.
-    pub fn get_advanced(&self) -> Result<AdvancedSettingsForm, SettingsError> {
-        let stored: Masked<AdvancedSettings> = self.get_masked()?;
-        Ok(AdvancedSettingsForm::from_section(&stored))
-    }
-
-    /// Save the advanced tunables (form units scale to stored units; a
-    /// masked AudioDB key keeps the stored one). The save invalidates the
-    /// AudioDB cache root.
-    pub async fn save_advanced(
-        &self,
-        form: AdvancedSettingsForm,
-    ) -> Result<AdvancedSettingsForm, SettingsError> {
-        let saved = self.save_submitted(form.into_section()).await?;
-        Ok(AdvancedSettingsForm::from_section(&saved))
-    }
-
-    /// The frontend cache TTLs in stored units (milliseconds).
+    /// The advanced settings the web app reads at start.
     pub fn get_cache_ttls(&self) -> Result<FrontendCacheTTLs, SettingsError> {
         let stored: Masked<AdvancedSettings> = self.get_masked()?;
         Ok(FrontendCacheTTLs {
-            home: stored.frontend_ttl_home,
-            discover: stored.frontend_ttl_discover,
-            library: stored.frontend_ttl_library,
-            recently_added: stored.frontend_ttl_recently_added,
-            discover_queue: stored.frontend_ttl_discover_queue,
-            search: stored.frontend_ttl_search,
-            local_files_sidebar: stored.frontend_ttl_local_files_sidebar,
-            jellyfin_sidebar: stored.frontend_ttl_jellyfin_sidebar,
-            plex_sidebar: stored.frontend_ttl_plex_sidebar,
-            playlist_sources: stored.frontend_ttl_playlist_sources,
-            discover_queue_polling_interval: stored.discover_queue_polling_interval,
             discover_queue_auto_generate: stored.discover_queue_auto_generate,
         })
     }
@@ -274,11 +267,10 @@ impl SettingsService {
     /// pool.
     pub async fn get_library(&self) -> Result<LibrarySettingsResponse, SettingsError> {
         let store = self.store.clone();
-        let ids = self.ids.clone();
         self.library_blocking(move || {
             let stored = store
                 .get_masked::<TypedLibrary>()
-                .map_err(|error| SettingsError::from_config(error, ids.as_ref()))?;
+                .map_err(SettingsError::from_config)?;
             let resolved = stored.map(|library| library_policy::resolve_stored(&library));
             Ok(library_policy::settings_response(resolved))
         })
@@ -288,7 +280,8 @@ impl SettingsService {
     /// Save the library settings. Under the store's write lock: a stale
     /// expected revision is a 409 before anything else, then the
     /// candidate is normalized, then dropping every root while the
-    /// catalog holds tracks is a 400. A masked AcoustID key keeps the
+    /// catalog holds tracks is a 400. A changed import naming script must
+    /// pass the naming script checks. A masked AcoustID key keeps the
     /// stored one.
     pub async fn save_library(
         &self,
@@ -297,9 +290,15 @@ impl SettingsService {
     ) -> Result<LibrarySettingsResponse, SettingsError> {
         self.update_library(move |stored| {
             library_policy::check_revision(&stored, &request.expected_policy_revision)?;
-            let resolved = library_policy::resolve(&request.settings)?;
-            library_policy::guard_last_root(&resolved.settings, catalog_has_tracks)?;
-            Ok(resolved.settings)
+            // Only a script the person changed is checked, so a stored one a
+            // later build refuses never blocks saving the rest.
+            let script = request.settings.naming_script.trim();
+            if !script.is_empty() && script != stored.naming_script.trim() {
+                droppedneedle_library::import::naming::check(script)?;
+            }
+            let normalized = library_policy::normalize(&request.settings)?;
+            library_policy::guard_last_root(&normalized, catalog_has_tracks)?;
+            Ok(normalized)
         })
         .await
     }
@@ -345,7 +344,7 @@ impl SettingsService {
                     rules: Vec::new(),
                 });
             }
-            Ok(library_policy::resolve(&library)?.settings)
+            library_policy::normalize(&library)
         })
         .await
     }
@@ -365,17 +364,19 @@ impl SettingsService {
             if library.library_roots.len() < before {
                 library_policy::guard_last_root(&library, catalog_has_tracks)?;
             }
-            Ok(library_policy::resolve(&library)?.settings)
+            library_policy::normalize(&library)
         })
         .await
     }
 
-    /// Read, check, and save the library settings in one step under the
-    /// store's secret write lock, on the blocking pool (normalizing stats
-    /// the roots). `update` gets the stored settings with the AcoustID key
-    /// masked and returns the settings to save; an `Err` writes nothing.
-    /// Every library-settings writer goes through the same lock, the scan
-    /// engine's add-root included.
+    /// Read, check, and save the library settings in one settings
+    /// transaction, on the blocking pool. `update` gets the stored settings
+    /// with the AcoustID key masked and returns the settings to save; an
+    /// `Err` writes nothing. `update` runs inside the write, so it touches
+    /// no file: it normalizes with `library_policy::normalize`, and the
+    /// availability warnings are worked out after the commit. Every
+    /// library-settings writer works this way, the scan engine's add-root
+    /// included.
     pub async fn update_library<F>(
         &self,
         update: F,
@@ -384,26 +385,22 @@ impl SettingsService {
         F: FnOnce(TypedLibrary) -> Result<TypedLibrary, SettingsError> + Send + 'static,
     {
         let store = self.store.clone();
-        let ids = self.ids.clone();
+        let mark = self.effects.mark(TypedLibrary::KEY);
         let response = self
             .library_blocking(move || {
                 let saved = store
-                    .update_secret::<TypedLibrary, SettingsError, _>(|stored| {
+                    .update_secret_blocking::<TypedLibrary, SettingsError, _>(|stored| {
                         update(stored.into_inner())
                     })
                     .map_err(|error| match error {
                         UpdateError::Rejected(error) => error,
-                        UpdateError::Config(error) => {
-                            SettingsError::from_config(error, ids.as_ref())
-                        }
+                        UpdateError::Config(error) => SettingsError::from_config(error),
                     })?;
                 let resolved = saved.try_map(|library| library_policy::resolve(&library))?;
                 Ok(library_policy::settings_response(resolved))
             })
             .await?;
-        self.effects
-            .after_save(SavedSection::for_key(TypedLibrary::KEY))
-            .await;
+        self.effects.saved(mark).await;
         Ok(response)
     }
 
@@ -414,10 +411,9 @@ impl SettingsService {
     {
         match tokio::task::spawn_blocking(op).await {
             Ok(result) => result,
-            Err(cause) => Err(SettingsError::internal(
-                &format!("library settings task failed: {cause}"),
-                self.ids.as_ref(),
-            )),
+            Err(cause) => Err(SettingsError::internal(&format!(
+                "library settings task failed: {cause}"
+            ))),
         }
     }
 
@@ -433,6 +429,7 @@ impl SettingsService {
                 policy: DownloadPolicy::default(),
                 quality_recipe_status: "invalid".to_owned(),
                 quality_recipe_error: Some(reason),
+                recycle_bin_warning: None,
             }),
             Err(other) => Err(self.config(other)),
         }
@@ -448,8 +445,8 @@ impl SettingsService {
         Ok(policy_view(self.save(policy).await?))
     }
 
-    /// A submitted recipe owns the legacy fields: the range, the order,
-    /// the FLAC/MP3 switch, and (on save) the cutoff clamp.
+    /// A submitted recipe owns the legacy fields: the range, the FLAC/MP3
+    /// switch, and (on save) the cutoff clamp.
     fn apply_recipe(
         &self,
         mut policy: DownloadPolicy,
@@ -468,7 +465,6 @@ impl SettingsService {
         let (quality_min, quality_max) = quality::legacy_range_from_recipe(&policy.quality_recipe);
         policy.quality_min = quality_min;
         policy.quality_max = quality_max;
-        policy.quality_preference_order = quality::legacy_recipe_order(&policy.quality_recipe);
         policy.flac_mp3_only = true;
         if clamp_cutoff {
             policy.quality_cutoff = quality::clamp_cutoff(
@@ -481,22 +477,12 @@ impl SettingsService {
     }
 
     /// Safe acquisition-policy summary for any signed-in user: the
-    /// composed contract sentence plus the source-mode label, no admin
+    /// composed contract sentence and the recipe verdict, no admin
     /// internals.
     pub fn policy_summary(&self) -> Result<PolicySummaryResponse, SettingsError> {
         let stored: DownloadPolicy = self.get()?;
         let inputs = summary_inputs(&stored);
         let summary = quality::compose_summary(&inputs);
-        let order = if inputs.quality_recipe.is_empty() || !inputs.flac_mp3_only {
-            if stored.quality_preference_order.is_empty() {
-                derive_default_order(&stored.quality_min, &stored.quality_max)
-            } else {
-                stored.quality_preference_order.clone()
-            }
-        } else {
-            Vec::new()
-        };
-        let legacy_shape = is_legacy_default_shape(&stored, &order);
         let recipe_error = validate_quality_recipe(&stored.quality_recipe)
             .err()
             .map(|error| error.to_string());
@@ -508,42 +494,9 @@ impl SettingsService {
         );
         Ok(PolicySummaryResponse {
             summary,
-            source_mode: stored.source_selection_mode.clone(),
-            legacy_rollback_compatible: stored.quality_recipe.is_empty() && legacy_shape,
+            legacy_rollback_compatible: stored.quality_recipe.is_empty(),
             quality_recipe_status: status,
             quality_recipe_error: error,
-        })
-    }
-
-    /// Impact preview of an unsaved policy against persisted rows:
-    /// persisted-state bucket counts only. Shares the strict validation
-    /// with the save path.
-    pub async fn policy_impact(
-        &self,
-        buckets: &dyn PolicyImpactBuckets,
-        policy: DownloadPolicy,
-    ) -> Result<PolicyImpactResponse, SettingsError> {
-        let candidate = self.apply_recipe(policy, false)?;
-        candidate.validate().map_err(|error| self.config(error))?;
-        let order = if candidate.quality_preference_order.is_empty() {
-            derive_default_order(&candidate.quality_min, &candidate.quality_max)
-        } else {
-            candidate.quality_preference_order.clone()
-        };
-        let legacy_representable = is_legacy_default_shape(&candidate, &order)
-            && candidate.source_selection_mode == "source_first";
-        let counts = buckets
-            .counts()
-            .await
-            .map_err(|cause| SettingsError::internal(&cause, self.ids.as_ref()))?;
-        Ok(PolicyImpactResponse {
-            manual_search_jobs: counts.manual_search_jobs,
-            queued_without_attempts: counts.queued_without_attempts,
-            awaiting_review: counts.awaiting_review,
-            remote_queued_zero_byte: counts.remote_queued_zero_byte,
-            transferring_immutable: counts.transferring,
-            held_reviews: counts.held_reviews,
-            legacy_representable,
         })
     }
 
@@ -568,28 +521,24 @@ impl SettingsService {
         if let Some(id) = path_id {
             indexer.id = id;
         }
-        if indexer.indexer_type.trim().is_empty() {
-            indexer.indexer_type = "newznab".to_owned();
-        }
-        let id = self.write(move |store| store.save_indexer(indexer)).await?;
-        self.effects.after_save(SavedSection::Other).await;
+        let id = self
+            .write(move |store| store.save_indexer_blocking(indexer))
+            .await?;
         Ok(IndexerSavedResponse { id })
     }
 
     /// Delete one indexer. Unknown ids are a silent no-op.
     pub async fn delete_indexer(&self, indexer_id: &str) -> Result<(), SettingsError> {
         let indexer_id = indexer_id.to_owned();
-        self.write(move |store| store.delete_indexer(&indexer_id))
+        self.write(move |store| store.delete_indexer_blocking(&indexer_id))
             .await?;
-        self.effects.after_save(SavedSection::Other).await;
         Ok(())
     }
 
     /// Persist a dragged-card priority order (1-based on save).
     pub async fn reorder_indexers(&self, ordered_ids: Vec<String>) -> Result<(), SettingsError> {
-        self.write(move |store| store.reorder_indexers(&ordered_ids))
+        self.write(move |store| store.reorder_indexers_blocking(&ordered_ids))
             .await?;
-        self.effects.after_save(SavedSection::Other).await;
         Ok(())
     }
 
@@ -648,7 +597,10 @@ impl SettingsService {
     /// List Plex music libraries over the stored connection. Unconfigured
     /// is a 400; an unreachable Plex is a 502.
     pub async fn plex_libraries(&self) -> Result<Vec<PlexLibrarySectionInfo>, SettingsError> {
-        let stored: PlexConnection = self.store.get_raw().map_err(|error| self.config(error))?;
+        let stored = self
+            .store
+            .get_raw::<PlexConnection>()
+            .map_err(|error| self.config(error))?;
         let libraries = self
             .probes
             .plex_libraries(&stored.plex_url, stored.plex_token.expose())
@@ -657,7 +609,7 @@ impl SettingsService {
                 if message == "Plex is not configured." {
                     SettingsError::InvalidInput { message }
                 } else {
-                    SettingsError::Upstream { message }
+                    SettingsError::Upstream { cause: message }
                 }
             })?;
         Ok(plex_sections(libraries))
@@ -671,11 +623,7 @@ impl SettingsService {
         let resolved = self.unmask(incoming)?;
         let verdict = self
             .probes
-            .listenbrainz(
-                &self.outbound.listenbrainz,
-                &resolved.username,
-                resolved.user_token.expose(),
-            )
+            .listenbrainz(&resolved.username, resolved.user_token.expose())
             .await;
         if verdict.rate_limited {
             return Err(SettingsError::RateLimited {
@@ -693,10 +641,7 @@ impl SettingsService {
         incoming: Masked<YouTubeConnection>,
     ) -> Result<VerifyConnectionResponse, SettingsError> {
         let resolved = self.unmask(incoming)?;
-        let verdict = self
-            .probes
-            .youtube(&self.outbound.youtube, resolved.api_key.expose())
-            .await;
+        let verdict = self.probes.youtube(resolved.api_key.expose()).await;
         Ok(verdict_response(verdict.valid, verdict.message))
     }
 
@@ -708,10 +653,7 @@ impl SettingsService {
         let resolved = self.unmask(incoming)?;
         let verdict = self
             .probes
-            .ticketmaster(
-                &self.outbound.ticketmaster,
-                resolved.ticketmaster_api_key.expose(),
-            )
+            .ticketmaster(resolved.ticketmaster_api_key.expose())
             .await;
         Ok(verdict_response(verdict.valid, verdict.message))
     }
@@ -722,10 +664,7 @@ impl SettingsService {
         incoming: Masked<EventsSettings>,
     ) -> Result<VerifyConnectionResponse, SettingsError> {
         let resolved = self.unmask(incoming)?;
-        let verdict = self
-            .probes
-            .skiddle(&self.outbound.skiddle, resolved.skiddle_api_key.expose())
-            .await;
+        let verdict = self.probes.skiddle(resolved.skiddle_api_key.expose()).await;
         Ok(verdict_response(verdict.valid, verdict.message))
     }
 
@@ -740,10 +679,7 @@ impl SettingsService {
             tokio::task::spawn_blocking(move || check_hibp_file(&security.hibp_local_path))
                 .await
                 .map_err(|cause| {
-                    SettingsError::internal(
-                        &format!("hibp check task failed: {cause}"),
-                        self.ids.as_ref(),
-                    )
+                    SettingsError::internal(&format!("hibp check task failed: {cause}"))
                 })?;
         Ok(verdict_response(verdict.valid, verdict.message))
     }
@@ -780,7 +716,8 @@ impl SettingsService {
     ) -> Result<SabnzbdTestResponse, SettingsError> {
         let url = require_service_url(&incoming.url, "SABnzbd URL")?;
         let clients = incoming.map(|sabnzbd| DownloadClients { sabnzbd });
-        let resolved = self.unmask(clients)?.sabnzbd;
+        let unmasked = self.unmask(clients)?;
+        let resolved = &unmasked.sabnzbd;
         let verdict = self
             .probes
             .sabnzbd(&url, resolved.api_key.expose(), &resolved.downloads_mount)
@@ -869,141 +806,32 @@ fn policy_view(policy: DownloadPolicy) -> DownloadPolicyView {
         policy,
         quality_recipe_status: status,
         quality_recipe_error: error,
+        recycle_bin_warning: None,
     }
-}
-
-fn is_legacy_default_shape(policy: &DownloadPolicy, order: &[String]) -> bool {
-    quality::is_legacy_default_shape(
-        order,
-        &policy.quality_min,
-        &policy.quality_max,
-        &policy.lossless_preference,
-        policy.lossless_max_bit_depth,
-        policy.lossless_max_sample_rate_hz,
-        policy.preferred_lossy_bitrate_kbps,
-        policy.lossy_min_bitrate_kbps,
-        policy.lossy_max_bitrate_kbps,
-        &policy.unknown_quality_behavior,
-    )
 }
 
 fn summary_inputs(policy: &DownloadPolicy) -> quality::SummaryInputs {
-    let mut order = policy.quality_preference_order.clone();
-    if order.is_empty() && policy.quality_recipe.is_empty() {
-        order = derive_default_order(&policy.quality_min, &policy.quality_max);
-    }
     quality::SummaryInputs {
-        quality_preference_order: order,
+        quality_preference_order: derive_default_order(&policy.quality_min, &policy.quality_max),
         quality_recipe: policy.quality_recipe.clone(),
         flac_mp3_only: policy.flac_mp3_only,
-        lossless_preference: policy.lossless_preference.clone(),
-        lossless_max_bit_depth: policy.lossless_max_bit_depth,
-        lossless_max_sample_rate_hz: policy.lossless_max_sample_rate_hz,
-        unknown_quality_behavior: policy.unknown_quality_behavior.clone(),
-    }
-}
-
-/// Persisted-state bucket counts for the policy impact preview.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ImpactBucketCounts {
-    /// `searching` jobs with no task yet.
-    pub manual_search_jobs: i64,
-    /// Queued zero-byte rows with no attempts.
-    pub queued_without_attempts: i64,
-    /// Queued rows on completed jobs with no candidate picked.
-    pub awaiting_review: i64,
-    /// Remote-queued zero-byte rows.
-    pub remote_queued_zero_byte: i64,
-    /// Downloading/processing rows (immutable under the new policy).
-    pub transferring: i64,
-    /// Held imports awaiting a decision.
-    pub held_reviews: i64,
-}
-
-/// Bucket-count port. The production implementation counts the download
-/// tables; tests use a canned struct.
-pub trait PolicyImpactBuckets: Send + Sync {
-    /// Count the six persisted-state buckets.
-    fn counts<'a>(
-        &'a self,
-    ) -> futures_util::future::BoxFuture<'a, Result<ImpactBucketCounts, String>>;
-}
-
-/// Production bucket counts over the download tables.
-pub struct SqliteImpactBuckets {
-    /// Reader pool.
-    pub pool: sqlx::SqlitePool,
-}
-
-impl PolicyImpactBuckets for SqliteImpactBuckets {
-    fn counts<'a>(
-        &'a self,
-    ) -> futures_util::future::BoxFuture<'a, Result<ImpactBucketCounts, String>> {
-        Box::pin(async move {
-            async fn one(pool: &sqlx::SqlitePool, query: &str) -> Result<i64, String> {
-                sqlx::query_scalar::<_, i64>(query)
-                    .fetch_one(pool)
-                    .await
-                    .map_err(|cause| cause.to_string())
-            }
-            Ok(ImpactBucketCounts {
-                manual_search_jobs: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM search_jobs sj WHERE sj.status = 'searching'
-                     AND NOT EXISTS (SELECT 1 FROM download_tasks t WHERE t.search_job_id = sj.id)",
-                )
-                .await?,
-                queued_without_attempts: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM download_tasks t WHERE t.status = 'queued'
-                     AND t.downloaded_bytes = 0
-                     AND NOT EXISTS (SELECT 1 FROM download_attempts a WHERE a.task_id = t.id)",
-                )
-                .await?,
-                awaiting_review: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM download_tasks t JOIN search_jobs sj ON sj.id = t.search_job_id
-                     WHERE t.status = 'queued' AND sj.status = 'completed' AND t.candidate_index IS NULL",
-                )
-                .await?,
-                remote_queued_zero_byte: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM download_tasks t
-                     WHERE t.remote_queued = 1 AND t.downloaded_bytes = 0 AND t.status = 'queued'",
-                )
-                .await?,
-                transferring: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM download_tasks t WHERE t.status IN ('downloading','processing')",
-                )
-                .await?,
-                held_reviews: one(
-                    &self.pool,
-                    "SELECT COUNT(*) FROM held_imports WHERE status = 'held'",
-                )
-                .await?,
-            })
-        })
     }
 }
 
 /// Server-local timezone label for the daily-scan picker. Prefers the
 /// configured IANA name (`TZ`), else the local abbreviation, else
 /// "server time".
-pub fn server_timezone(configured: Option<&str>) -> String {
+pub fn server_timezone(configured: Option<&str>, now_unix: i64) -> String {
     if let Some(tz) = configured {
         return tz.to_owned();
     }
-    local_timezone_label().unwrap_or_else(|| "server time".to_owned())
+    local_timezone_label(now_unix).unwrap_or_else(|| "server time".to_owned())
 }
 
-fn local_timezone_label() -> Option<String> {
+fn local_timezone_label(now_unix: i64) -> Option<String> {
     // libc localtime names the zone the same C library call v2's tzname
     // bottoms out in; only the abbreviation is used, never the offset.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as libc::time_t;
+    let now = libc::time_t::try_from(now_unix).ok()?;
     let mut broken = std::mem::MaybeUninit::<libc::tm>::zeroed();
     // SAFETY: localtime_r writes only into the caller-owned `broken`
     // struct; a null return means the input was out of range.

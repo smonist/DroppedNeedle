@@ -5,14 +5,14 @@ import { api } from '$lib/api/client';
 import type { components } from '$lib/api/v3/openapi';
 import { CACHE_TTL } from '$lib/constants';
 import { authStore } from '$lib/stores/authStore.svelte';
-import { ttl } from '$lib/stores/cacheTtl.svelte';
-import { discoverHasContent } from '$lib/utils/discoverContent';
 import { DiscoverV3Api } from './DiscoverV3Api';
 import {
 	DiscoverQueryKeyFactory,
 	type DiscoverV3RadioParams,
 	type DiscoverV3UserId
 } from './DiscoverQueryKeyFactory';
+
+import type { ListenSource, RadioSeedKind } from './types';
 
 export type DiscoverResponseV3 = components['schemas']['DiscoverResponse'];
 export type DiscoveryBatchDetailV3 = components['schemas']['DiscoveryBatchDetail'];
@@ -30,21 +30,18 @@ async function fetchDiscoverHome(
 		signal,
 		timeoutMs: 15_000
 	});
-	if (!discoverHasContent(fresh) && fresh.refreshing) {
+	if (fresh.sections.length === 0 && fresh.refreshing) {
 		// Keep the browser-only QueryClient out of the server test module graph.
 		const { queryClient } = await import('$lib/queries/QueryClient');
 		const prev = queryClient.getQueryData<DiscoverResponseV3>(
 			DiscoverQueryKeyFactory.v3.home(userId)
 		);
-		if (prev && discoverHasContent(prev)) {
+		if (prev && prev.sections.length > 0) {
 			return {
 				...prev,
 				refreshing: true,
-				refresh_started_at: fresh.refresh_started_at,
-				section_status: Object.fromEntries(
-					Object.keys(prev.section_status ?? {}).map((section) => [section, 'updating'])
-				)
-			} as DiscoverResponseV3;
+				refresh_started_at: fresh.refresh_started_at
+			};
 		}
 	}
 	return fresh;
@@ -73,10 +70,10 @@ export const getDiscoveryBatchesV3Query = (getEnabled: Getter<boolean> = () => t
 	}));
 
 export interface DiscoverV3RadioInput {
-	seedType: string;
+	seedType: RadioSeedKind;
 	seedId: string;
 	count?: number;
-	source?: string | null;
+	source?: ListenSource | null;
 	enabled?: boolean;
 }
 
@@ -87,7 +84,7 @@ export const getDiscoverRadioV3Query = (getParams: Getter<DiscoverV3RadioInput>)
 		if (params.count !== undefined) radioParams.count = params.count;
 		if (params.source !== undefined) radioParams.source = params.source;
 		return {
-			staleTime: ttl('discover', CACHE_TTL.DISCOVER),
+			staleTime: CACHE_TTL.DISCOVER,
 			queryKey: DiscoverQueryKeyFactory.v3.radio(
 				authStore.user?.id,
 				params.seedType,
@@ -112,7 +109,7 @@ export const getDiscoverRadioV3Query = (getParams: Getter<DiscoverV3RadioInput>)
 export interface DiscoverV3PlaylistSuggestionsInput {
 	playlistId: string;
 	count?: number;
-	source?: string | null;
+	source?: ListenSource | null;
 	enabled?: boolean;
 }
 
@@ -122,7 +119,7 @@ export const getDiscoverPlaylistSuggestionsV3Query = (
 	createQuery(() => {
 		const params = getParams();
 		return {
-			staleTime: ttl('discover', CACHE_TTL.DISCOVER),
+			staleTime: CACHE_TTL.DISCOVER,
 			queryKey: DiscoverQueryKeyFactory.v3.playlistSuggestions(
 				authStore.user?.id,
 				params.playlistId,

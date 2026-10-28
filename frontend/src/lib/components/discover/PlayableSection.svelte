@@ -3,9 +3,11 @@
 	import HomeSection from '$lib/components/HomeSection.svelte';
 	import RadioPlayButton from '$lib/components/discover/RadioPlayButton.svelte';
 	import DiscoveryBatchModal from '$lib/components/discover/DiscoveryBatchModal.svelte';
-	import { integrationStore } from '$lib/stores/integration';
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { HomeAlbum, HomeSection as HomeSectionType, RadioSeedItem } from '$lib/types';
+	import Button from '$lib/ui/Button.svelte';
+	import type { RadioSeedItem } from '$lib/types';
+	import type { ChartSection as HomeSectionType } from '$lib/queries/discover/types';
+	import { albumRows } from '$lib/utils/sectionRows';
 
 	interface Props {
 		section: HomeSectionType;
@@ -19,24 +21,22 @@
 
 	let batchModalOpen = $state(false);
 
-	const albums = $derived(section.items as HomeAlbum[]);
-	const requestableCount = $derived(albums.filter((a) => a.mbid && !a.in_library).length);
-	const showDownloadAll = $derived(
-		downloadable && $integrationStore.download_client && requestableCount > 1
-	);
+	const albums = $derived(albumRows(section));
+	const requestableCount = $derived(albums.filter((a) => a.musicbrainz_id && !a.in_library).length);
+	const showDownloadAll = $derived(downloadable && requestableCount > 1);
 
 	const seedItems = $derived.by(() => {
 		const items: RadioSeedItem[] = [];
 		const seen = new SvelteSet<string>();
-		for (const item of section.items as HomeAlbum[]) {
-			const mbid = item.artist_mbid;
-			if (!mbid || !item.mbid || seen.has(item.mbid)) continue;
-			seen.add(item.mbid);
+		for (const item of albums) {
+			const mbid = item.artist_id;
+			if (!mbid || !item.musicbrainz_id || seen.has(item.musicbrainz_id)) continue;
+			seen.add(item.musicbrainz_id);
 			items.push({
 				artist_mbid: mbid,
 				artist_name: item.artist_name ?? '',
-				album_mbid: item.mbid,
-				album_name: item.name
+				album_mbid: item.musicbrainz_id,
+				album_name: item.title
 			});
 		}
 		return items;
@@ -55,14 +55,15 @@
 				/>
 			{/if}
 			{#if showDownloadAll}
-				<button
-					class="btn btn-ghost btn-xs gap-1 text-base-content/60"
-					onclick={() => (batchModalOpen = true)}
+				<Button
+					variant="ghost"
+					size="xs"
+					icon={Download}
 					title="Request every album in this section as a removable batch"
+					onclick={() => (batchModalOpen = true)}
 				>
-					<Download class="h-3.5 w-3.5" />
 					All
-				</button>
+				</Button>
 			{/if}
 		</div>
 	{/snippet}

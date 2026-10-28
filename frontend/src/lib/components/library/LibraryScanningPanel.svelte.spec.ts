@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { LibraryActivityItem, ScanRun } from '$lib/queries/library/LibraryOperationsTypes';
@@ -13,10 +13,9 @@ const h = vi.hoisted(() => ({
 		unknown
 	>,
 	schedule: {
-		data: { scan_frequency: 'daily', daily_scan_time: '09:00', server_timezone: 'Europe/London' }
+		data: { scan_frequency: 'daily', daily_scan_time: '09:00', server_timezone: 'Etc/UTC' }
 	} as Record<string, unknown>,
 	detail: { data: undefined } as Record<string, unknown>,
-	operation: { data: undefined } as Record<string, unknown>,
 	settings: {
 		data: {
 			policy_revision: 'policy-1',
@@ -78,11 +77,6 @@ vi.mock('$lib/queries/library/LibraryActivityQueries.svelte', () => ({
 vi.mock('$lib/queries/library/LibraryOperationQueries.svelte', () => ({
 	getCurrentLibraryRunsQuery: () => h.runs,
 	getLibraryRunQuery: () => h.detail,
-	getLibraryOperationQuery: (getId: () => string | null) => ({
-		get data() {
-			return getId() ? h.operation.data : undefined;
-		}
-	}),
 	getLibraryRunHistoryQuery: () => h.history,
 	getLibraryRunFailuresQuery: () => h.failures,
 	getLibraryRunEstimateQuery: () => ({ data: { estimated_file_count: 100 }, isFetching: false })
@@ -232,10 +226,9 @@ beforeEach(() => {
 	};
 	h.runs = { data: { active: null, queued: null }, isLoading: false, isError: false };
 	h.schedule = {
-		data: { scan_frequency: 'daily', daily_scan_time: '09:00', server_timezone: 'Europe/London' }
+		data: { scan_frequency: 'daily', daily_scan_time: '09:00', server_timezone: 'Etc/UTC' }
 	};
 	h.detail = { data: undefined };
-	h.operation = { data: undefined };
 	h.reviews = { data: 12 };
 	h.pauseRun.mockResolvedValue({});
 	h.resumeRun.mockResolvedValue({});

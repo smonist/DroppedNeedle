@@ -1,17 +1,22 @@
 <script lang="ts">
+	import '$lib/components/library/library-management.css';
 	import { ArrowRight, Eraser, FileClock, Image, RotateCcw, Tags } from 'lucide-svelte';
 
 	import { getApiUrl } from '$lib/api/api-utils';
 	import { LIBRARY_MANAGEMENT_ENDPOINTS } from '$lib/queries/library-management/endpoints';
 	import type { LibraryManagementPlanItem } from '$lib/queries/library-management/types';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
 	import {
 		firstDeferredSource,
+		formatManagementBytes,
 		formatManagementValue,
 		managementAdapter,
 		managementAudioFormat,
 		managementArtworkPreviewHash,
 		managementCollisions,
 		managementCustomTagDiffs,
+		managementDisplayPath,
 		managementFieldDiffs,
 		managementPlanAlbum,
 		managementPlanArtist,
@@ -34,7 +39,7 @@
 		onresolve: (
 			item: LibraryManagementPlanItem,
 			collision: ManagementCollision,
-			opener: HTMLButtonElement
+			opener: HTMLElement
 		) => void;
 	}
 
@@ -52,21 +57,8 @@
 	const album = $derived(managementPlanAlbum(item));
 	const deferredSource = $derived(firstDeferredSource(item));
 
-	function rootLabel(value: string | null): string {
-		return (
-			roots.find((root) => root.id === value)?.label ?? (value ? 'Unavailable root' : 'No root')
-		);
-	}
-
 	function displayPath(root: string | null, relative: string | null): string {
-		return `${rootLabel(root)} · ${relative ?? 'No path'}`;
-	}
-
-	function formatBytes(value: number): string {
-		if (value < 1024) return `${value} B`;
-		if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KiB`;
-		if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MiB`;
-		return `${(value / 1024 ** 3).toFixed(1)} GiB`;
+		return managementDisplayPath(roots, root, relative);
 	}
 
 	function formatNanosecondDate(value: string | null): string {
@@ -90,7 +82,7 @@
 				? `${value.width.toLocaleString()} × ${value.height.toLocaleString()} px`
 				: null,
 			value.mimeType,
-			formatBytes(value.byteSize)
+			formatManagementBytes(value.byteSize)
 		]
 			.filter(Boolean)
 			.join(' · ');
@@ -277,7 +269,7 @@
 			</div>
 
 			<div class="mt-3 grid gap-3 xl:grid-cols-2">
-				<article class="rounded-lg border border-base-content/10 bg-base-100/70 p-3">
+				<Card as="article" variant="bordered" padding="sm">
 					<div class="flex items-center gap-2">
 						<Tags class="h-4 w-4 text-library-manage" />
 						<strong class="text-sm">Native tag payload</strong>
@@ -305,9 +297,9 @@
 						{shortFingerprint(restoration.nativeTags.currentFingerprint)} →
 						{shortFingerprint(restoration.nativeTags.restoredFingerprint)}
 					</code>
-				</article>
+				</Card>
 
-				<article class="rounded-lg border border-base-content/10 bg-base-100/70 p-3">
+				<Card as="article" variant="bordered" padding="sm">
 					<div class="flex items-center gap-2">
 						<FileClock class="h-4 w-4 text-library-manage" />
 						<strong class="text-sm">File attributes</strong>
@@ -333,7 +325,7 @@
 							)}
 						</dd>
 					</dl>
-				</article>
+				</Card>
 			</div>
 
 			{#if restoration.artwork.changed}
@@ -432,44 +424,44 @@
 			<h4 class="management-inspector-section-title">Artwork</h4>
 			<div class="mt-2 grid gap-2 xl:grid-cols-2">
 				{#each item.artwork_choices as choice, index (index)}
-					<article
-						class="flex gap-3 rounded-lg border border-base-content/10 bg-base-100/70 p-2 text-xs"
-					>
-						{#if artworkPreviewUrl(choice)}
-							<img
-								src={artworkPreviewUrl(choice)}
-								alt={`${titleManagementValue(artworkText(choice, 'image_type') ?? 'Artwork')} preview`}
-								class="h-20 w-20 shrink-0 rounded-md bg-base-200 object-cover"
-								loading="lazy"
-								decoding="async"
-							/>
-						{/if}
-						<div class="min-w-0">
-							<strong
-								>{titleManagementValue(
-									artworkText(choice, 'output_kind') ?? 'artwork'
-								)}{artworkText(choice, 'image_type')
-									? ` · ${titleManagementValue(artworkText(choice, 'image_type') ?? '')}`
-									: ''}</strong
-							>
-							<p class="mt-1 text-base-content/55">
-								{[
-									artworkText(choice, 'source')
-										? titleManagementValue(artworkText(choice, 'source') ?? '')
-										: null,
-									artworkDimensions(choice),
-									artworkText(choice, 'format')?.toUpperCase(),
-									artworkText(choice, 'mime_type')
-								]
-									.filter(Boolean)
-									.join(' · ') || 'Pinned output details unavailable'}
-							</p>
-							{#if artworkText(choice, 'destination_relative_path')}<code
-									class="mt-1 block break-all text-base-content/45"
-									>{artworkText(choice, 'destination_relative_path')}</code
-								>{/if}
+					<Card as="article" variant="bordered" padding="sm" class="text-xs">
+						<div class="flex gap-3">
+							{#if artworkPreviewUrl(choice)}
+								<img
+									src={artworkPreviewUrl(choice)}
+									alt={`${titleManagementValue(artworkText(choice, 'image_type') ?? 'Artwork')} preview`}
+									class="h-20 w-20 shrink-0 rounded-md bg-base-200 object-cover"
+									loading="lazy"
+									decoding="async"
+								/>
+							{/if}
+							<div class="min-w-0">
+								<strong
+									>{titleManagementValue(
+										artworkText(choice, 'output_kind') ?? 'artwork'
+									)}{artworkText(choice, 'image_type')
+										? ` · ${titleManagementValue(artworkText(choice, 'image_type') ?? '')}`
+										: ''}</strong
+								>
+								<p class="mt-1 text-base-content/55">
+									{[
+										artworkText(choice, 'source')
+											? titleManagementValue(artworkText(choice, 'source') ?? '')
+											: null,
+										artworkDimensions(choice),
+										artworkText(choice, 'format')?.toUpperCase(),
+										artworkText(choice, 'mime_type')
+									]
+										.filter(Boolean)
+										.join(' · ') || 'Pinned output details unavailable'}
+								</p>
+								{#if artworkText(choice, 'destination_relative_path')}<code
+										class="mt-1 block break-all text-base-content/45"
+										>{artworkText(choice, 'destination_relative_path')}</code
+									>{/if}
+							</div>
 						</div>
-					</article>
+					</Card>
 				{/each}
 			</div>
 		</section>
@@ -485,10 +477,12 @@
 						No file is assumed safe to delete. Both sides are revalidated in a new preview.
 					</p>
 					{#if collision.requestKind && collision.existingRootId && collision.existingRelativePath}
-						<button
-							class="btn btn-outline btn-sm mt-3"
+						<Button
+							variant="outline"
+							size="sm"
+							class="mt-3"
 							onclick={(event) => onresolve(item, collision, event.currentTarget)}
-							>Choose resolution...</button
+							>Choose resolution...</Button
 						>
 					{:else}
 						<span class="badge badge-error badge-outline mt-3">Requires fresh scan evidence</span>
@@ -498,3 +492,65 @@
 		</section>
 	{/if}
 </div>
+
+<style>
+	.management-diff-row {
+		display: grid;
+		grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1fr) 7.25rem minmax(0, 1fr);
+		gap: 0.65rem;
+		align-items: start;
+		padding: 0.65rem 0;
+		border-top: 1px solid color-mix(in oklab, var(--color-base-content) 8%, transparent);
+	}
+
+	.management-diff-value {
+		min-width: 0;
+		padding: 0.4rem 0.55rem;
+		border-radius: 0.55rem;
+		overflow-wrap: anywhere;
+		font-family: var(--font-mono);
+		font-size: 0.73rem;
+	}
+
+	.management-diff-value[data-side='before'] {
+		background: color-mix(in oklab, var(--color-management-removed) 8%, transparent);
+	}
+
+	.management-diff-value[data-side='after'] {
+		background: color-mix(in oklab, var(--color-management-added) 8%, transparent);
+	}
+
+	.management-diff-badge[data-operation='preserve'],
+	.management-diff-badge[data-operation='unchanged'] {
+		color: var(--color-management-preserved);
+	}
+
+	.management-diff-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		padding: 0.4rem 0.5rem;
+	}
+
+	@media (max-width: 639px) {
+		.management-diff-row {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	/* the narrower diff beside the audit list */
+	@media (min-width: 1024px) {
+		:global(.management-audit-inspector) .management-diff-row {
+			grid-template-columns: minmax(6rem, 0.55fr) minmax(0, 1fr);
+		}
+
+		:global(.management-audit-inspector) .management-diff-row > :nth-child(3) {
+			grid-column: 1;
+		}
+
+		:global(.management-audit-inspector) .management-diff-row > small {
+			grid-column: 1 / -1;
+		}
+	}
+</style>

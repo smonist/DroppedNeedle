@@ -1,18 +1,15 @@
-//! Thin admin handlers. Each answers one route; [`AdminHttpError`] is the
-//! one place admin errors get a status and envelope.
+//! Thin admin handlers. Each answers one route; the one
+//! `From<AdminError> for ApiError` here gives admin errors a status.
 
 use axum::{
     Json,
-    extract::{FromRequest, Path, Request, State},
+    extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
 };
-use serde::de::DeserializeOwned;
 
-use crate::error::{
-    CONFLICT, FIXED_INTERNAL_MESSAGE, FORBIDDEN, INTERNAL_ERROR, INVALID_INPUT, NOT_FOUND,
-    NOT_FOUND_MESSAGE, UPSTREAM_ERROR, envelope_response, fault_response, unauthorized_response,
-};
+use droppedneedle_auth::{Admin, Curator, User};
+use droppedneedle_kernel::error::ApiError;
+use droppedneedle_kernel::extract::ValidJson;
 
 use super::{
     AdminSetup,
@@ -24,76 +21,31 @@ use super::{
     },
 };
 
-/// An admin failure on its way to the wire.
-#[derive(Debug)]
-pub struct AdminHttpError(pub AdminError);
-
-impl From<AdminError> for AdminHttpError {
+impl From<AdminError> for ApiError {
     fn from(error: AdminError) -> Self {
-        Self(error)
-    }
-}
-
-impl IntoResponse for AdminHttpError {
-    fn into_response(self) -> Response {
-        match self.0 {
-            AdminError::Unauthorized { message } => unauthorized_response(message),
-            AdminError::Forbidden { message } => {
-                envelope_response(StatusCode::FORBIDDEN, FORBIDDEN, message, None)
+        match error {
+            AdminError::NotFound => ApiError::not_found(),
+            AdminError::InvalidInput { message } => ApiError::invalid_input(message),
+            AdminError::Conflict { message } => ApiError::conflict(message),
+            AdminError::Unavailable { message } => {
+                ApiError::fault(StatusCode::SERVICE_UNAVAILABLE, message)
             }
-            AdminError::NotFound => {
-                envelope_response(StatusCode::NOT_FOUND, NOT_FOUND, NOT_FOUND_MESSAGE, None)
-            }
-            AdminError::InvalidInput { message } => {
-                envelope_response(StatusCode::BAD_REQUEST, INVALID_INPUT, message, None)
-            }
-            AdminError::Conflict { message } => {
-                envelope_response(StatusCode::CONFLICT, CONFLICT, message, None)
-            }
-            AdminError::Unavailable { message } => envelope_response(
-                StatusCode::SERVICE_UNAVAILABLE,
-                UPSTREAM_ERROR,
-                message,
-                None,
-            ),
-            AdminError::Internal { error_id } => fault_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                INTERNAL_ERROR,
-                FIXED_INTERNAL_MESSAGE,
-                &error_id,
-            ),
+            AdminError::Internal { cause } => ApiError::internal(cause),
         }
-    }
-}
-
-/// JSON body extractor that keeps malformed input inside the shared envelope
-/// instead of Axum's default plain-text 400.
-pub struct ValidJson<T>(pub T);
-
-impl<T: DeserializeOwned, S: Send + Sync> FromRequest<S> for ValidJson<T> {
-    type Rejection = AdminHttpError;
-
-    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        Json::<T>::from_request(req, state)
-            .await
-            .map(|Json(value)| Self(value))
-            .map_err(|cause| {
-                AdminHttpError(AdminError::InvalidInput {
-                    message: format!("Invalid request body: {cause}"),
-                })
-            })
     }
 }
 
 /// Backup listing, oldest first.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/backups",
     responses((status = 200, description = "Backups on disk", body = BackupListResponse))
 )]
 pub async fn list_backups(
     State(admin): State<AdminSetup>,
-) -> Result<Json<BackupListResponse>, AdminHttpError> {
+    _caller: Admin,
+) -> Result<Json<BackupListResponse>, ApiError> {
     let dir = admin
         .backups
         .as_ref()
@@ -108,12 +60,14 @@ pub async fn list_backups(
 /// Run one backup now.
 #[utoipa::path(
     post,
+    tag = "admin",
     path = "/api/v3/admin/backups",
     responses((status = 201, description = "Backup completed", body = BackupRunResponse))
 )]
 pub async fn run_backup(
     State(admin): State<AdminSetup>,
-) -> Result<(StatusCode, Json<BackupRunResponse>), AdminHttpError> {
+    _caller: Admin,
+) -> Result<(StatusCode, Json<BackupRunResponse>), ApiError> {
     let backups = admin.backups.as_ref().ok_or_else(unwired_backups)?;
     let report = super::backups::run_backup(backups).await?;
     Ok((StatusCode::CREATED, Json(report)))
@@ -122,14 +76,16 @@ pub async fn run_backup(
 /// Pre-restore verification report for one backup. Read-only.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/backups/{name}/restore-report",
     params(("name" = String, Path, description = "Backup file name")),
     responses((status = 200, description = "Verification report", body = RestoreReport))
 )]
 pub async fn restore_report(
     State(admin): State<AdminSetup>,
+    _caller: Admin,
     Path(name): Path<String>,
-) -> Result<Json<RestoreReport>, AdminHttpError> {
+) -> Result<Json<RestoreReport>, ApiError> {
     let dir = admin
         .backups
         .as_ref()
@@ -141,78 +97,101 @@ pub async fn restore_report(
         .map(Json)
 }
 
-/// Provider-cache counters.
+/// Provider data and image cache counters.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/cache/stats",
     responses((status = 200, description = "Cache counters", body = CacheStatsResponse))
 )]
-pub async fn cache_stats(State(admin): State<AdminSetup>) -> Json<CacheStatsResponse> {
+pub async fn cache_stats(
+    State(admin): State<AdminSetup>,
+    _caller: Admin,
+) -> Json<CacheStatsResponse> {
     Json(super::cache::cache_stats(&admin.cache, admin.covers.as_ref()).await)
 }
 
-/// Clear the provider cache: everything, or one source's keys.
+/// Clear provider data, the cached images, or both.
 #[utoipa::path(
     post,
+    tag = "admin",
     path = "/api/v3/admin/cache/clear",
     request_body = CacheClearBody,
     responses((status = 200, description = "Clear counts", body = CacheClearResponse))
 )]
 pub async fn clear_cache(
     State(admin): State<AdminSetup>,
+    _caller: Admin,
     ValidJson(body): ValidJson<CacheClearBody>,
-) -> Result<Json<CacheClearResponse>, AdminHttpError> {
-    super::cache::clear_cache(&admin.cache, admin.covers.as_ref(), &body)
-        .await
-        .map(Json)
-        .map_err(AdminHttpError::from)
+) -> Result<Json<CacheClearResponse>, ApiError> {
+    super::cache::clear_cache(
+        &admin.cache,
+        admin.db.as_ref(),
+        admin.covers.as_ref(),
+        &body,
+    )
+    .await
+    .map(Json)
+    .map_err(ApiError::from)
 }
 
-/// Queue demand plus the job registry.
+/// Queue demand, the job registry and the latest checkpoint pass.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/queue-stats",
     responses((status = 200, description = "Queue snapshot", body = QueueStatsResponse))
 )]
 pub async fn queue_stats(
     State(admin): State<AdminSetup>,
-) -> Result<Json<QueueStatsResponse>, AdminHttpError> {
+    _caller: Admin,
+) -> Result<Json<QueueStatsResponse>, ApiError> {
     let db = admin.db.as_ref().ok_or_else(unwired_db)?;
-    Ok(Json(super::queues::queue_stats(db).await?))
+    Ok(Json(
+        super::queues::queue_stats(db, admin.checkpoint.as_ref()).await?,
+    ))
 }
 
-/// Provider limiter posture plus slot lanes.
+/// Provider limiter posture plus the outbound calls counted since start.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/provider-stats",
     responses((status = 200, description = "Provider snapshot", body = ProviderStatsResponse))
 )]
-pub async fn provider_stats(State(admin): State<AdminSetup>) -> Json<ProviderStatsResponse> {
+pub async fn provider_stats(
+    State(admin): State<AdminSetup>,
+    _caller: Admin,
+) -> Json<ProviderStatsResponse> {
     Json(super::queues::provider_stats(&admin.providers))
 }
 
 /// One user's quota standing.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/admin/users/{id}/quota",
+    operation_id = "get_user_quota",
     params(("id" = String, Path, description = "User id")),
     responses((status = 200, description = "Quota standing", body = QuotaResponse))
 )]
 pub async fn get_quota(
     State(admin): State<AdminSetup>,
+    _caller: Admin,
     Path(user_id): Path<String>,
-) -> Result<Json<QuotaResponse>, AdminHttpError> {
+) -> Result<Json<QuotaResponse>, ApiError> {
     let db = admin.db.as_ref().ok_or_else(unwired_db)?;
     super::quota::get_quota(&admin.users, db, &admin.quota, &user_id)
         .await
         .map(Json)
-        .map_err(AdminHttpError::from)
+        .map_err(ApiError::from)
 }
 
 /// Start one supervised precache run. The run continues in the background
 /// under the `precache-library` job name.
 #[utoipa::path(
     post,
+    tag = "admin",
     path = "/api/v3/admin/precache/run",
     responses(
         (status = 202, description = "Precache run started", body = PrecacheRunResponse),
@@ -221,15 +200,14 @@ pub async fn get_quota(
 )]
 pub async fn run_precache(
     State(admin): State<AdminSetup>,
-    session: Option<axum::Extension<crate::auth::session::middleware::CurrentSession>>,
-) -> Result<(StatusCode, Json<PrecacheRunResponse>), AdminHttpError> {
+    caller: Admin,
+) -> Result<(StatusCode, Json<PrecacheRunResponse>), ApiError> {
     let trigger = admin.precache.as_ref().ok_or_else(unwired_precache)?;
-    let user_id = session.map(|axum::Extension(session)| session.user_id);
-    match trigger.run(user_id).await {
+    match trigger.run(Some(caller.user_id().to_owned())).await {
         Ok(_) => Ok((
             StatusCode::ACCEPTED,
             Json(PrecacheRunResponse {
-                job: crate::jobs::precache::JOB_NAME.to_owned(),
+                job: droppedneedle_kernel::jobs::precache::JOB_NAME.to_owned(),
                 status: "started".to_owned(),
             }),
         )),
@@ -244,12 +222,14 @@ pub async fn run_precache(
 /// as the `cache.sync` event.
 #[utoipa::path(
     get,
+    tag = "admin",
     path = "/api/v3/cache/sync/status",
-    responses((status = 200, description = "Precache progress", body = crate::events::CacheSyncProgress))
+    responses((status = 200, description = "Precache progress", body = droppedneedle_kernel::events::CacheSyncProgress))
 )]
 pub async fn cache_sync_status(
     State(admin): State<AdminSetup>,
-) -> Json<crate::events::CacheSyncProgress> {
+    _caller: User,
+) -> Json<droppedneedle_kernel::events::CacheSyncProgress> {
     Json(
         admin
             .precache
@@ -264,10 +244,14 @@ pub async fn cache_sync_status(
 /// running too.
 #[utoipa::path(
     post,
+    tag = "admin",
     path = "/api/v3/cache/sync/cancel",
     responses((status = 200, description = "Precache stopped", body = CacheSyncCancelResponse))
 )]
-pub async fn cancel_cache_sync(State(admin): State<AdminSetup>) -> Json<CacheSyncCancelResponse> {
+pub async fn cancel_cache_sync(
+    State(admin): State<AdminSetup>,
+    _caller: Curator,
+) -> Json<CacheSyncCancelResponse> {
     if let Some(trigger) = &admin.precache {
         trigger.cancel().await;
     }
@@ -279,6 +263,7 @@ pub async fn cancel_cache_sync(State(admin): State<AdminSetup>) -> Json<CacheSyn
 /// Set (or, with all-`None`, clear) one user's quota overrides.
 #[utoipa::path(
     put,
+    tag = "admin",
     path = "/api/v3/admin/users/{id}/quota",
     request_body = QuotaOverrideBody,
     params(("id" = String, Path, description = "User id")),
@@ -286,14 +271,15 @@ pub async fn cancel_cache_sync(State(admin): State<AdminSetup>) -> Json<CacheSyn
 )]
 pub async fn set_quota(
     State(admin): State<AdminSetup>,
+    _caller: Admin,
     Path(user_id): Path<String>,
     ValidJson(body): ValidJson<QuotaOverrideBody>,
-) -> Result<Json<QuotaResponse>, AdminHttpError> {
+) -> Result<Json<QuotaResponse>, ApiError> {
     let db = admin.db.as_ref().ok_or_else(unwired_db)?;
     super::quota::set_quota(&admin.users, db, &admin.quota, &user_id, &body)
         .await
         .map(Json)
-        .map_err(AdminHttpError::from)
+        .map_err(ApiError::from)
 }
 
 /// 503 for backup routes on states without a backup service.
@@ -320,7 +306,7 @@ fn unwired_db() -> AdminError {
 /// Run blocking backup-directory work on the blocking pool.
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AdminError> + Send + 'static,
-) -> Result<T, AdminHttpError> {
+) -> Result<T, ApiError> {
     let outcome = tokio::task::spawn_blocking(work)
         .await
         .map_err(|cause| AdminError::internal(&format_args!("backup task failed: {cause}")))?;

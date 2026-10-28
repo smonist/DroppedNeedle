@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import type { LibraryAlbumDetail, NativeTrackListItem } from '$lib/types';
@@ -37,9 +37,6 @@ const album: LibraryAlbumDetail = {
 	custom_manifest_track_count: 0,
 	custom_manifest_recognized_track_count: 0,
 	custom_manifest_stale: false,
-	management_excluded: false,
-	management_exclusion_revision: null,
-	management_excluded_at: null,
 	active_edition_conversion: null,
 	contribution_id: null,
 	contribution_state: null,

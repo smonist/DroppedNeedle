@@ -1,7 +1,7 @@
 <script lang="ts">
 	import GenreArtwork from '$lib/components/GenreArtwork.svelte';
 	import { withBasePath } from '$lib/utils/basePath';
-	import type { GenreArtwork as GenreArtworkModel } from '$lib/types';
+	import type { GenreArtwork as GenreArtworkModel } from '$lib/queries/discover/types';
 	import { getGenreGradient } from '$lib/utils/genreGradient';
 
 	interface Props {
@@ -31,7 +31,7 @@
 			>
 				<div class="aspect-16/10"></div>
 
-				<div class="pointer-events-none absolute inset-0" style="z-index: 1;">
+				<div class="pointer-events-none absolute inset-0 z-[1]">
 					<GenreArtwork
 						artwork={genreArtwork?.[genre.name]}
 						gradientClass={getGenreGradient(genre.name)}
@@ -39,14 +39,10 @@
 				</div>
 
 				<div
-					class="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent"
-					style="z-index: 6;"
+					class="absolute inset-0 z-[6] bg-linear-to-t from-black/70 via-black/20 to-transparent"
 				></div>
 
-				<div
-					class="absolute inset-x-0 bottom-0 flex flex-col justify-end p-3 sm:p-4"
-					style="z-index: 10;"
-				>
+				<div class="absolute inset-x-0 bottom-0 z-10 flex flex-col justify-end p-3 sm:p-4">
 					{#if genre.listen_count}
 						<span class="mb-1 text-[10px] font-medium tracking-wide text-white/70 sm:text-xs">
 							{formatCount(genre.listen_count)} plays
@@ -58,10 +54,17 @@
 				</div>
 
 				<div
-					class="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-inset ring-white/10 transition-all duration-300 group-hover:ring-white/25"
-					style="z-index: 15;"
+					class="pointer-events-none absolute inset-0 z-[15] rounded-xl ring-1 ring-inset ring-white/10 transition-all duration-300 group-hover:ring-white/25"
 				></div>
 			</a>
 		{/each}
 	</div>
 </section>
+
+<style>
+	@media (prefers-reduced-motion: reduce) {
+		.genre-tile {
+			transform: none !important;
+		}
+	}
+</style>

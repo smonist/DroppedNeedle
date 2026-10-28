@@ -1,4 +1,5 @@
 <script lang="ts">
+	import '$lib/components/library/library-management.css';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import {
@@ -28,6 +29,11 @@
 		LibraryManagementSettingsResponse,
 		ManagementSelectionKind
 	} from '$lib/queries/library-management/types';
+	import Button from '$lib/ui/Button.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
+	import SelectField from '$lib/ui/SelectField.svelte';
+	import ToggleRow from '$lib/ui/ToggleRow.svelte';
 	import { withBasePath } from '$lib/utils/basePath';
 	import { createUuid } from '$lib/utils/uuid';
 
@@ -45,7 +51,10 @@
 		subtitle: string;
 		image: {
 			kind: 'album' | 'artist';
+			/** Local album id for album art; unused for artists. */
 			id: string;
+			/** Release group for albums, the artist's own MBID for artists. */
+			mbid: string;
 			available: boolean;
 		} | null;
 	}
@@ -95,6 +104,12 @@
 			filterSearch.trim() || filterGenre.trim() || filterFromYear !== null || filterToYear !== null
 		)
 	);
+	const destinationOptions = $derived([
+		{ value: '', label: 'Keep organization within each source root' },
+		...roots
+			.filter((root) => selectionKind !== 'roots' || !selectedIds.includes(root.id))
+			.map((root) => ({ value: root.id, label: root.label }))
+	]);
 	const progressSteps = $derived(
 		mode === 'baseline_restore'
 			? [
@@ -197,6 +212,7 @@
 				image: {
 					kind: 'artist',
 					id: artist.id,
+					mbid: artist.musicbrainz_artist_id ?? '',
 					available: artist.musicbrainz_artist_id !== null
 				}
 			}));
@@ -206,7 +222,12 @@
 				id: album.id,
 				title: album.title,
 				subtitle: `${album.artist_name} · ${quantity(album.track_count, 'track')}`,
-				image: { kind: 'album', id: album.id, available: album.cover_available }
+				image: {
+					kind: 'album',
+					id: album.id,
+					mbid: album.musicbrainz_release_group_id ?? '',
+					available: album.cover_available
+				}
 			}));
 		}
 		if (selectionKind === 'tracks') {
@@ -214,7 +235,12 @@
 				id: track.id,
 				title: track.title,
 				subtitle: `${track.artist_name} · ${track.album_title}`,
-				image: { kind: 'album', id: track.album_id, available: track.cover_available }
+				image: {
+					kind: 'album',
+					id: track.album_id,
+					mbid: track.musicbrainz_release_group_id ?? '',
+					available: track.cover_available
+				}
 			}));
 		}
 		return [];
@@ -354,12 +380,14 @@
 					This creates a saved read-only preview. No music file changes.
 				</p>
 			</div>
-			<button
-				class="btn btn-ghost btn-sm btn-square"
-				aria-label="Close manual management runner"
+			<IconButton
+				size="sm"
+				shape="square"
+				icon={X}
+				label="Close manual management runner"
 				disabled={pending}
-				onclick={() => dialog.close()}><X class="h-5 w-5" /></button
-			>
+				onclick={() => dialog.close()}
+			/>
 		</header>
 
 		<div class="management-runner-progress" aria-label="Runner progress">
@@ -418,9 +446,10 @@
 										{currentScopeItems().length === 1 ? 'item' : 'items'} in scope</small
 									>
 								</div>
-								{#if currentScopeItems().length > 0}<button
-										class="btn btn-ghost btn-xs"
-										onclick={clearSelection}>Clear all</button
+								{#if currentScopeItems().length > 0}<Button
+										variant="ghost"
+										size="xs"
+										onclick={clearSelection}>Clear all</Button
 									>{/if}
 							</div>
 							{#if currentScopeItems().length === 0}
@@ -431,8 +460,8 @@
 										<div class="management-selected-scope__item">
 											{#if item.image?.kind === 'album'}
 												<AlbumImage
-													mbid={item.image.id}
-													source="local"
+													albumId={item.image.id}
+													mbid={item.image.mbid}
 													available={item.image.available}
 													alt=""
 													size="xs"
@@ -442,8 +471,7 @@
 												/>
 											{:else if item.image?.kind === 'artist'}
 												<ArtistImage
-													mbid={item.image.id}
-													source="local"
+													mbid={item.image.mbid}
 													available={item.image.available}
 													alt=""
 													size="xs"
@@ -453,11 +481,13 @@
 											<span class="min-w-0 flex-1"
 												><strong>{item.title}</strong><small>{item.subtitle}</small></span
 											>
-											<button
-												class="btn btn-ghost btn-xs btn-square"
-												aria-label={`Remove ${item.title} from scope`}
-												onclick={() => removeSelected(item.id)}><X class="h-3.5 w-3.5" /></button
-											>
+											<IconButton
+												size="xs"
+												shape="square"
+												icon={X}
+												label={`Remove ${item.title} from scope`}
+												onclick={() => removeSelected(item.id)}
+											/>
 										</div>
 									{/each}
 								</div>
@@ -482,43 +512,46 @@
 					{:else if selectionKind === 'filter'}
 						<div class="grid gap-3 sm:grid-cols-2">
 							<label class="grid gap-1 text-sm sm:col-span-2"
-								><span>Catalog search</span><input
-									class="input input-bordered bg-base-100"
+								><span>Catalog search</span><Input
+									label="Catalog search"
+									class="w-full"
 									bind:value={filterSearch}
 									placeholder="Artist, release, or title"
 								/></label
 							>
 							<label class="grid gap-1 text-sm"
-								><span>Genre</span><input
-									class="input input-bordered bg-base-100"
+								><span>Genre</span><Input
+									label="Genre"
+									class="w-full"
 									bind:value={filterGenre}
 								/></label
 							>
 							<div class="grid grid-cols-2 gap-2">
 								<label class="grid gap-1 text-sm"
-									><span>From year</span><input
+									><span>From year</span><Input
 										type="number"
-										class="input input-bordered bg-base-100"
+										label="From year"
+										class="w-full"
 										bind:value={filterFromYear}
 									/></label
 								><label class="grid gap-1 text-sm"
-									><span>To year</span><input
+									><span>To year</span><Input
 										type="number"
-										class="input input-bordered bg-base-100"
+										label="To year"
+										class="w-full"
 										bind:value={filterToYear}
 									/></label
 								>
 							</div>
 						</div>
 					{:else}
-						<label class="input input-bordered flex items-center gap-2 bg-base-100"
-							><Search class="h-4 w-4 text-base-content/40" /><input
-								class="grow"
-								bind:value={searchTerm}
-								placeholder={`Search library ${selectionNoun(selectionKind)}`}
-								aria-label={`Search library ${selectionNoun(selectionKind)}`}
-							/></label
-						>
+						<Input
+							icon={Search}
+							class="w-full"
+							label={`Search library ${selectionNoun(selectionKind)}`}
+							placeholder={`Search library ${selectionNoun(selectionKind)}`}
+							bind:value={searchTerm}
+						/>
 						{#if searchTerm.trim().length < 2}<p class="text-sm text-base-content/45">
 								Type at least two characters, then select one or more results.
 							</p>{:else if searchQuery.isLoading}<div
@@ -545,8 +578,8 @@
 											checked={selectedIds.includes(item.id)}
 											onchange={() => toggleResult(item)}
 										/>{#if item.image?.kind === 'album'}<AlbumImage
-												mbid={item.image.id}
-												source="local"
+												albumId={item.image.id}
+												mbid={item.image.mbid}
 												available={item.image.available}
 												alt=""
 												size="xs"
@@ -554,8 +587,7 @@
 												className="h-11 w-11 border border-base-content/10"
 												testId={`search-scope-artwork-${item.id}`}
 											/>{:else if item.image?.kind === 'artist'}<ArtistImage
-												mbid={item.image.id}
-												source="local"
+												mbid={item.image.mbid}
 												available={item.image.available}
 												alt=""
 												size="xs"
@@ -605,13 +637,11 @@
 							never edited.
 						</p>
 					</div>
-					<label class="management-master-toggle"
-						><input type="checkbox" class="toggle toggle-sm" bind:checked={customized} /><span
-							><strong>Customize this run</strong><small
-								>Temporary values are pinned only to this preview.</small
-							></span
-						></label
-					>{#if customized}<div class="grid gap-2 sm:grid-cols-2">
+					<ToggleRow
+						label="Customize this run"
+						description="Temporary values are pinned only to this preview."
+						bind:checked={customized}
+					/>{#if customized}<div class="grid gap-2 sm:grid-cols-2">
 							{#each [{ label: 'Metadata tags', get: () => metadataEnabled, set: (value: boolean) => (metadataEnabled = value) }, { label: 'Genres', get: () => genresEnabled, set: (value: boolean) => (genresEnabled = value) }, { label: 'Embedded artwork', get: () => embeddedArtworkEnabled, set: (value: boolean) => (embeddedArtworkEnabled = value) }, { label: 'External artwork', get: () => externalArtworkEnabled, set: (value: boolean) => (externalArtworkEnabled = value) }, { label: 'Rename files', get: () => renameEnabled, set: (value: boolean) => (renameEnabled = value) }, { label: 'Move within root', get: () => moveEnabled, set: (value: boolean) => (moveEnabled = value) }, { label: 'Move sidecars', get: () => sidecarsEnabled, set: (value: boolean) => (sidecarsEnabled = value) }] as option (option.label)}<label
 									class="management-trigger"
 									><input
@@ -621,20 +651,13 @@
 										onchange={(event) => option.set(event.currentTarget.checked)}
 									/><span><strong>{option.label}</strong><small>One run only</small></span></label
 								>{/each}
-						</div>{/if}<label class="grid gap-1 text-sm"
-						><span>Explicit cross-root destination</span><select
-							class="select select-bordered bg-base-100"
-							bind:value={targetRootId}
-							disabled={!moveEnabled}
-							><option value="">Keep organization within each source root</option
-							>{#each roots.filter((root) => selectionKind !== 'roots' || !selectedIds.includes(root.id)) as root (root.id)}<option
-									value={root.id}>{root.label}</option
-								>{/each}</select
-						><small class="text-base-content/45"
-							>Cross-root movement happens only in this manual preview and is never an automatic
-							setting.</small
-						></label
-					>
+						</div>{/if}<SelectField
+						label="Explicit cross-root destination"
+						help="Cross-root movement happens only in this manual preview and is never an automatic setting."
+						options={destinationOptions}
+						disabled={!moveEnabled}
+						bind:value={targetRootId}
+					/>
 				</section>
 			{:else if step === 4}
 				<section class="space-y-4">
@@ -693,21 +716,23 @@
 		</div>
 
 		<footer class="management-profile-editor__footer">
-			<button class="btn btn-ghost" disabled={step === 1 || pending} onclick={back}
-				><ArrowLeft class="h-4 w-4" /> Back</button
+			<Button variant="ghost" icon={ArrowLeft} disabled={step === 1 || pending} onclick={back}
+				>Back</Button
 			>
 			<div class="flex gap-2">
-				<button class="btn btn-ghost" disabled={pending} onclick={() => dialog.close()}
-					>Cancel</button
-				>{#if step < 4}<button class="btn management-btn" disabled={!selectionValid} onclick={next}
-						>Continue <ArrowRight class="h-4 w-4" /></button
-					>{:else}<button
-						class="btn management-btn"
-						disabled={!selectionValid || pending || (mode === 'manage' && !profile)}
-						onclick={() => void generate()}
-						>{#if pending}<span class="loading loading-spinner loading-sm"></span>{/if}<Sparkles
-							class="h-4 w-4"
-						/> Generate preview</button
+				<Button variant="ghost" disabled={pending} onclick={() => dialog.close()}>Cancel</Button
+				>{#if step < 4}<Button
+						variant="warning"
+						icon={ArrowRight}
+						iconPosition="end"
+						disabled={!selectionValid}
+						onclick={next}>Continue</Button
+					>{:else}<Button
+						variant="warning"
+						icon={Sparkles}
+						loading={pending}
+						disabled={!selectionValid || (mode === 'manage' && !profile)}
+						onclick={() => void generate()}>Generate preview</Button
 					>{/if}
 			</div>
 		</footer>
@@ -716,3 +741,175 @@
 		<button aria-label="Close management runner" disabled={pending}>close</button>
 	</form>
 </dialog>
+
+<style>
+	.management-review-grid span {
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: color-mix(in oklab, var(--color-base-content) 48%, transparent);
+	}
+
+	.management-runner {
+		border: 1px solid color-mix(in oklab, var(--color-library-manage) 25%, transparent);
+		background: var(--color-base-100);
+	}
+
+	.management-runner-progress {
+		display: grid;
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		border-bottom: 1px solid color-mix(in oklab, var(--color-base-content) 9%, transparent);
+		background: color-mix(in oklab, var(--color-library-manage) 5%, var(--color-base-100));
+	}
+
+	.management-runner-progress > span {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		min-height: 3rem;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		color: color-mix(in oklab, var(--color-base-content) 40%, transparent);
+	}
+
+	.management-runner-progress > span[data-state='current'] {
+		background: color-mix(in oklab, var(--color-library-manage) 11%, transparent);
+		color: var(--color-base-content);
+	}
+
+	.management-runner-progress > span[data-state='done'] {
+		color: color-mix(in oklab, var(--color-library-manage) 68%, var(--color-base-content));
+	}
+
+	.management-runner-progress small {
+		font-family: var(--font-sans);
+		font-weight: 700;
+	}
+
+	.management-scope-tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.management-scope-tabs button {
+		padding: 0.45rem 0.75rem;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 12%, transparent);
+		border-radius: 9999px;
+		font-size: 0.82rem;
+	}
+
+	.management-scope-tabs button[aria-pressed='true'] {
+		border-color: color-mix(in oklab, var(--color-library-manage) 42%, transparent);
+		background: color-mix(in oklab, var(--color-library-manage) 12%, transparent);
+		font-weight: 700;
+	}
+
+	.management-selected-scope {
+		display: grid;
+		gap: 0.65rem;
+		padding: 0.85rem;
+		border: 1px solid color-mix(in oklab, var(--color-library-manage) 24%, transparent);
+		border-radius: 0.9rem;
+		background: color-mix(in oklab, var(--color-library-manage) 6%, var(--color-base-100));
+	}
+
+	.management-selected-scope[data-wide-scope='true'] {
+		border-color: color-mix(in oklab, var(--color-warning) 38%, transparent);
+		background: color-mix(in oklab, var(--color-warning) 7%, var(--color-base-100));
+	}
+
+	.management-selected-scope__header,
+	.management-selected-scope__item {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.management-selected-scope small,
+	.management-selected-scope__item span {
+		display: block;
+	}
+
+	.management-selected-scope small {
+		margin-top: 0.1rem;
+		color: color-mix(in oklab, var(--color-base-content) 48%, transparent);
+	}
+
+	.management-selected-scope__items {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.4rem;
+		max-height: 10rem;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding-right: 0.25rem;
+		scrollbar-gutter: stable;
+	}
+
+	.management-selected-scope__item {
+		min-width: 0;
+		padding: 0.55rem 0.65rem;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 9%, transparent);
+		border-radius: 0.7rem;
+		background: var(--color-base-100);
+	}
+
+	.management-selected-scope__item span {
+		min-width: 0;
+	}
+
+	.management-selected-scope__item strong,
+	.management-selected-scope__item small {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.management-runner-profile-list {
+		display: grid;
+		gap: 0.5rem;
+		max-height: min(24rem, 48dvh);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding: 0.15rem 0.35rem 0.15rem 0.15rem;
+		scrollbar-gutter: stable;
+	}
+
+	.management-runner-profile-list:focus-visible {
+		border-radius: 0.25rem;
+		outline: 2px solid var(--color-library-manage);
+		outline-offset: 0.2rem;
+	}
+
+	.management-review-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.75rem;
+	}
+
+	.management-review-grid > div {
+		display: grid;
+		gap: 0.2rem;
+		padding: 0.85rem;
+		border: 1px solid color-mix(in oklab, var(--color-base-content) 10%, transparent);
+		border-radius: 0.85rem;
+	}
+
+	@media (max-width: 639px) {
+		.management-runner-progress small {
+			display: none;
+		}
+
+		.management-review-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.management-selected-scope__items {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

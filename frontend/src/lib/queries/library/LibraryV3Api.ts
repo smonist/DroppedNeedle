@@ -3,6 +3,7 @@ import type {
 	LibraryReviewParams,
 	LibraryV3AlbumsParams,
 	LibraryV3ArtistsParams,
+	LibraryV3CursorParams,
 	LibraryV3PageParams,
 	LibraryV3TracksParams
 } from './LibraryQueryKeyFactory';
@@ -39,11 +40,12 @@ export const LibraryV3Api = {
 		v3('/api/v3/library/albums/{album_id}/management/re-enable', {
 			path: { album_id: albumId }
 		}),
-	albums: (params: LibraryV3AlbumsParams) =>
+	// The long lists read by cursor: `after` is the `next` of the page before.
+	albums: (params: LibraryV3AlbumsParams, after: string | null = null) =>
 		v3('/api/v3/library/albums', {
 			query: {
 				limit: params.limit,
-				offset: params.offset,
+				...(after ? { after } : {}),
 				sort: params.sort,
 				order: params.order,
 				...(params.q ? { q: params.q } : {}),
@@ -52,11 +54,11 @@ export const LibraryV3Api = {
 				...(params.format ? { format: params.format } : {})
 			}
 		}),
-	artists: (params: LibraryV3ArtistsParams) =>
+	artists: (params: LibraryV3ArtistsParams, after: string | null = null) =>
 		v3('/api/v3/library/artists', {
 			query: {
 				limit: params.limit,
-				offset: params.offset,
+				...(after ? { after } : {}),
 				sort: params.sort,
 				order: params.order,
 				...(params.q ? { q: params.q } : {}),
@@ -68,6 +70,12 @@ export const LibraryV3Api = {
 		v3('/api/v3/library/albums/{id}/status', { path: { id: albumId } }),
 	membership: () => v3('/api/v3/library/membership'),
 	resolveTracks: () => v3('/api/v3/library/resolve-tracks'),
+	albumHistory: (albumId: string) =>
+		v3('/api/v3/library/albums/{album_id}/history', { path: { album_id: albumId } }),
+	undoAlbumFold: (undoId: string) =>
+		v3('/api/v3/library/folds/{fold_id}/undo', { path: { fold_id: undoId } }),
+	undoArtistRepair: (undoId: string) =>
+		v3('/api/v3/library/artist-repairs/{repair_id}/undo', { path: { repair_id: undoId } }),
 	// The album's edition: read, choose, hand back, confirm, undo.
 	edition: (albumId: string) =>
 		v3('/api/v3/library/albums/{album_id}/edition', { path: { album_id: albumId } }),
@@ -75,13 +83,37 @@ export const LibraryV3Api = {
 		v3('/api/v3/library/albums/{album_id}/edition/confirm', { path: { album_id: albumId } }),
 	editionUndo: (albumId: string) =>
 		v3('/api/v3/library/albums/{album_id}/edition/undo', { path: { album_id: albumId } }),
+	editionCustom: (albumId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/custom', { path: { album_id: albumId } }),
+	editionLeaveUnmanaged: (albumId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/leave-unmanaged', {
+			path: { album_id: albumId }
+		}),
 	editionExtrasRemove: (albumId: string) =>
 		v3('/api/v3/library/albums/{album_id}/edition/extras/remove', {
 			path: { album_id: albumId }
 		}),
-	editionExtrasRestore: (albumId: string) =>
-		v3('/api/v3/library/albums/{album_id}/edition/extras/restore', {
-			path: { album_id: albumId }
+	// An album's removals whose files are still in the recycle bin, and
+	// putting one back.
+	albumRemovals: (albumId: string) =>
+		v3('/api/v3/library/albums/{album_id}/removals', { path: { album_id: albumId } }),
+	// The recycle bin page: its contents, what Empty would delete, whether
+	// it is emptying, and Empty.
+	recycleBin: (cursor: string | null, limit: number) =>
+		v3('/api/v3/library/recycle-bin', {
+			query: { limit, ...(cursor ? { cursor } : {}) }
+		}),
+	recycleBinSummary: () => v3('/api/v3/library/recycle-bin/summary'),
+	recycleBinStatus: () => v3('/api/v3/library/recycle-bin/status'),
+	emptyRecycleBin: () => v3('/api/v3/library/recycle-bin/empty'),
+	putBackRemoval: (albumId: string, removalId: string) =>
+		v3('/api/v3/library/albums/{album_id}/removals/{removal_id}/put-back', {
+			path: { album_id: albumId, removal_id: removalId }
+		}),
+	// One file matched to an edition track by hand (PUT), and its undo (DELETE).
+	editionFile: (albumId: string, trackId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/files/{track_id}', {
+			path: { album_id: albumId, track_id: trackId }
 		}),
 	// What taking an edition would do to the files; the current one without a release.
 	editionPlan: (albumId: string, releaseMbid?: string) =>
@@ -89,10 +121,27 @@ export const LibraryV3Api = {
 			path: { album_id: albumId },
 			query: releaseMbid ? { release_mbid: releaseMbid } : {}
 		}),
+	// The edition's tags written to the files: queue a preview, read it,
+	// apply it, and plan its undo.
+	editionTags: (albumId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/tags', { path: { album_id: albumId } }),
+	editionTagWrite: (albumId: string, jobId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/tags/{job_id}', {
+			path: { album_id: albumId, job_id: jobId }
+		}),
+	editionTagWriteApply: (albumId: string, jobId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/tags/{job_id}/apply', {
+			path: { album_id: albumId, job_id: jobId }
+		}),
+	editionTagWriteUndo: (albumId: string, jobId: string) =>
+		v3('/api/v3/library/albums/{album_id}/edition/tags/{job_id}/undo', {
+			path: { album_id: albumId, job_id: jobId }
+		}),
 	unconfirmed: (state: 'unconfirmed' | 'unmatched', limit: number, offset: number) =>
 		v3('/api/v3/library/unconfirmed', { query: { state, limit, offset } }),
 	managePreview: () => v3('/api/v3/library/manage/preview'),
 	manageApply: () => v3('/api/v3/library/manage/apply'),
+	manageUndo: () => v3('/api/v3/library/manage/undo'),
 	albumCopies: (albumId: string) =>
 		v3('/api/v3/library/albums/{id}/copies', { path: { id: albumId } }),
 	albumTracks: (albumId: string, params: LibraryV3PageParams) =>
@@ -105,27 +154,27 @@ export const LibraryV3Api = {
 		}),
 	artistDetail: (artistId: string) =>
 		v3('/api/v3/library/artists/{id}', { path: { id: artistId } }),
-	artistAlbums: (artistId: string, params: LibraryV3PageParams) =>
+	artistAlbums: (artistId: string, params: LibraryV3CursorParams) =>
 		v3('/api/v3/library/artists/{id}/albums', {
 			path: { id: artistId },
 			query: {
 				...(params.limit !== undefined ? { limit: params.limit } : {}),
-				...(params.offset !== undefined ? { offset: params.offset } : {})
+				...(params.after ? { after: params.after } : {})
 			}
 		}),
-	artistAppearances: (artistId: string, params: LibraryV3PageParams) =>
+	artistAppearances: (artistId: string, params: LibraryV3CursorParams) =>
 		v3('/api/v3/library/artists/{id}/appearances', {
 			path: { id: artistId },
 			query: {
 				...(params.limit !== undefined ? { limit: params.limit } : {}),
-				...(params.offset !== undefined ? { offset: params.offset } : {})
+				...(params.after ? { after: params.after } : {})
 			}
 		}),
-	tracks: (params: LibraryV3TracksParams) =>
+	tracks: (params: LibraryV3TracksParams, after: string | null = null) =>
 		v3('/api/v3/library/tracks', {
 			query: {
 				limit: params.limit,
-				offset: params.offset,
+				...(after ? { after } : {}),
 				sort: params.sort,
 				order: params.order,
 				...(params.q ? { q: params.q } : {}),
@@ -137,6 +186,20 @@ export const LibraryV3Api = {
 	lyrics: (trackId: string) => v3('/api/v3/library/tracks/{id}/lyrics', { path: { id: trackId } }),
 	recentlyAdded: (limit: number) => v3('/api/v3/library/recently-added', { query: { limit } }),
 	stats: () => v3('/api/v3/library/stats'),
+	decades: () => v3('/api/v3/library/decades'),
+	suggestions: (limit: number, decade: number | null) =>
+		v3('/api/v3/library/suggestions', {
+			query: decade === null ? { limit } : { limit, decade }
+		}),
+	// An album's tracks by release-group mbid or local album id.
+	albumMatch: (mbid: string, params: LibraryV3PageParams) =>
+		v3('/api/v3/library/albums/match/{mbid}', {
+			path: { mbid },
+			query: {
+				...(params.limit !== undefined ? { limit: params.limit } : {}),
+				...(params.offset !== undefined ? { offset: params.offset } : {})
+			}
+		}),
 	// Identification reviews: list, read, and every way to settle one.
 	reviews: (params: LibraryReviewParams) =>
 		v3('/api/v3/library/reviews', {
@@ -173,10 +236,6 @@ export const LibraryV3Api = {
 		v3('/api/v3/library/operations/{job_id}/resume', { path: { job_id: jobId } }),
 	stopOperation: (jobId: string) =>
 		v3('/api/v3/library/operations/{job_id}/stop', { path: { job_id: jobId } }),
-	operationCandidate: (jobId: string) =>
-		v3('/api/v3/library/operations/{job_id}/candidate', { path: { job_id: jobId } }),
-	reidentifyAlbum: (albumId: string) =>
-		v3('/api/v3/library/albums/{album_id}/reidentify', { path: { album_id: albumId } }),
 	reidentificationReleases: (
 		albumId: string,
 		params: {
@@ -213,6 +272,17 @@ export const LibraryV3Api = {
 		v3('/api/v3/library/albums/{album_id}/reset-grouping', { path: { album_id: albumId } }),
 	artistMergePreview: () => v3('/api/v3/library/artists/merge-preview'),
 	artistMerge: () => v3('/api/v3/library/artists/merge'),
+	// Album rows a scan would not join by itself, for a person to join or
+	// dismiss.
+	retagPairs: () => v3('/api/v3/library/retag-pairs'),
+	joinRetagPair: (oldAlbumId: string, newAlbumId: string) =>
+		v3('/api/v3/library/retag-pairs/{old_album_id}/{new_album_id}/join', {
+			path: { old_album_id: oldAlbumId, new_album_id: newAlbumId }
+		}),
+	dismissRetagPair: (oldAlbumId: string, newAlbumId: string) =>
+		v3('/api/v3/library/retag-pairs/{old_album_id}/{new_album_id}/dismiss', {
+			path: { old_album_id: oldAlbumId, new_album_id: newAlbumId }
+		}),
 	scanRuns: () => v3('/api/v3/library/scan/runs'),
 	scanRun: (runId: string) => v3('/api/v3/library/scan/runs/{id}', { path: { id: runId } }),
 	currentScanRuns: () => v3('/api/v3/library/scan/runs/current'),

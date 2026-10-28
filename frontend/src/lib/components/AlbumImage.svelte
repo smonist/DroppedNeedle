@@ -1,6 +1,7 @@
 <script lang="ts">
 	import BaseImage from './BaseImage.svelte';
 	import { albumArtworkPath } from '$lib/api/covers';
+	import { isValidMbid } from '$lib/utils/formatting';
 
 	interface Props {
 		mbid?: string;
@@ -11,6 +12,7 @@
 		requestSize?: 250 | 500 | 1200;
 		responsiveSizes?: string;
 		lazy?: boolean;
+		priority?: boolean;
 		showPlaceholder?: boolean;
 		className?: string;
 		rounded?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -32,6 +34,7 @@
 		requestSize = undefined,
 		responsiveSizes = undefined,
 		lazy = true,
+		priority = false,
 		showPlaceholder = true,
 		className = '',
 		rounded = 'lg',
@@ -44,28 +47,34 @@
 		retryOnError = undefined
 	}: Props = $props();
 
-	let cachedLocalUrl = $derived(
-		albumId && coverVersion !== undefined ? albumArtworkPath(albumId, coverVersion) : null
+	// `albumId` is a library album's local id. When `available` says it has art
+	// of its own, that art is shown; otherwise `mbid` (its release group, when
+	// linked) gives the release-group cover, and an unlinked album shows the
+	// fallback. A local id is never sent where an MBID belongs. BaseImage builds
+	// its srcset from release-group URLs, so local art goes without one.
+	let localArtUrl = $derived(
+		albumId && available ? albumArtworkPath(albumId, coverVersion, requestSize) : null
 	);
 </script>
 
 <BaseImage
-	{mbid}
+	mbid={localArtUrl ? '' : mbid}
 	{alt}
 	{size}
 	{requestSize}
-	{responsiveSizes}
+	responsiveSizes={localArtUrl ? undefined : responsiveSizes}
 	{lazy}
+	{priority}
 	{showPlaceholder}
 	{className}
 	{rounded}
-	customUrl={cachedLocalUrl ?? customUrl}
+	customUrl={localArtUrl ?? customUrl}
 	{remoteUrl}
 	{onload}
 	{testId}
-	source={cachedLocalUrl ? 'local' : source}
-	{available}
-	retryOnError={retryOnError ?? !cachedLocalUrl}
-	transparentFallback={Boolean(cachedLocalUrl)}
+	source={localArtUrl ? 'local' : source}
+	available={albumId && !localArtUrl ? isValidMbid(mbid) : available}
+	retryOnError={retryOnError ?? !localArtUrl}
+	transparentFallback={Boolean(localArtUrl) && coverVersion !== undefined}
 	imageType="album"
 />

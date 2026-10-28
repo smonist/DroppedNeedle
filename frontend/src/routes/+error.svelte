@@ -2,12 +2,19 @@
 	import { House, RotateCw } from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { withBasePath } from '$lib/utils/basePath';
+	import Button from '$lib/ui/Button.svelte';
 
 	const status = $derived(page.status);
 	const isNotFound = $derived(status === 404);
-	const isBusy = $derived(status === 503);
+	const kind = $derived(page.error?.kind);
 	const heading = $derived(
-		isNotFound ? 'Off the record' : isBusy ? 'Server busy' : 'Something broke'
+		isNotFound
+			? 'Off the record'
+			: kind === 'busy'
+				? 'Server busy'
+				: kind === 'unreachable'
+					? "Can't reach the server"
+					: 'Something broke'
 	);
 	const blurb = $derived(
 		page.error?.message ??
@@ -24,14 +31,10 @@
 	<h1 class="err-head">{heading}</h1>
 	<p class="err-blurb">{blurb}</p>
 	<div class="err-actions">
-		<a href={withBasePath('/')} class="btn btn-ghost btn-sm">
-			<House class="h-4 w-4" />
-			Home
-		</a>
-		<button class="btn btn-accent btn-sm" onclick={() => location.reload()}>
-			<RotateCw class="h-4 w-4" />
+		<Button variant="ghost" size="sm" href={withBasePath('/')} icon={House}>Home</Button>
+		<Button variant="accent" size="sm" icon={RotateCw} onclick={() => location.reload()}>
 			Retry
-		</button>
+		</Button>
 	</div>
 </div>
 

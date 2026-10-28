@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Search, X, Music2, Play, ArrowUpRight } from 'lucide-svelte';
-	import { fly, fade } from 'svelte/transition';
+	import { fly, fade } from '$lib/ui/motion';
 	import { getLibrarySearchQuery } from '$lib/queries/library/LibraryQueries.svelte';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import ArtistImage from '$lib/components/ArtistImage.svelte';
@@ -8,11 +8,14 @@
 	import { playerStore } from '$lib/stores/player.svelte';
 	import type { NativeTrackListItem } from '$lib/types';
 	import { albumHref, artistHref } from '$lib/utils/entityRoutes';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
+	import { NOISE_TEXTURE } from './noiseTexture';
 
 	let term = $state('');
 	let debounced = $state('');
 	let focused = $state(false);
-	let inputEl = $state<HTMLInputElement>();
+	let inputEl = $state<HTMLInputElement | null>(null);
 	let rootEl = $state<HTMLElement>();
 
 	// rotating placeholder hints signal what's searchable; first entry doubles as the resting label
@@ -117,7 +120,8 @@
 		<div
 			aria-hidden="true"
 			class="pointer-events-none absolute inset-0 opacity-[0.03]"
-			style="background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 200 200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/></filter><rect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22 opacity=%220.5%22/></svg>');background-size:200px;"
+			style:background-image={NOISE_TEXTURE}
+			style:background-size="200px"
 		></div>
 
 		<div class="relative flex items-center gap-4 px-5 py-5 sm:gap-5 sm:px-7 sm:py-6">
@@ -145,18 +149,17 @@
 								{/key}
 							</span>
 						{/if}
-						<input
+						<Input
 							id="library-search-input"
-							bind:this={inputEl}
+							label="Search your library"
+							borderless
+							bind:ref={inputEl}
 							bind:value={term}
 							onfocus={() => (focused = true)}
 							onkeydown={onInputKeydown}
-							type="text"
-							placeholder=""
-							aria-label="Search your library"
 							autocomplete="off"
 							spellcheck="false"
-							class="absolute inset-0 w-full bg-transparent text-lg font-semibold text-base-content outline-none sm:text-xl"
+							class="absolute inset-0 text-lg font-semibold text-base-content sm:text-xl"
 						/>
 					</span>
 					<span class="mt-1 block truncate text-sm text-base-content/55">
@@ -165,9 +168,7 @@
 				</span>
 			</label>
 			{#if term}
-				<button onclick={clear} class="btn btn-circle btn-ghost shrink-0" aria-label="Clear search">
-					<X class="h-5 w-5" />
-				</button>
+				<IconButton label="Clear search" icon={X} class="shrink-0" onclick={clear} />
 			{:else}
 				<kbd
 					class="hidden shrink-0 self-start rounded-lg border border-base-content/15 bg-base-100/50 px-2 py-1 text-sm font-medium text-base-content/45 sm:inline-block"
@@ -209,9 +210,8 @@
 							>
 								<div class="h-10 w-10 shrink-0 overflow-hidden rounded-full">
 									<ArtistImage
-										mbid={artist.id}
-										source="local"
-										available={artist.musicbrainz_artist_id !== null}
+										mbid={artist.musicbrainz_artist_id ?? ''}
+										localId={artist.id}
 										alt={artist.name}
 										size="xs"
 										className="h-full w-full object-cover"
@@ -243,11 +243,12 @@
 							>
 								<div class="h-10 w-10 shrink-0 overflow-hidden rounded-md">
 									<AlbumImage
-										mbid={album.id}
-										source="local"
+										albumId={album.id}
+										mbid={album.musicbrainz_release_group_id ?? ''}
 										available={album.cover_available}
 										alt={album.title}
 										size="xs"
+										requestSize={250}
 										rounded="none"
 										className="h-full w-full object-cover"
 									/>
@@ -279,11 +280,12 @@
 							>
 								<div class="relative h-10 w-10 shrink-0 overflow-hidden rounded-md">
 									<AlbumImage
-										mbid={track.album_id}
-										source="local"
+										albumId={track.album_id}
+										mbid={track.musicbrainz_release_group_id ?? ''}
 										available={track.cover_available}
 										alt={track.album_title}
 										size="xs"
+										requestSize={250}
 										rounded="none"
 										className="h-full w-full object-cover"
 									/>

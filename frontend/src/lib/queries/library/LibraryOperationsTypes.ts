@@ -106,21 +106,22 @@ export interface LibraryActivityResponse {
 	revisions?: Record<string, number>;
 }
 
-export type ScanKind = 'incremental' | 'rescan_files' | 'policy_reconcile';
+export type ScanKind = components['schemas']['ScanKind'];
+export type ScanPhase = components['schemas']['ScanPhase'];
 
 export interface ScanRun {
 	id: string;
 	kind: ScanKind;
 	trigger: 'manual' | 'automatic' | 'subsonic' | 'startup_resume' | 'policy_apply';
 	state: LibraryWorkState;
-	phase: 'queued' | 'discovering' | 'indexing' | 'reconciling';
+	phase: ScanPhase;
 	requested_by_user_id: string | null;
-	aggregate_scope: string;
+	aggregate_scope: components['schemas']['AggregateScope'];
 	queued_at: number;
 	started_at: number | null;
 	updated_at: number;
 	terminal_at: number | null;
-	resume_phase: 'queued' | 'discovering' | 'indexing' | 'reconciling' | null;
+	resume_phase: ScanPhase | null;
 	requested_control: 'none' | 'pause' | 'stop';
 	terminal_code: string | null;
 	/** What the terminal code means, in plain words. */
@@ -244,13 +245,12 @@ export interface CandidateEvidence {
 	matcher_version: string;
 }
 
-export type OperationState =
-	'queued' | 'running' | 'paused' | 'ready' | 'succeeded' | 'failed' | 'cancelled' | 'stopped';
+export type OperationState = components['schemas']['OperationState'];
 
 export interface OperationWorkResult {
 	ordinal: number;
 	action: string;
-	state: string;
+	state: components['schemas']['WorkState'];
 	local_album_id: string | null;
 	local_track_id: string | null;
 	failure_code: string | null;
@@ -270,7 +270,7 @@ export interface RepairReportSummary {
 	album_counts_by_root: Record<string, number>;
 	provider_deferred_count: number;
 	failed_evidence_count: number;
-	purpose: string;
+	purpose: components['schemas']['Purpose'];
 	ready_album_count: number;
 	mapping_candidate_count: number;
 	exact_release_required_count: number;
@@ -301,7 +301,7 @@ export interface OperationResponse {
 	succeeded_count: number;
 	failed_count: number;
 	skipped_count: number;
-	control_request: string;
+	control_request: components['schemas']['ControlRequest'];
 	terminal_code: string | null;
 	row_revision: number;
 	event_revision: number;
@@ -324,65 +324,18 @@ export interface OperationListResponse {
 	next_cursor: string | null;
 }
 
-// Catalog correction previews (album split, merge, move, reset grouping,
-// artist merge) share one generated shape.
+// Album split, merge, move and reset grouping previews share one shape;
+// an artist merge preview has its own.
 export type MembershipPreviewResponse = components['schemas']['MembershipPreviewResponse'];
+export type ArtistMergePreviewResponse = components['schemas']['ArtistMergePreviewResponse'];
 export type CatalogCorrectionResponse = components['schemas']['CatalogCorrectionResponse'];
 export type EditionChange = components['schemas']['EditionChangeView'];
 
-export interface SuggestedEditionSummary {
-	release_mbid: string;
-	release_group_mbid: string;
-	title: string;
-	track_count: number;
-	competing_count: number;
-	date: string | null;
-	country: string | null;
-	status: string | null;
-	auto_gate: string | null;
-}
-
-export interface RepairFindingResponse {
-	id: string;
-	local_album_id: string;
-	album_title: string;
-	album_artist_name: string | null;
-	album_year: number | null;
-	cover_available: boolean;
-	evidence_id: string | null;
-	review_id: string | null;
-	finding_code: string;
-	reason_code: string;
-	/** What the finding means and what to do about it. */
-	reason?: { code: string; message: string; action: string };
-	confidence: string;
-	apply_eligible: boolean;
-	state: string;
-	apply_result: string | null;
-	suggested_edition: SuggestedEditionSummary | null;
-	automatic_undo: AutomaticEditionUndoInfo | null;
-	updated_at: number;
-	row_revision: number;
-}
-
-export interface AutomaticEditionUndoInfo {
-	expected_album_revision: number;
-	expected_identity_revision: number;
-}
-
-export interface AutomaticEditionUndoResponse {
-	local_album_id: string;
-	outcome: string;
-	review_id: string | null;
-}
-
-export interface RepairFindingListResponse {
-	items: RepairFindingResponse[];
-	next_cursor: string | null;
-	has_more: boolean;
-	current_counts_by_finding: Record<string, number>;
-	refresh_required: boolean;
-}
+export type SuggestedEditionSummary = components['schemas']['SuggestedEditionView'];
+export type RepairFindingResponse = components['schemas']['RepairFindingView'];
+export type AutomaticEditionUndoInfo = components['schemas']['AutomaticEditionUndoInfoView'];
+export type AutomaticEditionUndoResponse = components['schemas']['AutomaticEditionUndoResponse'];
+export type RepairFindingListResponse = components['schemas']['RepairFindingListView'];
 
 export type LibraryIdentificationPolicy = 'local_metadata' | 'automatic' | 'excluded';
 
@@ -403,7 +356,7 @@ export interface LibraryRootSettings {
 export interface TypedLibrarySettings {
 	library_roots: LibraryRootSettings[];
 	staging_path: string;
-	naming_template: string;
+	naming_script: string;
 	acoustid_api_key: string;
 	enabled: boolean;
 }
@@ -416,6 +369,7 @@ export interface TargetLibrarySettingsResponse extends TypedLibrarySettings {
 	affected_scope_ids: string[];
 	actions_applied: string[];
 	warnings: string[];
+	naming_example: string | null;
 }
 
 // The path policy routes are on v3; their shapes come from the contract.

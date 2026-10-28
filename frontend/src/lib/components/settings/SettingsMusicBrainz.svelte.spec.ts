@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -12,7 +12,6 @@ const h = vi.hoisted(() => {
 		source_mode: 'brainzmash',
 		api_url: 'https://api.brainzmash.cc/ws/2',
 		rate_limit: 10,
-		concurrent_searches: 1,
 		community_acknowledged: null,
 		selected_source_mode: 'brainzmash',
 		source_id: 'brainzmash-default',
@@ -40,7 +39,6 @@ const h = vi.hoisted(() => {
 		verify: mutation(),
 		activate: mutation(),
 		invalidate: vi.fn().mockResolvedValue(undefined),
-		clearCaches: vi.fn().mockReturnValue(true),
 		lastSettingsUpdate: null as MusicBrainzSettingsUpdate | null
 	};
 	return state;
@@ -57,12 +55,9 @@ vi.mock('$lib/queries/musicbrainz/MusicBrainzMutations.svelte', () => ({
 	activateBrainzMash: () => h.activate
 }));
 
-vi.mock('$lib/queries/QueryClient', () => ({
+vi.mock('$lib/queries/QueryClient', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/queries/QueryClient')>()),
 	invalidateMusicBrainzProviderQueries: h.invalidate
-}));
-
-vi.mock('$lib/utils/albumDetailCache', () => ({
-	clearMusicBrainzProviderCaches: h.clearCaches
 }));
 
 import SettingsMusicBrainz from './SettingsMusicBrainz.svelte';
@@ -98,7 +93,6 @@ function initialSettings(): MusicBrainzSettingsResponse {
 		source_mode: 'brainzmash',
 		api_url: 'https://api.brainzmash.cc/ws/2',
 		rate_limit: 10,
-		concurrent_searches: 1,
 		community_acknowledged: null,
 		selected_source_mode: 'brainzmash',
 		source_id: 'brainzmash-default',
@@ -156,8 +150,6 @@ beforeEach(() => {
 	resetMutation(h.activate);
 	h.invalidate.mockReset();
 	h.invalidate.mockResolvedValue(undefined);
-	h.clearCaches.mockReset();
-	h.clearCaches.mockReturnValue(true);
 });
 
 afterEach(async () => {
@@ -219,7 +211,6 @@ describe('MusicBrainz four-way source picker', () => {
 			source_mode: 'community',
 			api_url: 'https://community.example/ws/2',
 			rate_limit: 1,
-			concurrent_searches: 1,
 			community_acknowledged: true
 		});
 		await expect.element(page.getByRole('button', { name: 'Save Settings' })).toBeEnabled();
@@ -229,7 +220,6 @@ describe('MusicBrainz four-way source picker', () => {
 			source_mode: 'community',
 			api_url: 'https://community.example/ws/2',
 			rate_limit: 1,
-			concurrent_searches: 1,
 			community_acknowledged: true
 		});
 		await expect.element(page.getByText('MusicBrainz settings saved.')).toBeVisible();
@@ -348,11 +338,9 @@ describe('MusicBrainz four-way source picker', () => {
 			source_mode: 'official',
 			api_url: 'https://musicbrainz.org/ws/2',
 			rate_limit: 1,
-			concurrent_searches: 1,
 			community_acknowledged: null
 		});
 		expect(h.invalidate).toHaveBeenCalledOnce();
-		expect(h.clearCaches).toHaveBeenCalledOnce();
 	});
 	it('sweeps provider caches when source generation changes on the same endpoint', async () => {
 		const current = settings({
@@ -369,12 +357,12 @@ describe('MusicBrainz four-way source picker', () => {
 		h.save.mutateAsync.mockResolvedValueOnce(next);
 		await render(SettingsMusicBrainz);
 
+		await page.getByRole('spinbutton', { name: 'Rate Limit (requests/sec)' }).fill('2');
 		await page.getByRole('button', { name: 'Test Connection' }).click();
 		await expect.element(page.getByText('MusicBrainz connection verified.')).toBeVisible();
 		await page.getByRole('button', { name: 'Save Settings' }).click();
 		await expect.element(page.getByText('MusicBrainz settings saved.')).toBeVisible();
 
 		expect(h.invalidate).toHaveBeenCalledOnce();
-		expect(h.clearCaches).toHaveBeenCalledOnce();
 	});
 });

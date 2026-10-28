@@ -10,14 +10,13 @@ vi.mock('@tanstack/svelte-query', () => ({
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
-const mockPut = vi.fn();
 vi.mock('$lib/api/client', () => ({
 	api: {
 		global: {
-			get: (...args: unknown[]) => mockGet(...args),
-			post: (...args: unknown[]) => mockPost(...args),
-			put: (...args: unknown[]) => mockPut(...args),
-			v3: { POST: (...args: unknown[]) => mockPost(...args) }
+			v3: {
+				GET: (...args: unknown[]) => mockGet(...args),
+				POST: (...args: unknown[]) => mockPost(...args)
+			}
 		}
 	}
 }));
@@ -68,7 +67,6 @@ describe('download queue queries', () => {
 		authStoreUser.current.id = 'user-1';
 		mockGet.mockClear();
 		mockPost.mockClear();
-		mockPut.mockClear();
 		mockInvalidate.mockClear();
 		mockToast.mockClear();
 		mockAddRequested.mockClear();
@@ -108,7 +106,7 @@ describe('download queue queries', () => {
 		expect(opts.refetchInterval({ state: { data: { active_count: 0 } } })).toBe(120_000);
 		expect(opts.refetchIntervalInBackground).toBe(false);
 		expect(opts.refetchOnReconnect).toBe('always');
-		// B6: focus-'always' dropped - invalidations + the interval own freshness
+		// no focus-'always' - invalidations + the interval own freshness
 		expect(opts.refetchOnWindowFocus).toBeUndefined();
 		expect(opts.staleTime).toBe(0);
 	});
@@ -122,7 +120,7 @@ describe('download queue queries', () => {
 		};
 
 		expect(opts.refetchInterval).toBeUndefined();
-		// B6: neither always-flag remains; 30 s stale window instead
+		// neither always-flag remains; 30 s stale window instead
 		expect(opts.refetchOnWindowFocus).toBeUndefined();
 		expect(opts.refetchOnReconnect).toBeUndefined();
 		expect(opts.staleTime).toBe(30_000);

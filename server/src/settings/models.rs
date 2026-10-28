@@ -4,29 +4,28 @@
 //! (secret sections wrapped in [`Masked`]). What lives here is everything
 //! else a route needs: verify verdicts, request envelopes with CAS tokens,
 //! views that add a computed field to a section (flattened, so the JSON
-//! stays one object), and the Library Management request and response
-//! shapes.
+//! stays one object), and the Library Management request shapes. The
+//! library responses live in `library::settings_models`.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::runtime_config::Masked;
-use crate::runtime_config::secret_sections::{
-    AdvancedSettings, IdentificationPolicy, TypedLibrary,
-};
-use crate::runtime_config::sections::{
+use droppedneedle_kernel::runtime_config::Masked;
+use droppedneedle_kernel::runtime_config::secret_sections::TypedLibrary;
+use droppedneedle_kernel::runtime_config::sections::{
     DownloadPolicy, LibraryManagement, LibraryManagementProfile, LibraryScanSchedule, MbSourceMode,
-    MusicBrainzSettings, NamingScript, TaggingScript, UsenetBackend,
+    MusicBrainzSettings, UsenetBackend,
 };
-use crate::settings::management::ProfileImportWarning;
+use droppedneedle_library::settings_models::LibraryRestorableRoot;
 
 // --- views over one section ----------------------------------------------------
 
 /// GET payload: the persisted schedule plus the server's timezone label, so
-/// the UI can show what "daily at HH:MM" is relative to. The label is
-/// computed per request and never persisted.
+/// the UI can show what "daily at HH:MM" is relative to, and when the last
+/// scan finished, from the scan history. Both are computed per request and
+/// never persisted.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct LibraryScanScheduleResponse {
     /// The stored schedule.
@@ -34,6 +33,8 @@ pub struct LibraryScanScheduleResponse {
     pub schedule: LibraryScanSchedule,
     /// Server-local timezone label for the daily-scan picker.
     pub server_timezone: String,
+    /// When the last scan finished successfully, unix seconds.
+    pub last_scan_at: Option<f64>,
 }
 
 /// Acquisition source try-order, e.g. `["soulseek", "usenet"]`. Bundled
@@ -67,6 +68,10 @@ pub struct DownloadPolicyView {
     pub quality_recipe_status: String,
     /// Recipe verdict detail, when any.
     pub quality_recipe_error: Option<String>,
+    /// Why the recycle bin path is not used, when it is not: each library
+    /// folder's `.recycle` takes its place. Read-only.
+    #[serde(default)]
+    pub recycle_bin_warning: Option<String>,
 }
 
 /// GET view of the MusicBrainz connection: the settled settings plus the
@@ -78,42 +83,6 @@ pub struct MusicBrainzSettingsView {
     pub settings: MusicBrainzSettings,
     /// Transient pending proposal, when one is staged.
     pub pending_brainzmash: Option<BrainzmashPendingProposal>,
-}
-
-/// GET view of the library settings: the settings (AcoustID key masked)
-/// plus the policy revision, the reconciliation projection, and
-/// non-blocking warnings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct LibrarySettingsResponse {
-    /// Normalized settings, AcoustID key masked.
-    #[serde(flatten)]
-    #[schema(value_type = TypedLibrary)]
-    pub settings: Masked<TypedLibrary>,
-    /// Content revision (write CAS token).
-    pub policy_revision: String,
-    /// Whether reconciliation is still required.
-    pub reconciliation_required: bool,
-    /// `applied` or `awaiting_reconciliation`.
-    pub reconciliation_state: String,
-    /// Pending revision, when awaiting reconciliation.
-    pub pending_policy_revision: Option<String>,
-    /// Affected scope ids.
-    pub affected_scope_ids: Vec<String>,
-    /// Actions the save applied.
-    pub actions_applied: Vec<String>,
-    /// Non-blocking warnings.
-    pub warnings: Vec<String>,
-}
-
-/// GET/PUT view of Library Management: the settings plus their content
-/// revision (the write CAS token).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryManagementSettingsResponse {
-    /// The stored settings.
-    #[serde(flatten)]
-    pub settings: LibraryManagement,
-    /// Settings content revision.
-    pub settings_revision: String,
 }
 
 // --- verify verdicts ------------------------------------------------------------
@@ -241,39 +210,17 @@ pub struct IndexerTestResponse {
 // --- download policy and indexers ------------------------------------------------
 
 /// Safe, signed-in-user projection of the acquisition policy: the quality
-/// summary sentence plus the source-mode label only, no admin internals.
+/// summary sentence and the recipe verdict only, no admin internals.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct PolicySummaryResponse {
     /// Backend-composed contract sentence.
     pub summary: String,
-    /// Source-mode label.
-    pub source_mode: String,
     /// Whether a down-level image reproduces acquisition behavior.
     pub legacy_rollback_compatible: bool,
     /// Read-only recipe verdict: `v1`, `v2`, `non_convertible`, `invalid`.
     pub quality_recipe_status: String,
     /// Recipe verdict detail, when any.
     pub quality_recipe_error: Option<String>,
-}
-
-/// Admin preview of an unsaved policy against persisted state:
-/// persisted-state bucket counts only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct PolicyImpactResponse {
-    /// Manual search jobs that would re-resolve.
-    pub manual_search_jobs: i64,
-    /// Queued rows with no attempts yet.
-    pub queued_without_attempts: i64,
-    /// Rows awaiting review.
-    pub awaiting_review: i64,
-    /// Remote-queued zero-byte rows.
-    pub remote_queued_zero_byte: i64,
-    /// Transferring rows (immutable under the new policy).
-    pub transferring_immutable: i64,
-    /// Held reviews.
-    pub held_reviews: i64,
-    /// Whether a down-level image would preserve acquisition behavior.
-    pub legacy_representable: bool,
 }
 
 /// Indexer save acknowledgement.
@@ -345,8 +292,6 @@ pub struct MusicBrainzSettingsUpdate {
     pub api_url: Option<String>,
     /// Requests per second.
     pub rate_limit: f64,
-    /// Concurrent searches.
-    pub concurrent_searches: i64,
     /// Community-tier disclosure acknowledged.
     pub community_acknowledged: Option<bool>,
 }
@@ -357,7 +302,6 @@ impl Default for MusicBrainzSettingsUpdate {
             source_mode: MbSourceMode::Official,
             api_url: None,
             rate_limit: 1.0,
-            concurrent_searches: 6,
             community_acknowledged: Some(false),
         }
     }
@@ -414,54 +358,6 @@ pub struct LibraryPathQuery {
     pub path: String,
 }
 
-/// Which kind of scope a policy-tree node stands for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PolicyNodeKind {
-    /// A whole library root.
-    Root,
-    /// A path rule inside a root.
-    Rule,
-}
-
-/// One policy-tree node.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPolicyTreeNode {
-    /// Node id (root or rule id).
-    pub id: String,
-    /// Root or rule.
-    pub kind: PolicyNodeKind,
-    /// Display label.
-    pub label: String,
-    /// Absolute path for a root, the root-relative path for a rule.
-    pub path: String,
-    /// Policy set on this node.
-    pub policy: IdentificationPolicy,
-    /// Id the policy comes from.
-    pub inherited_from_id: Option<String>,
-    /// Whether the path exists on disk right now.
-    pub available: bool,
-    /// Indexed catalog files under the node, when the catalog is wired.
-    pub indexed_file_count: Option<i64>,
-    /// Indexed plus excluded catalog files under the node, when the
-    /// catalog is wired.
-    pub on_disk_file_count: Option<i64>,
-    /// Child rule nodes.
-    #[schema(no_recursion)]
-    pub children: Vec<LibraryPolicyTreeNode>,
-}
-
-/// Policy-tree response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPolicyTreeResponse {
-    /// Content revision the tree was built from.
-    pub policy_revision: String,
-    /// Root nodes.
-    pub roots: Vec<LibraryPolicyTreeNode>,
-    /// Non-blocking warnings.
-    pub warnings: Vec<String>,
-}
-
 /// Impact preview request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct LibraryPolicyImpactRequest {
@@ -473,34 +369,6 @@ pub struct LibraryPolicyImpactRequest {
     pub expected_policy_revision: Option<String>,
 }
 
-/// Impact preview: how the candidate settings differ from the saved ones
-/// and how much of the catalog the change touches.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPolicyImpactResponse {
-    /// Saved revision.
-    pub current_policy_revision: String,
-    /// Revision of the normalized candidate.
-    pub proposed_policy_revision: String,
-    /// The caller's expected revision no longer matches the saved one.
-    pub stale: bool,
-    /// Whether any root or rule changes its effective policy.
-    pub reconciliation_required: bool,
-    /// Root and rule ids whose effective policy changes.
-    pub affected_scope_ids: Vec<String>,
-    /// Indexed catalog files under the affected scopes, when wired.
-    pub indexed_file_count: Option<i64>,
-    /// Indexed plus excluded catalog files under the affected scopes,
-    /// when wired.
-    pub on_disk_file_count: Option<i64>,
-    /// Some affected scope becomes excluded.
-    pub content_will_become_unavailable: bool,
-    /// Some affected scope stops being automatic, so queued
-    /// identification there no longer applies.
-    pub queued_work_will_be_cancelled: bool,
-    /// Non-blocking warnings about the candidate.
-    pub warnings: Vec<String>,
-}
-
 /// Apply-preview request: which saved scopes to reconcile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct LibraryPolicyApplyRequest {
@@ -508,35 +376,6 @@ pub struct LibraryPolicyApplyRequest {
     pub scope_ids: Vec<String>,
     /// Revision the page loaded; a mismatch is a 409.
     pub expected_policy_revision: String,
-}
-
-/// Apply preview: how many catalog files a reconcile of the chosen
-/// scopes would revisit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPolicyApplyPreviewResponse {
-    /// Saved revision the preview was built from.
-    pub policy_revision: String,
-    /// The scope ids as requested.
-    pub scope_ids: Vec<String>,
-    /// Catalog files under the chosen scopes.
-    pub estimated_file_count: i64,
-    /// Some chosen scope is excluded.
-    pub content_will_become_unavailable: bool,
-    /// Whether the last save cancelled queued work. Saves never cancel
-    /// queued work on this server, so this is always false.
-    pub queued_work_was_cancelled_on_save: bool,
-}
-
-/// A root the catalog still holds tracks for but the settings no
-/// longer list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryRestorableRoot {
-    /// Root id the catalog rows carry.
-    pub root_id: String,
-    /// Root path recovered from the catalog rows.
-    pub path: String,
-    /// Catalog files under the root.
-    pub indexed_file_count: i64,
 }
 
 /// Removed roots that can be put back.
@@ -558,457 +397,13 @@ pub struct LibraryRestoreRootsRequest {
     pub paths: Option<BTreeMap<String, String>>,
 }
 
-/// Where a mapped path came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PathMappingSource {
-    /// A catalog track file.
-    LibraryFile,
-}
-
-/// Why a path did not map to a root.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum PathMappingError {
-    /// The path sits under more than one root.
-    Ambiguous,
-    /// The path sits under no root.
-    OutOfRoot,
-}
-
-/// One catalog path and the root it maps to under the saved settings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPathMappingItem {
-    /// Source kind.
-    pub source_kind: PathMappingSource,
-    /// Track id.
-    pub source_id: String,
-    /// Absolute file path the catalog holds.
-    pub absolute_path: String,
-    /// Root the path maps to, when it maps.
-    pub root_id: Option<String>,
-    /// Path relative to that root, when it maps.
-    pub relative_path: Option<String>,
-    /// Why it did not map.
-    pub error: Option<PathMappingError>,
-}
-
-/// Dry run: does every catalog path map to exactly one saved root.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryPathMappingReport {
-    /// Saved revision the report was built from.
-    pub policy_revision: String,
-    /// Paths checked.
-    pub source_count: i64,
-    /// Paths that map to one root.
-    pub mapped_count: i64,
-    /// Paths under more than one root.
-    pub ambiguous_count: i64,
-    /// Paths under no root.
-    pub out_of_root_count: i64,
-    /// Some path does not map.
-    pub blocking: bool,
-    /// Every checked path, ordered by track id.
-    pub items: Vec<LibraryPathMappingItem>,
-}
-
 // --- advanced settings ------------------------------------------------------------
 
-/// Advanced tunables in the form's units. This is not a copy of the
-/// section: the form shows human units (hours, minutes, seconds) while
-/// the section stores seconds and milliseconds, v2's
-/// `AdvancedSettingsFrontend` contract minus the dropped internal-tuning
-/// fields. It is a closed allowlist: unknown JSON fields are rejected at
-/// decode (400), so a client holding a dropped tuning field learns it is
-/// gone instead of believing it saved.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields, default)]
-pub struct AdvancedSettingsForm {
-    /// Album cache TTL for library albums, hours (1-168).
-    pub cache_ttl_album_library: i64,
-    /// Album cache TTL for non-library albums, hours (1-24).
-    pub cache_ttl_album_non_library: i64,
-    /// Artist cache TTL for library artists, hours (1-168).
-    pub cache_ttl_artist_library: i64,
-    /// Artist cache TTL for non-library artists, hours (1-168).
-    pub cache_ttl_artist_non_library: i64,
-    /// Discovery cache TTL for library artists, hours (1-168).
-    pub cache_ttl_artist_discovery_library: i64,
-    /// Discovery cache TTL for non-library artists, hours (1-168).
-    pub cache_ttl_artist_discovery_non_library: i64,
-    /// Search cache TTL, minutes (1-1440).
-    pub cache_ttl_search: i64,
-    /// Jellyfin recently-played TTL, minutes (1-60).
-    pub cache_ttl_jellyfin_recently_played: i64,
-    /// Jellyfin favorites TTL, minutes (1-60).
-    pub cache_ttl_jellyfin_favorites: i64,
-    /// Jellyfin genres TTL, minutes (1-1440).
-    pub cache_ttl_jellyfin_genres: i64,
-    /// Jellyfin library-stats TTL, minutes (1-60).
-    pub cache_ttl_jellyfin_library_stats: i64,
-    /// Navidrome albums TTL, minutes (1-60).
-    pub cache_ttl_navidrome_albums: i64,
-    /// Navidrome artists TTL, minutes (1-60).
-    pub cache_ttl_navidrome_artists: i64,
-    /// Navidrome recent TTL, minutes (1-60).
-    pub cache_ttl_navidrome_recent: i64,
-    /// Navidrome favorites TTL, minutes (1-60).
-    pub cache_ttl_navidrome_favorites: i64,
-    /// Navidrome search TTL, minutes (1-60).
-    pub cache_ttl_navidrome_search: i64,
-    /// Navidrome genres TTL, minutes (1-1440).
-    pub cache_ttl_navidrome_genres: i64,
-    /// Navidrome stats TTL, minutes (1-60).
-    pub cache_ttl_navidrome_stats: i64,
-    /// Plex albums TTL, minutes (1-60).
-    pub cache_ttl_plex_albums: i64,
-    /// Plex search TTL, minutes (1-60).
-    pub cache_ttl_plex_search: i64,
-    /// Plex genres TTL, minutes (1-1440).
-    pub cache_ttl_plex_genres: i64,
-    /// Plex stats TTL, minutes (1-60).
-    pub cache_ttl_plex_stats: i64,
-    /// Outbound HTTP timeout, seconds (5-60).
-    pub http_timeout: i64,
-    /// Outbound connect timeout, seconds (1-30).
-    pub http_connect_timeout: i64,
-    /// Outbound pool size (50-500).
-    pub http_max_connections: i64,
-    /// Artist-image batch size (1-20).
-    pub batch_artist_images: i64,
-    /// Album batch size (1-20).
-    pub batch_albums: i64,
-    /// Artist delay, seconds (0-5).
-    pub delay_artist: f64,
-    /// Album delay, seconds (0-5).
-    pub delay_albums: f64,
-    /// Discovery precache workers (1-8).
-    pub artist_discovery_precache_concurrency: i64,
-    /// Pause after each discovery precache artist, seconds (0-5).
-    pub artist_discovery_precache_delay: f64,
-    /// AudioDB precache workers (1-8).
-    pub audiodb_prewarm_concurrency: i64,
-    /// Pause before each AudioDB precache lookup, seconds (0-5).
-    pub audiodb_prewarm_delay: f64,
-    /// Memory-cache entries (1000-100000).
-    pub memory_cache_max_entries: i64,
-    /// Memory-cache cleanup cadence, seconds (60-3600).
-    pub memory_cache_cleanup_interval: i64,
-    /// Cover memory-cache entries (16-2048).
-    pub cover_memory_cache_max_entries: i64,
-    /// Cover memory-cache MB (1-1024).
-    pub cover_memory_cache_max_size_mb: i64,
-    /// Disk-cache cleanup cadence, minutes (1-60).
-    pub disk_cache_cleanup_interval: i64,
-    /// Recent-metadata cap, MB (100-5000).
-    pub recent_metadata_max_size_mb: i64,
-    /// Recent-covers cap, MB (100-10000).
-    pub recent_covers_max_size_mb: i64,
-    /// Persistent-metadata TTL, hours (1-168).
-    pub persistent_metadata_ttl_hours: i64,
-    /// Discover queue size (1-20).
-    pub discover_queue_size: i64,
-    /// Discover queue TTL, hours (1-168).
-    pub discover_queue_ttl: i64,
-    /// Discover queue auto-generate.
-    pub discover_queue_auto_generate: bool,
-    /// Discover queue polling, seconds (1-30).
-    pub discover_queue_polling_interval: i64,
-    /// Discover seed artists (1-10).
-    pub discover_queue_seed_artists: i64,
-    /// Discover wildcard slots (0-10).
-    pub discover_queue_wildcard_slots: i64,
-    /// Let the background warm cycle build queue decks.
-    pub discover_queue_warm_cycle_build: bool,
-    /// Similar artists per seed (5-50).
-    pub discover_queue_similar_artists_limit: i64,
-    /// Albums per similar artist (1-20).
-    pub discover_queue_albums_per_similar: i64,
-    /// Queue card details cache, hours (1-168).
-    pub discover_queue_enrich_ttl: i64,
-    /// MusicBrainz lookups per Last.fm album batch (1-50).
-    pub discover_queue_lastfm_mbid_max_lookups: i64,
-    /// Discover genre-affinity weight (0-1).
-    pub discover_picks_genre_affinity_weight: f64,
-    /// Discover picks count (4-30).
-    pub discover_picks_count: i64,
-    /// Home frontend TTL, minutes (1-60).
-    pub frontend_ttl_home: i64,
-    /// Discover frontend TTL, minutes (1-1440).
-    pub frontend_ttl_discover: i64,
-    /// Library frontend TTL, minutes (1-60).
-    pub frontend_ttl_library: i64,
-    /// Recently-added frontend TTL, minutes (1-60).
-    pub frontend_ttl_recently_added: i64,
-    /// Discover-queue frontend TTL, minutes (60-10080).
-    pub frontend_ttl_discover_queue: i64,
-    /// Search frontend TTL, minutes (1-60).
-    pub frontend_ttl_search: i64,
-    /// Local-files sidebar TTL, minutes (1-60).
-    pub frontend_ttl_local_files_sidebar: i64,
-    /// Jellyfin sidebar TTL, minutes (1-60).
-    pub frontend_ttl_jellyfin_sidebar: i64,
-    /// Plex sidebar TTL, minutes (1-60).
-    pub frontend_ttl_plex_sidebar: i64,
-    /// Playlist-sources frontend TTL, minutes (1-60).
-    pub frontend_ttl_playlist_sources: i64,
-    /// AudioDB provider switch.
-    pub audiodb_enabled: bool,
-    /// AudioDB name-search fallback.
-    pub audiodb_name_search_fallback: bool,
-    /// Serve remote images directly.
-    pub direct_remote_images_enabled: bool,
-    /// Prefer local cover art.
-    pub prefer_local_cover_art: bool,
-    /// AudioDB API key (masked unless unset).
-    pub audiodb_api_key: String,
-    /// AudioDB found TTL, hours (1-720).
-    pub cache_ttl_audiodb_found: i64,
-    /// AudioDB not-found TTL, hours (1-168).
-    pub cache_ttl_audiodb_not_found: i64,
-    /// AudioDB library TTL, hours (24-720).
-    pub cache_ttl_audiodb_library: i64,
-    /// Genre section TTL, hours (1-168).
-    pub genre_section_ttl: i64,
-    /// Request history retention, days (30-3650).
-    pub request_history_retention_days: i64,
-    /// Ignored-releases retention, days (30-3650).
-    pub ignored_releases_retention_days: i64,
-    /// Orphan-cover demote cadence, hours (1-168).
-    pub orphan_cover_demote_interval_hours: i64,
-    /// Store prune cadence, hours (1-168).
-    pub store_prune_interval_hours: i64,
-    /// Sync stall timeout, minutes (2-30).
-    pub sync_stall_timeout_minutes: i64,
-    /// Sync max timeout, hours (1-48).
-    pub sync_max_timeout_hours: i64,
-    /// Request concurrency (1-5).
-    pub request_concurrency: i64,
-}
-
-impl AdvancedSettingsForm {
-    /// Stored units floored back to the form's human units (v2
-    /// `from_backend`: `// 3600`, `// 60`, `// 60000`, `// 1000`; the rest
-    /// pass through). The section is masked, so the AudioDB key shows as
-    /// its mask.
-    #[must_use]
-    pub fn from_section(section: &Masked<AdvancedSettings>) -> Self {
-        Self::from_values(section)
-    }
-
-    fn from_values(section: &AdvancedSettings) -> Self {
-        Self {
-            cache_ttl_album_library: section.cache_ttl_album_library / 3600,
-            cache_ttl_album_non_library: section.cache_ttl_album_non_library / 3600,
-            cache_ttl_artist_library: section.cache_ttl_artist_library / 3600,
-            cache_ttl_artist_non_library: section.cache_ttl_artist_non_library / 3600,
-            cache_ttl_artist_discovery_library: section.cache_ttl_artist_discovery_library / 3600,
-            cache_ttl_artist_discovery_non_library: section.cache_ttl_artist_discovery_non_library
-                / 3600,
-            cache_ttl_search: section.cache_ttl_search / 60,
-            cache_ttl_jellyfin_recently_played: section.cache_ttl_jellyfin_recently_played / 60,
-            cache_ttl_jellyfin_favorites: section.cache_ttl_jellyfin_favorites / 60,
-            cache_ttl_jellyfin_genres: section.cache_ttl_jellyfin_genres / 60,
-            cache_ttl_jellyfin_library_stats: section.cache_ttl_jellyfin_library_stats / 60,
-            cache_ttl_navidrome_albums: section.cache_ttl_navidrome_albums / 60,
-            cache_ttl_navidrome_artists: section.cache_ttl_navidrome_artists / 60,
-            cache_ttl_navidrome_recent: section.cache_ttl_navidrome_recent / 60,
-            cache_ttl_navidrome_favorites: section.cache_ttl_navidrome_favorites / 60,
-            cache_ttl_navidrome_search: section.cache_ttl_navidrome_search / 60,
-            cache_ttl_navidrome_genres: section.cache_ttl_navidrome_genres / 60,
-            cache_ttl_navidrome_stats: section.cache_ttl_navidrome_stats / 60,
-            cache_ttl_plex_albums: section.cache_ttl_plex_albums / 60,
-            cache_ttl_plex_search: section.cache_ttl_plex_search / 60,
-            cache_ttl_plex_genres: section.cache_ttl_plex_genres / 60,
-            cache_ttl_plex_stats: section.cache_ttl_plex_stats / 60,
-            http_timeout: section.http_timeout,
-            http_connect_timeout: section.http_connect_timeout,
-            http_max_connections: section.http_max_connections,
-            batch_artist_images: section.batch_artist_images,
-            batch_albums: section.batch_albums,
-            delay_artist: section.delay_artist,
-            delay_albums: section.delay_albums,
-            artist_discovery_precache_concurrency: section.artist_discovery_precache_concurrency,
-            artist_discovery_precache_delay: section.artist_discovery_precache_delay,
-            audiodb_prewarm_concurrency: section.audiodb_prewarm_concurrency,
-            audiodb_prewarm_delay: section.audiodb_prewarm_delay,
-            memory_cache_max_entries: section.memory_cache_max_entries,
-            memory_cache_cleanup_interval: section.memory_cache_cleanup_interval,
-            cover_memory_cache_max_entries: section.cover_memory_cache_max_entries,
-            cover_memory_cache_max_size_mb: section.cover_memory_cache_max_size_mb,
-            disk_cache_cleanup_interval: section.disk_cache_cleanup_interval / 60,
-            recent_metadata_max_size_mb: section.recent_metadata_max_size_mb,
-            recent_covers_max_size_mb: section.recent_covers_max_size_mb,
-            persistent_metadata_ttl_hours: section.persistent_metadata_ttl_hours,
-            discover_queue_size: section.discover_queue_size,
-            discover_queue_ttl: section.discover_queue_ttl / 3600,
-            discover_queue_auto_generate: section.discover_queue_auto_generate,
-            discover_queue_polling_interval: section.discover_queue_polling_interval / 1000,
-            discover_queue_seed_artists: section.discover_queue_seed_artists,
-            discover_queue_wildcard_slots: section.discover_queue_wildcard_slots,
-            discover_queue_warm_cycle_build: section.discover_queue_warm_cycle_build,
-            discover_queue_similar_artists_limit: section.discover_queue_similar_artists_limit,
-            discover_queue_albums_per_similar: section.discover_queue_albums_per_similar,
-            discover_queue_enrich_ttl: section.discover_queue_enrich_ttl / 3600,
-            discover_queue_lastfm_mbid_max_lookups: section.discover_queue_lastfm_mbid_max_lookups,
-            discover_picks_genre_affinity_weight: section.discover_picks_genre_affinity_weight,
-            discover_picks_count: section.discover_picks_count,
-            frontend_ttl_home: section.frontend_ttl_home / 60000,
-            frontend_ttl_discover: section.frontend_ttl_discover / 60000,
-            frontend_ttl_library: section.frontend_ttl_library / 60000,
-            frontend_ttl_recently_added: section.frontend_ttl_recently_added / 60000,
-            frontend_ttl_discover_queue: section.frontend_ttl_discover_queue / 60000,
-            frontend_ttl_search: section.frontend_ttl_search / 60000,
-            frontend_ttl_local_files_sidebar: section.frontend_ttl_local_files_sidebar / 60000,
-            frontend_ttl_jellyfin_sidebar: section.frontend_ttl_jellyfin_sidebar / 60000,
-            frontend_ttl_plex_sidebar: section.frontend_ttl_plex_sidebar / 60000,
-            frontend_ttl_playlist_sources: section.frontend_ttl_playlist_sources / 60000,
-            audiodb_enabled: section.audiodb_enabled,
-            audiodb_name_search_fallback: section.audiodb_name_search_fallback,
-            direct_remote_images_enabled: section.direct_remote_images_enabled,
-            prefer_local_cover_art: section.prefer_local_cover_art,
-            audiodb_api_key: section.audiodb_api_key.expose().to_owned(),
-            cache_ttl_audiodb_found: section.cache_ttl_audiodb_found / 3600,
-            cache_ttl_audiodb_not_found: section.cache_ttl_audiodb_not_found / 3600,
-            cache_ttl_audiodb_library: section.cache_ttl_audiodb_library / 3600,
-            genre_section_ttl: section.genre_section_ttl / 3600,
-            request_history_retention_days: section.request_history_retention_days,
-            ignored_releases_retention_days: section.ignored_releases_retention_days,
-            orphan_cover_demote_interval_hours: section.orphan_cover_demote_interval_hours,
-            store_prune_interval_hours: section.store_prune_interval_hours,
-            sync_stall_timeout_minutes: section.sync_stall_timeout_minutes,
-            sync_max_timeout_hours: section.sync_max_timeout_hours,
-            request_concurrency: section.request_concurrency,
-        }
-    }
-
-    /// Form units scaled to stored units (v2 `to_backend`: `* 3600`,
-    /// `* 60`, `* 60000`, `* 1000`; the rest pass through). The AudioDB
-    /// key is a submitted value: the mask keeps the stored key.
-    #[must_use]
-    pub fn into_section(self) -> AdvancedSettings {
-        AdvancedSettings {
-            cache_ttl_album_library: self.cache_ttl_album_library * 3600,
-            cache_ttl_album_non_library: self.cache_ttl_album_non_library * 3600,
-            cache_ttl_artist_library: self.cache_ttl_artist_library * 3600,
-            cache_ttl_artist_non_library: self.cache_ttl_artist_non_library * 3600,
-            cache_ttl_artist_discovery_library: self.cache_ttl_artist_discovery_library * 3600,
-            cache_ttl_artist_discovery_non_library: self.cache_ttl_artist_discovery_non_library
-                * 3600,
-            cache_ttl_search: self.cache_ttl_search * 60,
-            cache_ttl_jellyfin_recently_played: self.cache_ttl_jellyfin_recently_played * 60,
-            cache_ttl_jellyfin_favorites: self.cache_ttl_jellyfin_favorites * 60,
-            cache_ttl_jellyfin_genres: self.cache_ttl_jellyfin_genres * 60,
-            cache_ttl_jellyfin_library_stats: self.cache_ttl_jellyfin_library_stats * 60,
-            cache_ttl_navidrome_albums: self.cache_ttl_navidrome_albums * 60,
-            cache_ttl_navidrome_artists: self.cache_ttl_navidrome_artists * 60,
-            cache_ttl_navidrome_recent: self.cache_ttl_navidrome_recent * 60,
-            cache_ttl_navidrome_favorites: self.cache_ttl_navidrome_favorites * 60,
-            cache_ttl_navidrome_search: self.cache_ttl_navidrome_search * 60,
-            cache_ttl_navidrome_genres: self.cache_ttl_navidrome_genres * 60,
-            cache_ttl_navidrome_stats: self.cache_ttl_navidrome_stats * 60,
-            cache_ttl_plex_albums: self.cache_ttl_plex_albums * 60,
-            cache_ttl_plex_search: self.cache_ttl_plex_search * 60,
-            cache_ttl_plex_genres: self.cache_ttl_plex_genres * 60,
-            cache_ttl_plex_stats: self.cache_ttl_plex_stats * 60,
-            http_timeout: self.http_timeout,
-            http_connect_timeout: self.http_connect_timeout,
-            http_max_connections: self.http_max_connections,
-            batch_artist_images: self.batch_artist_images,
-            batch_albums: self.batch_albums,
-            delay_artist: self.delay_artist,
-            delay_albums: self.delay_albums,
-            artist_discovery_precache_concurrency: self.artist_discovery_precache_concurrency,
-            artist_discovery_precache_delay: self.artist_discovery_precache_delay,
-            audiodb_prewarm_concurrency: self.audiodb_prewarm_concurrency,
-            audiodb_prewarm_delay: self.audiodb_prewarm_delay,
-            memory_cache_max_entries: self.memory_cache_max_entries,
-            memory_cache_cleanup_interval: self.memory_cache_cleanup_interval,
-            cover_memory_cache_max_entries: self.cover_memory_cache_max_entries,
-            cover_memory_cache_max_size_mb: self.cover_memory_cache_max_size_mb,
-            disk_cache_cleanup_interval: self.disk_cache_cleanup_interval * 60,
-            recent_metadata_max_size_mb: self.recent_metadata_max_size_mb,
-            recent_covers_max_size_mb: self.recent_covers_max_size_mb,
-            persistent_metadata_ttl_hours: self.persistent_metadata_ttl_hours,
-            discover_queue_size: self.discover_queue_size,
-            discover_queue_ttl: self.discover_queue_ttl * 3600,
-            discover_queue_auto_generate: self.discover_queue_auto_generate,
-            discover_queue_polling_interval: self.discover_queue_polling_interval * 1000,
-            discover_queue_seed_artists: self.discover_queue_seed_artists,
-            discover_queue_wildcard_slots: self.discover_queue_wildcard_slots,
-            discover_queue_warm_cycle_build: self.discover_queue_warm_cycle_build,
-            discover_queue_similar_artists_limit: self.discover_queue_similar_artists_limit,
-            discover_queue_albums_per_similar: self.discover_queue_albums_per_similar,
-            discover_queue_enrich_ttl: self.discover_queue_enrich_ttl * 3600,
-            discover_queue_lastfm_mbid_max_lookups: self.discover_queue_lastfm_mbid_max_lookups,
-            discover_picks_genre_affinity_weight: self.discover_picks_genre_affinity_weight,
-            discover_picks_count: self.discover_picks_count,
-            frontend_ttl_home: self.frontend_ttl_home * 60000,
-            frontend_ttl_discover: self.frontend_ttl_discover * 60000,
-            frontend_ttl_library: self.frontend_ttl_library * 60000,
-            frontend_ttl_recently_added: self.frontend_ttl_recently_added * 60000,
-            frontend_ttl_discover_queue: self.frontend_ttl_discover_queue * 60000,
-            frontend_ttl_search: self.frontend_ttl_search * 60000,
-            frontend_ttl_local_files_sidebar: self.frontend_ttl_local_files_sidebar * 60000,
-            frontend_ttl_jellyfin_sidebar: self.frontend_ttl_jellyfin_sidebar * 60000,
-            frontend_ttl_plex_sidebar: self.frontend_ttl_plex_sidebar * 60000,
-            frontend_ttl_playlist_sources: self.frontend_ttl_playlist_sources * 60000,
-            audiodb_enabled: self.audiodb_enabled,
-            audiodb_name_search_fallback: self.audiodb_name_search_fallback,
-            direct_remote_images_enabled: self.direct_remote_images_enabled,
-            prefer_local_cover_art: self.prefer_local_cover_art,
-            audiodb_api_key: self.audiodb_api_key.into(),
-            cache_ttl_audiodb_found: self.cache_ttl_audiodb_found * 3600,
-            cache_ttl_audiodb_not_found: self.cache_ttl_audiodb_not_found * 3600,
-            cache_ttl_audiodb_library: self.cache_ttl_audiodb_library * 3600,
-            genre_section_ttl: self.genre_section_ttl * 3600,
-            request_history_retention_days: self.request_history_retention_days,
-            ignored_releases_retention_days: self.ignored_releases_retention_days,
-            orphan_cover_demote_interval_hours: self.orphan_cover_demote_interval_hours,
-            store_prune_interval_hours: self.store_prune_interval_hours,
-            sync_stall_timeout_minutes: self.sync_stall_timeout_minutes,
-            sync_max_timeout_hours: self.sync_max_timeout_hours,
-            request_concurrency: self.request_concurrency,
-        }
-    }
-}
-
-/// Defaults are the stored defaults in form units. The default section
-/// holds no AudioDB key, so there is nothing to mask.
-impl Default for AdvancedSettingsForm {
-    fn default() -> Self {
-        Self::from_values(&AdvancedSettings::default())
-    }
-}
-
-/// Frontend cache TTLs in backend units (milliseconds), verbatim from
-/// the stored advanced section. The SPA reads this one endpoint instead
-/// of the whole advanced surface.
+/// The advanced settings the web app reads at start. The browser's cache
+/// lifetimes and the queue's polling interval are fixed in the web app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(default)]
 pub struct FrontendCacheTTLs {
-    /// Home TTL, ms.
-    pub home: i64,
-    /// Discover TTL, ms.
-    pub discover: i64,
-    /// Library TTL, ms.
-    pub library: i64,
-    /// Recently-added TTL, ms.
-    pub recently_added: i64,
-    /// Discover-queue TTL, ms.
-    pub discover_queue: i64,
-    /// Search TTL, ms.
-    pub search: i64,
-    /// Local-files sidebar TTL, ms.
-    pub local_files_sidebar: i64,
-    /// Jellyfin sidebar TTL, ms.
-    pub jellyfin_sidebar: i64,
-    /// Plex sidebar TTL, ms.
-    pub plex_sidebar: i64,
-    /// Playlist-sources TTL, ms.
-    pub playlist_sources: i64,
-    /// Discover-queue polling interval, ms.
-    pub discover_queue_polling_interval: i64,
     /// Discover-queue auto-generate switch.
     pub discover_queue_auto_generate: bool,
 }
@@ -1016,17 +411,6 @@ pub struct FrontendCacheTTLs {
 impl Default for FrontendCacheTTLs {
     fn default() -> Self {
         Self {
-            home: 300000,
-            discover: 1800000,
-            library: 300000,
-            recently_added: 300000,
-            discover_queue: 86400000,
-            search: 300000,
-            local_files_sidebar: 120000,
-            jellyfin_sidebar: 120000,
-            plex_sidebar: 120000,
-            playlist_sources: 900000,
-            discover_queue_polling_interval: 4000,
             discover_queue_auto_generate: true,
         }
     }
@@ -1089,40 +473,11 @@ pub struct LibraryManagementProfileDeleteRequest {
     pub expected_settings_revision: String,
 }
 
-/// Profile-mutation acknowledgement: the saved profile plus the fresh
-/// revision (a second read, so concurrent saves surface as staleness on
-/// the next write instead of silently winning).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryManagementProfileMutationResponse {
-    /// Saved profile.
-    pub profile: LibraryManagementProfile,
-    /// Fresh settings revision.
-    pub settings_revision: String,
-}
-
 /// Export request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct LibraryManagementProfileExportRequest {
     /// Compare-and-swap token from the last GET.
     pub expected_settings_revision: String,
-}
-
-/// Exported bundle: a portable document plus a share code, both pinned
-/// by the bundle hash.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryManagementProfileExportResponse {
-    /// Suggested download filename.
-    pub filename: String,
-    /// Bundle MIME type.
-    pub mime_type: String,
-    /// Portable document (JSON).
-    pub document: String,
-    /// Share code (`DNLP1:...`).
-    pub share_code: String,
-    /// Bundle hash (import pins to the reviewed hash).
-    pub bundle_hash: String,
-    /// Settings revision at export time.
-    pub settings_revision: String,
 }
 
 /// Import-preview request (accepts a document or a share code).
@@ -1132,25 +487,6 @@ pub struct LibraryManagementProfileImportPreviewRequest {
     pub content: String,
     /// Compare-and-swap token from the last GET.
     pub expected_settings_revision: String,
-}
-
-/// Import-preview response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryManagementProfileImportPreviewResponse {
-    /// Materialized profile (names resolved against stored settings).
-    pub profile: LibraryManagementProfile,
-    /// Reviewed bundle hash (the import must pin to this).
-    pub bundle_hash: String,
-    /// Settings revision at preview time.
-    pub settings_revision: String,
-    /// Naming scripts the bundle carries.
-    pub naming_scripts: Vec<NamingScript>,
-    /// Tagging scripts the bundle carries.
-    pub tagging_scripts: Vec<TaggingScript>,
-    /// Capability aspects the profile uses.
-    pub aspects: Vec<String>,
-    /// Import warnings.
-    pub warnings: Vec<ProfileImportWarning>,
 }
 
 /// Import-confirm request.
@@ -1164,19 +500,6 @@ pub struct LibraryManagementProfileImportRequest {
     pub name: String,
     /// Compare-and-swap token from the last GET.
     pub expected_settings_revision: String,
-}
-
-/// Import-confirm response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct LibraryManagementProfileImportResponse {
-    /// Imported profile.
-    pub profile: LibraryManagementProfile,
-    /// New settings revision.
-    pub settings_revision: String,
-    /// Naming scripts the import added.
-    pub naming_scripts: Vec<NamingScript>,
-    /// Tagging scripts the import added.
-    pub tagging_scripts: Vec<TaggingScript>,
 }
 
 // --- section prefs ----------------------------------------------------------------

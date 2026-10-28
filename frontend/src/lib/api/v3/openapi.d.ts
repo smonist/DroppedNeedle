@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Acquisition health smoke: slskd or Usenet readiness plus the
+         * Acquisition health smoke: whether a download source is on, plus the
          *     independent per-source release gates.
          */
         get: operations["get_health"];
@@ -86,8 +86,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Test submitted Lidarr credentials against `system/status` (v2 Test
-         *     route): the submitted url/key are probed so Test works before the first
+         * Test submitted Lidarr credentials against `system/status`: the
+         *     submitted url/key are probed so Test works before the first
          *     save, a masked key resolves to the stored one, and reachable/bad-key
          *     verdicts travel in the body, never as a leaked 5xx, never echoing the
          *     URL or host.
@@ -106,7 +106,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live SABnzbd status against the saved config (v2: admin-only). */
+        /** Live SABnzbd status against the saved config (admin only). */
         get: operations["get_sabnzbd_status"];
         put?: never;
         post?: never;
@@ -123,7 +123,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live slskd client status (v2: any authenticated user may read it). */
+        /** Live slskd client status (any signed-in user may read it). */
         get: operations["get_slskd_status"];
         put?: never;
         post?: never;
@@ -141,10 +141,9 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Spotify OAuth callback (v2 `spotify_auth_callback`). State-identified,
-         *     so it sits outside the session gate like v2's ungated route: every
-         *     outcome redirects to the profile page with the v2 query contract
-         *     (`spotify=connected`, or `spotify=error` with an optional `reason`).
+         * Spotify OAuth callback. State-identified, so it sits outside the
+         *     session gate: every outcome redirects to the profile page with
+         *     `spotify=connected` or `spotify=error` with an optional `reason`.
          */
         get: operations["spotify_callback"];
         put?: never;
@@ -164,7 +163,7 @@ export interface paths {
         };
         /**
          * Authorize URL for the caller's Spotify link flow. Requires the admin
-         *     app to be enabled and complete (v2 400 text kept).
+         *     app to be enabled and complete.
          */
         get: operations["get_spotify_auth_url"];
         put?: never;
@@ -182,7 +181,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Latest known state of one `spotify:import` job. */
+        /** Latest known state of one Spotify playlist import. */
         get: operations["get_spotify_job"];
         put?: never;
         post?: never;
@@ -200,8 +199,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The caller's owned Spotify playlists. Unlinked reads as the v2 400;
-         *     upstream failures as the v2 502.
+         * The caller's owned Spotify playlists. Unlinked reads as a 400,
+         *     upstream failures as a 502.
          */
         get: operations["list_spotify_playlists"];
         put?: never;
@@ -223,8 +222,8 @@ export interface paths {
         put?: never;
         /**
          * Start a Spotify playlist import: ensure the internal record, queue the
-         *     `spotify:import` durable job unless it already runs, and answer the id
-         *     immediately (v2 answer-fast shape).
+         *     import job unless one for this playlist is already queued or running,
+         *     and answer the id at once.
          */
         post: operations["import_spotify_playlist"];
         delete?: never;
@@ -240,7 +239,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The computed OAuth redirect URI (v2 admin display endpoint). */
+        /** The computed OAuth redirect URI, for the admin to register. */
         get: operations["get_spotify_redirect_uri"];
         put?: never;
         post?: never;
@@ -261,7 +260,7 @@ export interface paths {
         get: operations["get_spotify_settings"];
         /**
          * Save the Spotify app settings. A masked secret preserves the stored
-         *     one; a non-absolute redirect origin is a 400 (v2 text kept).
+         *     one; a non-absolute redirect origin is a 400.
          */
         put: operations["put_spotify_settings"];
         post?: never;
@@ -349,7 +348,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Clear the provider cache: everything, or one source's keys. */
+        /** Clear provider data, the cached images, or both. */
         post: operations["clear_cache"];
         delete?: never;
         options?: never;
@@ -364,7 +363,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Provider-cache counters. */
+        /** Provider data and image cache counters. */
         get: operations["cache_stats"];
         put?: never;
         post?: never;
@@ -461,7 +460,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Provider limiter posture plus slot lanes. */
+        /** Provider limiter posture plus the outbound calls counted since start. */
         get: operations["provider_stats"];
         put?: never;
         post?: never;
@@ -478,7 +477,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Queue demand plus the job registry. */
+        /** Queue demand, the job registry and the latest checkpoint pass. */
         get: operations["queue_stats"];
         put?: never;
         post?: never;
@@ -532,7 +531,7 @@ export interface paths {
             cookie?: never;
         };
         /** One user's quota standing. */
-        get: operations["get_quota"];
+        get: operations["get_user_quota"];
         /** Set (or, with all-`None`, clear) one user's quota overrides. */
         put: operations["set_quota"];
         post?: never;
@@ -627,24 +626,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/albums/{album_id}/edition": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Pin an edition by release group (v2's route). Curators only. */
-        put: operations["set_album_edition"];
-        post?: never;
-        /** Clear the edition pin (v2's route). Curators only. */
-        delete: operations["clear_album_edition"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v3/albums/{album_id}/edition/acquire": {
         parameters: {
             query?: never;
@@ -652,12 +633,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * The album's current or last edition fetch: its download, and where each
+         *     track it asked for is. `latest` is absent when there is none. Retry is a
+         *     new acquire, which asks only for what is still missing; Stop cancels
+         *     the download. `GET /api/v3/albums/{album_id}/edition/acquire`. Curator
+         *     only.
+         */
+        get: operations["edition_fetch_handler"];
         put?: never;
         /**
          * Fill the selected edition's missing tracks and upgrade its below-cutoff
-         *     owned tracks, in one download. `POST /api/v3/albums/{album_id}/edition/acquire`.
-         *     Curator only. Never retags existing files.
+         *     owned tracks, in one download; with `replace_versions`, also fetch this
+         *     edition's version of each track the copy holds in another version.
+         *     `POST /api/v3/albums/{album_id}/edition/acquire`. Curator only. Never
+         *     retags existing files.
          */
         post: operations["acquire_edition_handler"];
         delete?: never;
@@ -1081,7 +1071,10 @@ export interface paths {
         put?: never;
         /**
          * Logout. Public so a stale client can always clear its cookie: revokes the
-         *     presented token when it resolves, always clears the cookie, always 204.
+         *     presented sessions that resolve, always clears the cookie under both its
+         *     names, always 204. A Bearer token is the only one presented when sent;
+         *     otherwise the session under each cookie name the request carries ends,
+         *     so a sign-out at the https address leaves no plain cookie signed in.
          */
         post: operations["logout_handler"];
         delete?: never;
@@ -1451,6 +1444,26 @@ export interface paths {
         };
         /** Artist image. */
         get: operations["artist_cover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/covers/artist/{artist_id}/credit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Artist image credit: the author and licence of a Commons picture.
+         * @description Read from the stored image, so it is there exactly while the picture is.
+         */
+        get: operations["artist_cover_credit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2034,188 +2047,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/downloads/held": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Held files the viewer may act on, newest first; one album's with
-         *     `release_group_mbid`. `GET /api/v3/downloads/held`.
-         */
-        get: operations["list_held_handler"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/management/{source_task_id}/discard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete every file of a download that waits on the library. Admin only.
-         *     `POST /api/v3/downloads/held/management/{source_task_id}/discard`.
-         */
-        post: operations["discard_local_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/management/{source_task_id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import every file of a download that waits on the library (a taken
-         *     destination, an old copy that could not be recycled). Admin only.
-         *     `POST /api/v3/downloads/held/management/{source_task_id}/retry`.
-         */
-        post: operations["retry_local_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/reverify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Re-check AcoustID holds in bulk (at most 25 checks a call; other holds
-         *     answer `skipped`). `POST /api/v3/downloads/held/reverify`.
-         */
-        post: operations["reverify_bulk_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/verdict/{source_task_id}/discard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete every file a download's checks held and clear its wrong-product
-         *     verdict. `POST /api/v3/downloads/held/verdict/{source_task_id}/discard`.
-         */
-        post: operations["discard_verdict_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/{held_id}/audio": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Play a held file for the review, with byte ranges so the player can
-         *     seek. `GET /api/v3/downloads/held/{held_id}/audio`.
-         */
-        get: operations["held_audio_handler"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/{held_id}/discard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete a held file; the album's automatic retry resumes.
-         *     `POST /api/v3/downloads/held/{held_id}/discard`.
-         */
-        post: operations["discard_held_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/{held_id}/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import a held file as it is, into the album's chosen edition. For an
-         *     upgrade, the library's copy is replaced only by a better file and goes
-         *     to the recycle bin. `POST /api/v3/downloads/held/{held_id}/import`.
-         */
-        post: operations["import_held_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/downloads/held/{held_id}/reverify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Fingerprint an AcoustID-held file again and import it when AcoustID
-         *     now agrees. `POST /api/v3/downloads/held/{held_id}/reverify`.
-         */
-        post: operations["reverify_held_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v3/downloads/quarantine": {
         parameters: {
             query?: never;
@@ -2589,16 +2420,9 @@ export interface paths {
         };
         /**
          * Live events for the signed-in user.
-         * @description Event names: `activity.changed` and `snapshot` (now playing) go to
-         *     everyone; `wanted_new_candidates`, `wanted_auto_dispatched`,
-         *     `wanted_fulfilled`, `auto_download_enqueued`, `request_imported`,
-         *     `playlist_imported`, `drop_import_updated`,
-         *     `personal_mix_refreshed`, `concerts_new` and `search_job_updated` go
-         *     only to the user they concern. Each `data:` line is one JSON payload (see the `ActivityChanged`,
-         *     `NowPlayingSnapshot`, `WantedNotice`, `AutoDownloadEnqueued`,
-         *     `RequestImported`, `PlaylistImported`, `DropImportUpdated`,
-         *     `PersonalMixRefreshed`, `ConcertsNew` and
-         *     `SearchJobUpdated` schemas).
+         * @description Each SSE frame is one `StreamEvent`: its `event:` line is the member's
+         *     `event` and its `data:` line the member's `data` as JSON. Some events
+         *     go to everyone, the rest only to the user they concern.
          */
         get: operations["events_stream"];
         put?: never;
@@ -2820,6 +2644,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Entries waiting for your decision, newest first, with when each
+         *     expires. `GET /api/v3/held`.
+         */
+        get: operations["list_handler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/files/{file_id}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Play a held file, with byte ranges so the player can seek.
+         *     `GET /api/v3/held/files/{file_id}/audio`.
+         */
+        get: operations["audio_handler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-check AcoustID holds across entries (at most 25 checks a call).
+         *     `POST /api/v3/held/recheck`.
+         */
+        post: operations["recheck_all_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One entry with its held files. `GET /api/v3/held/{entry_id}`. */
+        get: operations["get_handler"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/{entry_id}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete an entry's held files (all, or those named). For a download, the
+         *     album's automatic retry resumes. `POST /api/v3/held/{entry_id}/discard`.
+         */
+        post: operations["discard_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/{entry_id}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import an entry's held files (all, or those named), skipping the check
+         *     that held each. A file no better than your copy stays held until "Use
+         *     this file"; a lower-quality version replaces yours only by "Use this
+         *     version", and yours goes to the recycle bin.
+         *     `POST /api/v3/held/{entry_id}/import`.
+         */
+        post: operations["import_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/{entry_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import an entry's held files as the album a curator picked: the app
+         *     pairs them with its tracks. `POST /api/v3/held/{entry_id}/match`.
+         */
+        post: operations["match_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/held/{entry_id}/recheck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask AcoustID again about an entry's files it heard as another recording
+         *     or could not confirm; files it now confirms are imported.
+         *     `POST /api/v3/held/{entry_id}/recheck`.
+         */
+        post: operations["recheck_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/home": {
         parameters: {
             query?: never;
@@ -2925,46 +2910,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/import/items/{item_id}/discard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Throw a review item's files away.
-         *     `POST /api/v3/import/items/{item_id}/discard`.
-         */
-        post: operations["discard_item_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/import/items/{item_id}/match": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import a review item as the album you picked.
-         *     `POST /api/v3/import/items/{item_id}/match`.
-         */
-        post: operations["match_item_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v3/import/jobs": {
         parameters: {
             query?: never;
@@ -3013,8 +2958,8 @@ export interface paths {
         put?: never;
         /**
          * Upload files to import: audio files or `.zip` archives, at most 25
-         *     per drop. Returns the new job; it keeps working in the background.
-         *     `POST /api/v3/import/uploads`.
+         *     per drop and 8 GB in all. Returns the new job; it keeps working in the
+         *     background. `POST /api/v3/import/uploads`.
          */
         post: operations["upload_handler"];
         delete?: never;
@@ -3052,6 +2997,26 @@ export interface paths {
         };
         /** One page of catalog albums. */
         get: operations["list_albums"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/match/{mbid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One page of an album's streamable tracks by release-group mbid or
+         *     local album id.
+         */
+        get: operations["match_album"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3120,25 +3085,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/library/albums/{album_id}/edition-pin": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the pin display lane for one album. */
-        get: operations["get_pin_handler"];
-        /** Pin one edition for an album. */
-        put: operations["set_pin_handler"];
-        post?: never;
-        /** Clear the pin for an album. */
-        delete: operations["clear_pin_handler"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v3/library/albums/{album_id}/edition/confirm": {
         parameters: {
             query?: never;
@@ -3156,6 +3102,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/albums/{album_id}/edition/custom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Keep the album's files as they are, as a custom edition of the
+         *     release's group: the tags, positions and file list are frozen as they
+         *     are now, and the release group becomes the album's chosen match.
+         *     Undo with `.../edition/undo`.
+         */
+        post: operations["seal_custom_edition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/albums/{album_id}/edition/extras/remove": {
         parameters: {
             query?: never;
@@ -3166,10 +3134,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Move files the album's edition has no place for (second copies and
-         *     files not on it) to the recycle bin. Only files the current plan marks
-         *     that way are accepted; nothing runs on its own. Undo with
-         *     `.../edition/extras/restore`.
+         * Move files the album's edition has no place for (second copies, other
+         *     versions and files not on it) to the recycle bin: every fate but
+         *     `keep`. Only files the current plan marks that way are accepted;
+         *     nothing runs on its own. The album's removals list it for Put back.
          */
         post: operations["remove_extras"];
         delete?: never;
@@ -3178,7 +3146,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/library/albums/{album_id}/edition/extras/restore": {
+    "/api/v3/library/albums/{album_id}/edition/files/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Match one file to a track of the album's edition by hand.
+         * @description A file the edition did not place goes on a track no file holds, and
+         *     then counts as that track. On an edition the app picked, the edition
+         *     becomes the person's, as "Looks right" makes it. No file is read or
+         *     written.
+         */
+        put: operations["match_edition_file"];
+        post?: never;
+        /**
+         * Undo a file's match by hand.
+         * @description The file's identity goes back to what it was before the match. Plays
+         *     and favorites that moved to it stay.
+         */
+        delete: operations["unmatch_edition_file"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/edition/leave-unmanaged": {
         parameters: {
             query?: never;
             header?: never;
@@ -3187,8 +3183,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Put back the files one removal of extras moved to the recycle bin. */
-        post: operations["restore_extras"];
+        /**
+         * Leave the album unmanaged: its exact edition goes (the release group
+         *     stays as the person's choice) and Library Management leaves its files
+         *     alone until "Manage it again". Undo with `.../edition/undo`.
+         */
+        post: operations["leave_unmanaged"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3204,12 +3204,97 @@ export interface paths {
         };
         /**
          * What taking an edition would do: which files keep their place, which
-         *     are second copies or extras, and which edition tracks are missing.
-         *     Asks MusicBrainz for the release; changes nothing.
+         *     are second copies, other versions or extras, and which edition tracks
+         *     are missing. Asks MusicBrainz for the release; changes nothing. The
+         *     album's own edition is open to every signed-in user; planning another
+         *     release is for curators, who can choose it.
          */
         get: operations["plan_edition"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/edition/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview the album's edition's tags in its files: the files placed on a
+         *     track of the edition, with the tags the album folder's profile writes
+         *     (its fields, scripts, overrides, artwork and lyrics). Nothing is
+         *     renamed or moved. Planning runs in the background; read the job until
+         *     it is ready, then apply it.
+         */
+        post: operations["create_edition_tags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/edition/tags/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One of the album's tag writes, or the undo of one, that the caller
+         *     made; an admin reads any.
+         */
+        get: operations["get_edition_tags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/edition/tags/{job_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write a planned tag write, or put an earlier one back with its undo.
+         *     The files are written in the background.
+         */
+        post: operations["apply_edition_tags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/edition/tags/{job_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan putting a written tag write back, as a job read and applied like
+         *     the write itself.
+         */
+        post: operations["undo_edition_tags"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3227,6 +3312,47 @@ export interface paths {
         put?: never;
         /** Take back the album's last edition change. */
         post: operations["undo_edition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the app did by itself to the album's tracks and to the albums it
+         *     is made of.
+         */
+        get: operations["get_album_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/management/hand-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Have DroppedNeedle manage an album again after it stepped back from it
+         *     because the files were changed outside. The files are then retagged and
+         *     renamed from the album's edition, which overwrites those changes.
+         */
+        post: operations["hand_back_management"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3267,7 +3393,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/library/albums/{album_id}/reidentify": {
+    "/api/v3/library/albums/{album_id}/removals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the album's removals whose files are still in the recycle bin:
+         *     whole albums, single tracks and extras, newest first.
+         */
+        get: operations["list_album_removals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/albums/{album_id}/removals/{removal_id}/put-back": {
         parameters: {
             query?: never;
             header?: never;
@@ -3277,11 +3423,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start an explicit re-identification of one album. The job scores every
-         *     candidate and waits for an administrator's choice; nothing seals on
-         *     its own.
+         * Put back the files one removal moved to the recycle bin, and list
+         *     their tracks again with their plays and favourites. Another file at a
+         *     file's old place refuses the whole put-back; a copy gone from the bin
+         *     is named and the rest come back.
          */
-        post: operations["reidentify_album"];
+        post: operations["put_back_removal"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3509,6 +3656,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/artist-repairs/{repair_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo the repair that gave an album left on "Unknown Artist" the artist
+         *     its tracks are credited to: the album's earlier artist and credits come
+         *     back, and the cleanup leaves it on them.
+         */
+        post: operations["undo_artist_repair"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/artists": {
         parameters: {
             query?: never;
@@ -3621,7 +3789,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Artist reconciliation progress and open group counts. */
+        /** Automatic artist merges so far and open group counts. */
         get: operations["artist_reconciliation"];
         put?: never;
         post?: never;
@@ -3674,6 +3842,31 @@ export interface paths {
         };
         /** One page of albums where the artist appears without leading. */
         get: operations["list_artist_appearances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/artists/{id}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A library artist's picture, a mosaic of the art of their own albums.
+         * @description For artists the library holds with no MusicBrainz link, which have no
+         *     picture of their own. Never reaches out to the network. Albums under
+         *     the artist's name with the newest release come first, studio albums
+         *     before compilations. Four or more covers give a 2x2 of the first four,
+         *     two or three the first two crosswise, and one that cover alone. A
+         *     mosaic is a JPEG; full size draws it at 1200 pixels.
+         */
+        get: operations["library_artist_artwork"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3905,6 +4098,44 @@ export interface paths {
         put?: never;
         /** Rebuild a stale contribution from the album's current files. */
         post: operations["rebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/decades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Decade shelves, oldest first. */
+        get: operations["list_decades"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/folds/{fold_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo the fold of a leftover album: the album, its files and its earlier
+         *     match come back. Plays, favorites and playlist entries moved to the
+         *     album that kept the files stay there.
+         */
+        post: operations["undo_album_fold"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4158,6 +4389,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/manage/plugin-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The files one plugin added to the library, newest first. */
+        get: operations["list_plugin_files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/manage/preview": {
         parameters: {
             query?: never;
@@ -4271,6 +4519,27 @@ export interface paths {
         put?: never;
         /** Preview settling one file whose destination is taken. */
         post: operations["create_management_duplicate_preview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/management/hand-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Have DroppedNeedle manage every album again that it stepped back from.
+         *     The albums are handed back one after another in the background; until
+         *     its turn comes an album stays left unmanaged.
+         */
+        post: operations["hand_back_all"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4629,6 +4898,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/management/takeovers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Albums left unmanaged because their files were changed outside
+         *     DroppedNeedle and that nobody has handed back yet, newest first.
+         */
+        get: operations["list_management_takeovers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/management/tracks/{track_id}/tag-editor": {
         parameters: {
             query?: never;
@@ -4694,26 +4983,6 @@ export interface paths {
         get: operations["get_operation"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/library/operations/{job_id}/candidate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Settle a re-identification: seal a candidate's exact release, seal a
-         *     custom edition, or leave the album unmanaged.
-         */
-        post: operations["select_reidentification_candidate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4791,6 +5060,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/recycle-bin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List what the recycle bin holds, grouped by the removal or change
+         *     that put it there, newest first.
+         */
+        get: operations["list_recycle_bin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/recycle-bin/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Empty the recycle bin of what it held at `before`, under the rules
+         *     its expiry keeps: a copy that changed in the bin, one a put-back is
+         *     using, and one in a bin that is or holds a library or download folder
+         *     stay. Runs in the background.
+         */
+        post: operations["empty_recycle_bin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/recycle-bin/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the recycle bin is being emptied, and what the last run did. */
+        get: operations["recycle_bin_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/recycle-bin/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count what emptying the recycle bin now would delete, for its
+         *     confirm.
+         */
+        get: operations["recycle_bin_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/resolve-tracks": {
         parameters: {
             query?: never;
@@ -4802,6 +5150,65 @@ export interface paths {
         put?: never;
         /** Resolve track positions to playable local files. */
         post: operations["resolve_tracks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/retag-pairs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List album rows that look like one retagged album and wait for a
+         *     person to join or dismiss them.
+         */
+        get: operations["list_retag_pairs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/retag-pairs/{old_album_id}/{new_album_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a retag pair as two different albums. A scan never joins it then. */
+        post: operations["dismiss_retag_pair"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/library/retag-pairs/{old_album_id}/{new_album_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join a retag pair: the old album is merged into the new one. A custom
+         *     edition on the old album is dropped, and so is the edition not kept
+         *     when the two hold different chosen editions; each leaves a review on
+         *     the album that stays. No file is written.
+         */
+        post: operations["join_retag_pair"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5254,6 +5661,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/library/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reason-tagged track suggestions. */
+        get: operations["list_suggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/library/tracks": {
         parameters: {
             query?: never;
@@ -5372,111 +5796,6 @@ export interface paths {
          *     `state=unmatched`, albums nothing fits). Newest first.
          */
         get: operations["list_unconfirmed"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/albums": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Album-card browse for the local library. */
-        get: operations["browse_albums"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/albums/match/{mbid}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * One page of an album's streamable tracks by release-group mbid or
-         *     local album id.
-         */
-        get: operations["match_album"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/decades": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Decade shelves, oldest first. */
-        get: operations["list_decades"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/recent": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Newest album cards first, capped. */
-        get: operations["recent_albums"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Album plus track search. */
-        get: operations["search_library"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/local-library/suggestions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Reason-tagged track suggestions. */
-        get: operations["list_suggestions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5658,7 +5977,7 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Unlink the caller's Spotify account (v2 `DELETE /me/connections/spotify`).
+         * Unlink the caller's Spotify account.
          *     Idempotent: no link reads as done too.
          */
         delete: operations["disconnect_spotify"];
@@ -6143,7 +6462,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/plugins/{name}/ui/panel.js": {
+    "/api/v3/plugins/{name}/ui/panel": {
         parameters: {
             query?: never;
             header?: never;
@@ -6151,11 +6470,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Serve one enabled plugin's panel bundle. Admin-only: panel code runs in
-         *     the admin UI. The entry path resolves inside the plugin's own directory;
-         *     anything escaping it reads as missing.
+         * Serve one enabled plugin's settings panel as a page for the admin UI to
+         *     frame: a fixed wrapper with the plugin's panel script inlined. Admin-only.
+         *     The entry path resolves inside the plugin's own directory; anything
+         *     escaping it reads as missing.
          */
-        get: operations["plugin_panel_js"];
+        get: operations["plugin_panel_page"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6175,10 +6495,55 @@ export interface paths {
         put?: never;
         /**
          * Update one installed plugin from the GitHub repository it came from.
-         *     A plugin installed from releases moves to the latest release; a pinned
-         *     one moves only when a new ref is given. Settings and data stay.
+         *     A plugin installed from releases moves to the latest release, a branch
+         *     to its tip; a pinned one moves only when a new ref is given. An update
+         *     never switches the kind of install by itself, and never installs from a
+         *     repository GitHub knows by another id. Settings and data stay.
          */
         post: operations["update_plugin_from_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/ratings/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The caller's ratings of the given albums, tracks and artists.
+         * @description A read that takes its ids in a body, at most 1000 of each kind. Only
+         *     rated ids are listed.
+         */
+        post: operations["rating_lookup_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/ratings/{kind}/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Rate an album, track or artist, or clear the rating.
+         * @description Acts on the caller's own rating, the one Subsonic apps show and set.
+         *     1 to 5 stars, 0 clears. The old id of a merged item rates the item it
+         *     went into, and the answer names that id.
+         */
+        put: operations["set_rating_handler"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6558,7 +6923,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The remote album behind a MusicBrainz id. */
+        /**
+         * The caller's copy of an album on one source.
+         * @description Found by MusicBrainz id, or on Plex and Navidrome by title and artist
+         *     when no album there carries the id.
+         */
         get: operations["remotes_match_album"];
         put?: never;
         post?: never;
@@ -7338,26 +7707,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/requests/sync": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reconcile live rows with their linked tasks.
-         *     `POST /api/v3/requests/sync`. One bad row never stops the sweep.
-         */
-        post: operations["sync_handler"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v3/requests/tracks": {
         parameters: {
             query?: never;
@@ -7372,6 +7721,29 @@ export interface paths {
          *     approval gate as albums. Answers 202.
          */
         post: operations["request_track_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/requests/tracks/{musicbrainz_id}/from-album": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a single from its album.
+         *     `POST /api/v3/requests/tracks/{musicbrainz_id}/from-album`. For a failed
+         *     track request whose download found only the album's version of the
+         *     song: it is fetched again, and the album's track imports as the song
+         *     when it is the right track. A requester or an admin.
+         */
+        post: operations["from_album_handler"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7571,11 +7943,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the advanced tunables in form units. */
+        /** Read the advanced tunables (AudioDB key masked unless unset). */
         get: operations["get_advanced"];
         /**
-         * Save the advanced tunables. Unknown fields are a 400: the shape is a
-         *     closed allowlist.
+         * Save the advanced tunables (a masked AudioDB key keeps the stored one,
+         *     a blank one stores the free default).
          */
         put: operations["put_advanced"];
         post?: never;
@@ -7592,7 +7964,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the frontend cache TTLs in stored units (milliseconds). */
+        /** Read the advanced settings the web app reads at start. */
         get: operations["get_cache_ttls"];
         put?: never;
         post?: never;
@@ -7690,26 +8062,6 @@ export interface paths {
         get: operations["get_policy_summary"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/settings/download-clients/policy/impact": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Impact preview of an unsaved policy body against persisted rows.
-         *     Needs the database; unwired states answer 503.
-         */
-        post: operations["post_policy_impact"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7874,24 +8226,6 @@ export interface paths {
         get: operations["get_get_it"];
         /** Save the store-region settings. */
         put: operations["put_get_it"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v3/settings/home": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read the home page settings. */
-        get: operations["get_home_settings"];
-        /** Save the home page settings. The save clears the cached home rows. */
-        put: operations["put_home"];
         post?: never;
         delete?: never;
         options?: never;
@@ -8592,6 +8926,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/settings/lyrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the online lyrics lookup switch. */
+        get: operations["get_lyrics_settings"];
+        /** Save the online lyrics lookup switch. */
+        put: operations["put_lyrics_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/settings/musicbrainz": {
         parameters: {
             query?: never;
@@ -8906,17 +9258,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v3/settings/scrobble": {
+    "/api/v3/settings/public-address": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Read the scrobble targets. */
-        get: operations["get_scrobble"];
-        /** Save the scrobble targets. */
-        put: operations["put_scrobble"];
+        /** Read the addresses stated as this server's own. */
+        get: operations["get_public_address"];
+        /**
+         * Replace the addresses stated as this server's own. The session origin
+         *     check accepts a change from a page at one of them.
+         */
+        put: operations["put_public_address"];
         post?: never;
         delete?: never;
         options?: never;
@@ -9287,7 +9642,7 @@ export interface paths {
             cookie?: never;
         };
         /** Today's YouTube search budget. A zero budget while search is off. */
-        get: operations["get_quota"];
+        get: operations["get_youtube_quota"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9347,20 +9702,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The generated OpenAPI document feeding the TypeScript pipeline. */
+        get: operations["openapi_json"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * @description Acquisition health smoke (v2 `StatusReport` shape, extended). `ready`
-         *     is slskd or Usenet readiness; the gates unpack per source.
+         * @description Acquisition health smoke. `ready`
+         *     says whether a download source is on; the gates unpack per source.
          */
         AcquireHealth: {
             /** @description Independent per-source release gates. */
             gates: components["schemas"]["SourceGate"][];
-            /** @description True when at least one acquisition path can serve releases. */
+            /**
+             * @description True when a download source is on: slskd, SABnzbd or a plugin
+             *     download client. Requests are taken while it is false, and wait.
+             */
             ready: boolean;
-            /** @description Paths currently ready: any of `slskd`, `usenet`. */
+            /**
+             * @description The sources that are on and answered the last probe: `soulseek`,
+             *     `usenet` or `plugin:<name>`.
+             */
             ready_via: string[];
             /** @description Overall verdict: `ok`, `degraded`, or `error`. */
             status: string;
@@ -9477,8 +9855,7 @@ export interface components {
             id?: string | null;
             /** @description Absolute root directory. */
             path: string;
-            /** @description Effective policy (default: `automatic`). */
-            policy?: string | null;
+            policy?: null | components["schemas"]["EffectivePolicy"];
         };
         /** @description Add-tracks body. */
         AddTracksBody: {
@@ -9544,35 +9921,17 @@ export interface components {
             /** @description One page of users. */
             users: components["schemas"]["UserResponse"][];
         };
-        /**
-         * @description Advanced tunables in the form's units. This is not a copy of the
-         *     section: the form shows human units (hours, minutes, seconds) while
-         *     the section stores seconds and milliseconds, v2's
-         *     `AdvancedSettingsFrontend` contract minus the dropped internal-tuning
-         *     fields. It is a closed allowlist: unknown JSON fields are rejected at
-         *     decode (400), so a client holding a dropped tuning field learns it is
-         *     gone instead of believing it saved.
-         */
-        AdvancedSettingsForm: {
+        /** @description Advanced tuning: discover queue, AudioDB, images and retention. */
+        AdvancedSettings: {
             /**
-             * Format: int64
-             * @description Discovery precache workers (1-8).
-             * @default 5
-             */
-            artist_discovery_precache_concurrency: number;
-            /**
-             * Format: double
-             * @description Pause after each discovery precache artist, seconds (0-5).
-             * @default 0.2
-             */
-            artist_discovery_precache_delay: number;
-            /**
-             * @description AudioDB API key (masked unless unset).
+             * @description AudioDB key (encrypted at rest; v2 stored it plaintext). A missing
+             *     field reads as empty (then the read path falls back to the "123"
+             *     default); only an explicitly stored value decrypts.
              * @default
              */
             audiodb_api_key: string;
             /**
-             * @description AudioDB provider switch.
+             * @description AudioDB master switch.
              * @default true
              */
             audiodb_enabled: boolean;
@@ -9582,223 +9941,25 @@ export interface components {
              */
             audiodb_name_search_fallback: boolean;
             /**
-             * Format: int64
-             * @description AudioDB precache workers (1-8).
-             * @default 4
-             */
-            audiodb_prewarm_concurrency: number;
-            /**
-             * Format: double
-             * @description Pause before each AudioDB precache lookup, seconds (0-5).
-             * @default 0.3
-             */
-            audiodb_prewarm_delay: number;
-            /**
-             * Format: int64
-             * @description Album batch size (1-20).
-             * @default 8
-             */
-            batch_albums: number;
-            /**
-             * Format: int64
-             * @description Artist-image batch size (1-20).
-             * @default 10
-             */
-            batch_artist_images: number;
-            /**
-             * Format: int64
-             * @description Album cache TTL for library albums, hours (1-168).
-             * @default 24
-             */
-            cache_ttl_album_library: number;
-            /**
-             * Format: int64
-             * @description Album cache TTL for non-library albums, hours (1-24).
-             * @default 6
-             */
-            cache_ttl_album_non_library: number;
-            /**
-             * Format: int64
-             * @description Discovery cache TTL for library artists, hours (1-168).
-             * @default 6
-             */
-            cache_ttl_artist_discovery_library: number;
-            /**
-             * Format: int64
-             * @description Discovery cache TTL for non-library artists, hours (1-168).
-             * @default 1
-             */
-            cache_ttl_artist_discovery_non_library: number;
-            /**
-             * Format: int64
-             * @description Artist cache TTL for library artists, hours (1-168).
-             * @default 6
-             */
-            cache_ttl_artist_library: number;
-            /**
-             * Format: int64
-             * @description Artist cache TTL for non-library artists, hours (1-168).
-             * @default 6
-             */
-            cache_ttl_artist_non_library: number;
-            /**
-             * Format: int64
-             * @description AudioDB found TTL, hours (1-720).
-             * @default 168
-             */
-            cache_ttl_audiodb_found: number;
-            /**
-             * Format: int64
-             * @description AudioDB library TTL, hours (24-720).
-             * @default 336
-             */
-            cache_ttl_audiodb_library: number;
-            /**
-             * Format: int64
-             * @description AudioDB not-found TTL, hours (1-168).
-             * @default 24
-             */
-            cache_ttl_audiodb_not_found: number;
-            /**
-             * Format: int64
-             * @description Jellyfin favorites TTL, minutes (1-60).
-             * @default 5
-             */
-            cache_ttl_jellyfin_favorites: number;
-            /**
-             * Format: int64
-             * @description Jellyfin genres TTL, minutes (1-1440).
-             * @default 60
-             */
-            cache_ttl_jellyfin_genres: number;
-            /**
-             * Format: int64
-             * @description Jellyfin library-stats TTL, minutes (1-60).
-             * @default 10
-             */
-            cache_ttl_jellyfin_library_stats: number;
-            /**
-             * Format: int64
-             * @description Jellyfin recently-played TTL, minutes (1-60).
-             * @default 5
-             */
-            cache_ttl_jellyfin_recently_played: number;
-            /**
-             * Format: int64
-             * @description Navidrome albums TTL, minutes (1-60).
-             * @default 5
-             */
-            cache_ttl_navidrome_albums: number;
-            /**
-             * Format: int64
-             * @description Navidrome artists TTL, minutes (1-60).
-             * @default 5
-             */
-            cache_ttl_navidrome_artists: number;
-            /**
-             * Format: int64
-             * @description Navidrome favorites TTL, minutes (1-60).
-             * @default 2
-             */
-            cache_ttl_navidrome_favorites: number;
-            /**
-             * Format: int64
-             * @description Navidrome genres TTL, minutes (1-1440).
-             * @default 60
-             */
-            cache_ttl_navidrome_genres: number;
-            /**
-             * Format: int64
-             * @description Navidrome recent TTL, minutes (1-60).
-             * @default 2
-             */
-            cache_ttl_navidrome_recent: number;
-            /**
-             * Format: int64
-             * @description Navidrome search TTL, minutes (1-60).
-             * @default 2
-             */
-            cache_ttl_navidrome_search: number;
-            /**
-             * Format: int64
-             * @description Navidrome stats TTL, minutes (1-60).
-             * @default 10
-             */
-            cache_ttl_navidrome_stats: number;
-            /**
-             * Format: int64
-             * @description Plex albums TTL, minutes (1-60).
-             * @default 5
-             */
-            cache_ttl_plex_albums: number;
-            /**
-             * Format: int64
-             * @description Plex genres TTL, minutes (1-1440).
-             * @default 60
-             */
-            cache_ttl_plex_genres: number;
-            /**
-             * Format: int64
-             * @description Plex search TTL, minutes (1-60).
-             * @default 2
-             */
-            cache_ttl_plex_search: number;
-            /**
-             * Format: int64
-             * @description Plex stats TTL, minutes (1-60).
-             * @default 10
-             */
-            cache_ttl_plex_stats: number;
-            /**
-             * Format: int64
-             * @description Search cache TTL, minutes (1-1440).
-             * @default 60
-             */
-            cache_ttl_search: number;
-            /**
-             * Format: int64
-             * @description Cover memory-cache entries (16-2048).
-             * @default 128
-             */
-            cover_memory_cache_max_entries: number;
-            /**
-             * Format: int64
-             * @description Cover memory-cache MB (1-1024).
-             * @default 16
-             */
-            cover_memory_cache_max_size_mb: number;
-            /**
-             * Format: double
-             * @description Album delay, seconds (0-5).
-             * @default 0.3
-             */
-            delay_albums: number;
-            /**
-             * Format: double
-             * @description Artist delay, seconds (0-5).
-             * @default 0.5
-             */
-            delay_artist: number;
-            /**
-             * @description Serve remote images directly.
+             * @description Direct remote images.
              * @default true
              */
             direct_remote_images_enabled: boolean;
             /**
              * Format: int64
-             * @description Discover picks count (4-30).
+             * @description Discover picks count.
              * @default 12
              */
             discover_picks_count: number;
             /**
              * Format: double
-             * @description Discover genre-affinity weight (0-1).
+             * @description Discover genre-affinity weight.
              * @default 0.7
              */
             discover_picks_genre_affinity_weight: number;
             /**
              * Format: int64
-             * @description Albums per similar artist (1-20).
+             * @description Albums taken per similar artist.
              * @default 5
              */
             discover_queue_albums_per_similar: number;
@@ -9809,177 +9970,45 @@ export interface components {
             discover_queue_auto_generate: boolean;
             /**
              * Format: int64
-             * @description Queue card details cache, hours (1-168).
-             * @default 24
-             */
-            discover_queue_enrich_ttl: number;
-            /**
-             * Format: int64
-             * @description MusicBrainz lookups per Last.fm album batch (1-50).
+             * @description MusicBrainz lookups one Last.fm album batch may spend.
              * @default 10
              */
             discover_queue_lastfm_mbid_max_lookups: number;
             /**
              * Format: int64
-             * @description Discover queue polling, seconds (1-30).
-             * @default 4
-             */
-            discover_queue_polling_interval: number;
-            /**
-             * Format: int64
-             * @description Discover seed artists (1-10).
+             * @description Discover seed artists.
              * @default 3
              */
             discover_queue_seed_artists: number;
             /**
              * Format: int64
-             * @description Similar artists per seed (5-50).
+             * @description Similar artists fetched per seed artist.
              * @default 15
              */
             discover_queue_similar_artists_limit: number;
             /**
              * Format: int64
-             * @description Discover queue size (1-20).
+             * @description Discover queue size.
              * @default 10
              */
             discover_queue_size: number;
             /**
-             * Format: int64
-             * @description Discover queue TTL, hours (1-168).
-             * @default 24
-             */
-            discover_queue_ttl: number;
-            /**
-             * @description Let the background warm cycle build queue decks.
+             * @description Whether the background warm cycle may build queue decks.
              * @default true
              */
             discover_queue_warm_cycle_build: boolean;
             /**
              * Format: int64
-             * @description Discover wildcard slots (0-10).
+             * @description Discover wildcard slots.
              * @default 2
              */
             discover_queue_wildcard_slots: number;
             /**
              * Format: int64
-             * @description Disk-cache cleanup cadence, minutes (1-60).
-             * @default 10
-             */
-            disk_cache_cleanup_interval: number;
-            /**
-             * Format: int64
-             * @description Discover frontend TTL, minutes (1-1440).
-             * @default 30
-             */
-            frontend_ttl_discover: number;
-            /**
-             * Format: int64
-             * @description Discover-queue frontend TTL, minutes (60-10080).
-             * @default 1440
-             */
-            frontend_ttl_discover_queue: number;
-            /**
-             * Format: int64
-             * @description Home frontend TTL, minutes (1-60).
-             * @default 5
-             */
-            frontend_ttl_home: number;
-            /**
-             * Format: int64
-             * @description Jellyfin sidebar TTL, minutes (1-60).
-             * @default 2
-             */
-            frontend_ttl_jellyfin_sidebar: number;
-            /**
-             * Format: int64
-             * @description Library frontend TTL, minutes (1-60).
-             * @default 5
-             */
-            frontend_ttl_library: number;
-            /**
-             * Format: int64
-             * @description Local-files sidebar TTL, minutes (1-60).
-             * @default 2
-             */
-            frontend_ttl_local_files_sidebar: number;
-            /**
-             * Format: int64
-             * @description Playlist-sources frontend TTL, minutes (1-60).
-             * @default 15
-             */
-            frontend_ttl_playlist_sources: number;
-            /**
-             * Format: int64
-             * @description Plex sidebar TTL, minutes (1-60).
-             * @default 2
-             */
-            frontend_ttl_plex_sidebar: number;
-            /**
-             * Format: int64
-             * @description Recently-added frontend TTL, minutes (1-60).
-             * @default 5
-             */
-            frontend_ttl_recently_added: number;
-            /**
-             * Format: int64
-             * @description Search frontend TTL, minutes (1-60).
-             * @default 5
-             */
-            frontend_ttl_search: number;
-            /**
-             * Format: int64
-             * @description Genre section TTL, hours (1-168).
-             * @default 6
-             */
-            genre_section_ttl: number;
-            /**
-             * Format: int64
-             * @description Outbound connect timeout, seconds (1-30).
-             * @default 5
-             */
-            http_connect_timeout: number;
-            /**
-             * Format: int64
-             * @description Outbound pool size (50-500).
-             * @default 200
-             */
-            http_max_connections: number;
-            /**
-             * Format: int64
-             * @description Outbound HTTP timeout, seconds (5-60).
-             * @default 10
-             */
-            http_timeout: number;
-            /**
-             * Format: int64
-             * @description Ignored-releases retention, days (30-3650).
+             * @description Ignored-releases retention days.
              * @default 365
              */
             ignored_releases_retention_days: number;
-            /**
-             * Format: int64
-             * @description Memory-cache cleanup cadence, seconds (60-3600).
-             * @default 300
-             */
-            memory_cache_cleanup_interval: number;
-            /**
-             * Format: int64
-             * @description Memory-cache entries (1000-100000).
-             * @default 10000
-             */
-            memory_cache_max_entries: number;
-            /**
-             * Format: int64
-             * @description Orphan-cover demote cadence, hours (1-168).
-             * @default 24
-             */
-            orphan_cover_demote_interval_hours: number;
-            /**
-             * Format: int64
-             * @description Persistent-metadata TTL, hours (1-168).
-             * @default 24
-             */
-            persistent_metadata_ttl_hours: number;
             /**
              * @description Prefer local cover art.
              * @default true
@@ -9987,47 +10016,22 @@ export interface components {
             prefer_local_cover_art: boolean;
             /**
              * Format: int64
-             * @description Recent-covers cap, MB (100-10000).
-             * @default 1024
-             */
-            recent_covers_max_size_mb: number;
-            /**
-             * Format: int64
-             * @description Recent-metadata cap, MB (100-5000).
-             * @default 500
-             */
-            recent_metadata_max_size_mb: number;
-            /**
-             * Format: int64
-             * @description Request concurrency (1-5).
-             * @default 2
-             */
-            request_concurrency: number;
-            /**
-             * Format: int64
-             * @description Request history retention, days (30-3650).
+             * @description Request-history retention days.
              * @default 180
              */
             request_history_retention_days: number;
             /**
              * Format: int64
-             * @description Store prune cadence, hours (1-168).
+             * @description Store-prune cadence hours.
              * @default 6
              */
             store_prune_interval_hours: number;
-            /**
-             * Format: int64
-             * @description Sync max timeout, hours (1-48).
-             * @default 8
-             */
-            sync_max_timeout_hours: number;
-            /**
-             * Format: int64
-             * @description Sync stall timeout, minutes (2-30).
-             * @default 10
-             */
-            sync_stall_timeout_minutes: number;
         };
+        /**
+         * @description Which roots a scan run covers.
+         * @enum {string}
+         */
+        AggregateScope: "all" | "selected";
         /** @description `GET /albums/{album_id}/basic`: the album header. */
         AlbumBasicInfo: {
             /** @description Album thumbnail already cached from TheAudioDB. */
@@ -10062,62 +10066,9 @@ export interface components {
              */
             year?: number | null;
         };
-        /** @description Compact album card for browse surfaces. */
-        AlbumCard: {
-            /** @description Linked MusicBrainz artist id, when the artist is identified. */
-            artist_mbid?: string | null;
-            /** @description Album artist display name. */
-            artist_name: string;
-            /** @description True when an artwork row exists for this album. */
-            cover_available: boolean;
-            /**
-             * Format: double
-             * @description Import time, unix seconds.
-             */
-            date_added?: number | null;
-            /** @description Local album id. */
-            id: string;
-            /** @description Most common track format, when any track exists. */
-            primary_format?: string | null;
-            /** @description Linked MusicBrainz release group, when identified. */
-            release_group_mbid?: string | null;
-            /** @description Album title. */
-            title: string;
-            /**
-             * Format: int64
-             * @description Summed streamable-track size, bytes.
-             */
-            total_size_bytes: number;
-            /**
-             * Format: int64
-             * @description Streamable tracks on this album.
-             */
-            track_count: number;
-            /**
-             * Format: int64
-             * @description Release year, when known.
-             */
-            year?: number | null;
-        };
-        /** @description One page of album cards. */
-        AlbumCardPage: {
-            /** @description This page of cards. */
-            items: components["schemas"]["AlbumCard"][];
-            /**
-             * Format: int64
-             * @description Echo of the requested limit.
-             */
-            limit: number;
-            /**
-             * Format: int64
-             * @description Echo of the requested offset.
-             */
-            offset: number;
-            /**
-             * Format: int64
-             * @description Cards matching the filter, all pages.
-             */
-            total: number;
+        /** @description One catalog album with what its own page shows. */
+        AlbumDetailView: components["schemas"]["AlbumView"] & {
+            management_hold?: null | components["schemas"]["ManagementHoldView"];
         };
         /** @description One edition (MusicBrainz release) of an album. */
         AlbumEditionItem: {
@@ -10199,6 +10150,44 @@ export interface components {
             /** @description Provider release-group id. */
             musicbrainz_id: string;
         };
+        /**
+         * @description Who asked for a join.
+         * @enum {string}
+         */
+        AlbumHistoryByView: "you" | "person";
+        /** @description One line of an album's history. */
+        AlbumHistoryEntryView: {
+            /**
+             * Format: int64
+             * @description Unix milliseconds.
+             */
+            at: number;
+            by?: null | components["schemas"]["AlbumHistoryByView"];
+            kind: components["schemas"]["AlbumHistoryKindView"];
+            /** @description The other album's title, null when its row is gone. */
+            other_album_title?: string | null;
+            /** @description How many tracks the entry is about; 0 for album entries. */
+            track_count: number;
+            /** @description The first five of those tracks' titles, in album order. */
+            track_titles: string[];
+            /**
+             * @description For a `leftover_joined` or `artist_from_tracks` entry that can be
+             *     undone now, the id to undo it by; null otherwise.
+             */
+            undo_id?: string | null;
+        };
+        /**
+         * @description What one history entry tells.
+         * @enum {string}
+         */
+        AlbumHistoryKindView: "tracks_continued" | "tracks_replaced" | "retag_joined" | "retag_half_left_alone" | "leftover_joined" | "tracks_other_music" | "tracks_new_copy" | "artist_from_tracks";
+        /**
+         * @description An album's history, newest first: at most ten entries, none older than
+         *     180 days.
+         */
+        AlbumHistoryView: {
+            items: components["schemas"]["AlbumHistoryEntryView"][];
+        };
         /** @description TheAudioDB album images. Every field is optional. */
         AlbumImages: {
             /** @description 3D case. */
@@ -10226,7 +10215,7 @@ export interface components {
         /**
          * @description Album intake body. Names may be omitted only when they resolve; intake
          *     has no catalog lookup, so blank or literal-"Unknown" names are
-         *     rejected (v2 `request_service._meaningful_name` quirk).
+         *     rejected.
          */
         AlbumIntake: {
             /** @description Album title. */
@@ -10257,16 +10246,8 @@ export interface components {
         AlbumPage: {
             /** @description This page of albums. */
             items: components["schemas"]["AlbumView"][];
-            /**
-             * Format: int64
-             * @description Echo of the requested limit.
-             */
-            limit: number;
-            /**
-             * Format: int64
-             * @description Echo of the requested offset.
-             */
-            offset: number;
+            /** @description Pass as `after` for the next page; absent on the last page. */
+            next?: string | null;
             /**
              * Format: int64
              * @description Albums matching the filter, all pages.
@@ -10280,16 +10261,74 @@ export interface components {
             /** @description Sampled tracks in album order. */
             tracks?: components["schemas"]["PreviewTrackItem"][];
         };
+        /**
+         * @description One album as a row in a list: discover shelves, charts and the
+         *     catalog's discovery rows share it. Absent means unknown.
+         */
+        AlbumRef: {
+            /** @description The artist's MusicBrainz id, when known. */
+            artist_id?: string | null;
+            /** @description Credited artist, when known. */
+            artist_name?: string | null;
+            /** @description Cover URL, when known. */
+            cover_url?: string | null;
+            /** @description True when the library holds this album. */
+            in_library: boolean;
+            /**
+             * Format: int64
+             * @description Listen or play count behind the row, when known.
+             */
+            listen_count?: number | null;
+            /** @description Native library id, when the album is owned. */
+            local_id?: string | null;
+            /** @description MusicBrainz release-group id, when known. */
+            musicbrainz_id?: string | null;
+            /** @description Release date (`YYYY-MM-DD` or coarser), when known. */
+            release_date?: string | null;
+            /** @description True when an acquisition request is open for it. */
+            requested: boolean;
+            /** @description Album title. */
+            title: string;
+            /**
+             * Format: int32
+             * @description First release year, when known.
+             */
+            year?: number | null;
+        };
+        /** @description One removal of an album whose files can be put back. */
+        AlbumRemovalView: {
+            /**
+             * Format: int32
+             * @description Files whose copies are still in the recycle bin.
+             */
+            files: number;
+            /**
+             * @description A file write of the removal waits for an admin under "Some file
+             *     writes need you"; it can be put back once that is settled.
+             */
+            held: boolean;
+            /** @description The removal's id, which Put back names. */
+            id: string;
+            kind: components["schemas"]["RemovalKind"];
+            /**
+             * Format: int64
+             * @description When the files were removed, unix milliseconds.
+             */
+            removed_at: number;
+        };
+        /** @description An album's removals whose files can be put back, newest first. */
+        AlbumRemovalsView: {
+            items: components["schemas"]["AlbumRemovalView"][];
+        };
         /** @description The rescan request's answer. */
         AlbumRescanResponse: {
-            /** @description `started`, `queued`, `coalesced`, `expanded` or `conflict`. */
-            disposition: string;
+            disposition: components["schemas"]["ScanDisposition"];
             /** @description Why the run waits, when it does. */
             queued_reason?: string | null;
             /** @description Run id (fresh or merged into a waiting run). */
             run_id: string;
             /** @description Run state after the request. */
-            state: string;
+            state: components["schemas"]["ScanState"];
         };
         /** @description One track on an album page. */
         AlbumTrack: {
@@ -10504,6 +10543,11 @@ export interface components {
             /** @description User-given name. */
             name: string;
         };
+        /**
+         * @description What Apply did with a finding.
+         * @enum {string}
+         */
+        ApplyResult: "DETACHED" | "MAPPINGS_ACCEPTED" | "EDITION_ACCEPTED" | "EDITION_AUTO_ACCEPTED" | "STALE_SUBJECT";
         /** @description One grouped approval card: a user's pending requests as a batch. */
         ApprovalBatchItem: {
             /** @description Pending artist count. */
@@ -10613,8 +10657,7 @@ export interface components {
         ArtistDuplicateGroupSummary: {
             /**
              * Format: int64
-             * @description Credits, favorites, playlist entries, plays, and client ids a merge
-             *     would move.
+             * @description Credits, favorites and plays a merge would move.
              */
             affected_reference_count: number;
             display_name: string;
@@ -10622,6 +10665,7 @@ export interface components {
             id: string;
             member_count: number;
             members: components["schemas"]["ArtistReconciliationMember"][];
+            merge_basis?: null | components["schemas"]["ArtistMergeBasis"];
             provider_mbids: string[];
             /** @description Why the group is listed and what to do about it. */
             reason: components["schemas"]["ReasonView"];
@@ -10670,7 +10714,11 @@ export interface components {
          * @description What kind of duplicate group this is.
          * @enum {string}
          */
-        ArtistGroupState: "waiting_for_identity" | "provider_conflict" | "ambiguous_credit_structure" | "same_name_only" | "resolved_automatically";
+        ArtistGroupState: "waiting_for_identity" | "provider_conflict" | "ambiguous_credit_structure" | "same_name_only" | "credits_moved" | "resolved_automatically";
+        /** @description The credit an artist's picture asks for. */
+        ArtistImageCredit: {
+            credit: null | components["schemas"]["PhotoCredit"];
+        };
         /** @description Artist images from TheAudioDB. Every field is optional. */
         ArtistImages: {
             /** @description Banner. */
@@ -10719,11 +10767,8 @@ export interface components {
             appears_in_library: boolean;
             /** @description Whether the caller asked for new releases to download on their own. */
             auto_download: boolean;
-            /**
-             * @description Approval state of that ask: none, pending, approved, rejected or
-             *     revoked.
-             */
-            auto_download_state: string;
+            /** @description Approval state of that ask. */
+            auto_download_state: components["schemas"]["AutoDownloadState"];
             /** @description ISO country code. */
             country?: string | null;
             /** @description Disambiguation comment. */
@@ -10777,6 +10822,11 @@ export interface components {
             source_artist_ids: string[];
             surviving_artist_id: string;
         };
+        /**
+         * @description What an automatic artist merge rested on.
+         * @enum {string}
+         */
+        ArtistMergeBasis: "musicbrainz_proof" | "same_name";
         /** @description An artist merge to preview. */
         ArtistMergePreviewBody: {
             /**
@@ -10793,6 +10843,21 @@ export interface components {
             provider_choice?: components["schemas"]["ProviderChoiceBody"];
             /** @description The duplicates (the survivor may be listed too). */
             source_artist_ids: string[];
+            /** @description The artist everything moves to. */
+            surviving_artist_id: string;
+        };
+        /** @description An artist merge preview. */
+        ArtistMergePreviewResponse: {
+            /** @description Artist ids that will point at the survivor. */
+            aliases: string[];
+            /** @description Competing MusicBrainz artists. */
+            identity_conflicts: string[];
+            /** @description Send this back to apply exactly this merge (valid 15 minutes). */
+            preview_token: string;
+            /** @description References that move to the survivor, by kind. */
+            reference_counts: {
+                [key: string]: number;
+            };
             /** @description The artist everything moves to. */
             surviving_artist_id: string;
         };
@@ -10821,16 +10886,8 @@ export interface components {
             contributor_total: number;
             /** @description This page of artists. */
             items: components["schemas"]["ArtistView"][];
-            /**
-             * Format: int64
-             * @description Echo of the requested limit.
-             */
-            limit: number;
-            /**
-             * Format: int64
-             * @description Echo of the requested offset.
-             */
-            offset: number;
+            /** @description Pass as `after` for the next page; absent on the last page. */
+            next?: string | null;
             /**
              * Format: int64
              * @description Artists matching the scope and filter, all pages.
@@ -10854,15 +10911,11 @@ export interface components {
             /** Format: int64 */
             album_credit_count: number;
             /** Format: int64 */
-            compatibility_id_count: number;
-            /** Format: int64 */
             favorite_count: number;
             /** Format: int64 */
             history_count: number;
             id: string;
             name: string;
-            /** Format: int64 */
-            playlist_count: number;
             /** Format: int64 */
             primary_album_count: number;
             /** Format: int64 */
@@ -10874,7 +10927,7 @@ export interface components {
             /** Format: int64 */
             track_credit_count: number;
         };
-        /** @description Where the artist reconciliation pass stands. */
+        /** @description Automatic merges so far and open duplicate groups by state. */
         ArtistReconciliationProgress: {
             ambiguous_credit_structure_count: number;
             /**
@@ -10882,18 +10935,32 @@ export interface components {
              * @description Artist records merged automatically so far.
              */
             automatically_resolved_count: number;
-            /** Format: int64 */
-            completed_count: number;
-            /** Format: int64 */
-            expected_count: number;
             /** @description Groups that need an administrator's judgement. */
             genuine_review_count: number;
-            operation_job_id?: string | null;
             provider_conflict_count: number;
             same_name_only_count: number;
-            /** @description The newest reconciliation job's state, or `idle`. */
-            state: string;
             waiting_for_identity_count: number;
+        };
+        /**
+         * @description One artist as a row in a list: discover shelves, charts and the
+         *     catalog's similar artists share it. Absent means unknown.
+         */
+        ArtistRef: {
+            /** @description Image URL, when known. */
+            image_url?: string | null;
+            /** @description True when the library holds this artist. */
+            in_library: boolean;
+            /**
+             * Format: int64
+             * @description Listen or play count behind the row, when known.
+             */
+            listen_count?: number | null;
+            /** @description Native library id, when the artist is owned. */
+            local_id?: string | null;
+            /** @description MusicBrainz artist id, when known. */
+            musicbrainz_id?: string | null;
+            /** @description Artist name. */
+            name: string;
         };
         /**
          * @description `GET /artists/{artist_mbid}/releases`: one page of the discography,
@@ -10961,6 +11028,12 @@ export interface components {
              * @description Albums where this artist appears without leading.
              */
             appearance_album_count: number;
+            /**
+             * Format: int64
+             * @description Streamable tracks credited to this artist on albums led by someone
+             *     else.
+             */
+            appearance_track_count: number;
             /** @description Linked MusicBrainz artist id, when identified. */
             artist_mbid?: string | null;
             /**
@@ -10992,6 +11065,11 @@ export interface components {
          * @enum {string}
          */
         ArtworkImageType: "front" | "back" | "booklet" | "medium" | "tray" | "obi" | "spine" | "track" | "other";
+        /**
+         * @description How a genre's mosaic art is drawn.
+         * @enum {string}
+         */
+        ArtworkKind: "collage" | "gradient";
         /** @description Artwork management block. */
         ArtworkManagementSettings: {
             /**
@@ -11181,6 +11259,11 @@ export interface components {
             /** @description Release title. */
             title: string;
         };
+        /**
+         * @description Auto-download state of one follow, as the routes show it.
+         * @enum {string}
+         */
+        AutoDownloadState: "none" | "pending" | "approved" | "rejected" | "revoked";
         /** @description Undo the album's last automatic edition. */
         AutomaticEditionUndoBody: {
             /** Format: int64 */
@@ -11195,11 +11278,15 @@ export interface components {
             /** Format: int64 */
             expected_identity_revision: number;
         };
+        /**
+         * @description How undoing an automatic edition ended.
+         * @enum {string}
+         */
+        AutomaticEditionUndoOutcome: "restored" | "cleared_to_review";
         /** @description What the undo did. */
         AutomaticEditionUndoResponse: {
             local_album_id: string;
-            /** @description `restored` (the earlier identity is back) or `cleared_to_review`. */
-            outcome: string;
+            outcome: components["schemas"]["AutomaticEditionUndoOutcome"];
             /** @description The review the album went to, when there was no earlier identity. */
             review_id?: string | null;
         };
@@ -11216,16 +11303,6 @@ export interface components {
             reason_code: string;
             title: string;
             track_ids: string[];
-        };
-        /**
-         * @description Avatar upload. JSON with base64 bytes: the server has no multipart
-         *     support, and one JSON shape keeps every client on the same parser.
-         */
-        AvatarUpload: {
-            /** @description `image/jpeg`, `image/png`, `image/webp`, or `image/gif`. */
-            content_type: string;
-            /** @description Base64 image bytes, at most 5 MiB decoded. */
-            image_base64: string;
         };
         /** @description Avatar upload payload (parsed manually so the body cap applies). */
         AvatarUploadBody: {
@@ -11284,6 +11361,12 @@ export interface components {
             size_bytes: number;
             /**
              * Format: int64
+             * @description Size of the undo copies the backup holds beside it, from the
+             *     manifest, when present.
+             */
+            undo_bytes?: number | null;
+            /**
+             * Format: int64
              * @description Schema stamp from the manifest, when present.
              */
             user_version?: number | null;
@@ -11297,8 +11380,8 @@ export interface components {
         BaselineRestoreResponse: {
             /** @description Restore operation bundle id. */
             bundle_id: string;
-            /** @description `committed` or `cleanup_pending`. */
-            outcome: string;
+            /** @description Whether cleanup finished. */
+            outcome: components["schemas"]["PublishOutcome"];
             /** @description Restored track ids. */
             restored: string[];
         };
@@ -11326,7 +11409,7 @@ export interface components {
             /** @description Whether anything was cancelled. */
             success: boolean;
         };
-        /** @description Batch intake body (v2 caps batches at 500 rows). */
+        /** @description Batch intake body (at most 500 rows). */
         BatchIntake: {
             /** @description Auto-download future releases (approval-gated for users). */
             auto_download_artist?: boolean;
@@ -11378,6 +11461,11 @@ export interface components {
              */
             year?: number | null;
         };
+        /**
+         * @description What a batch did with one album.
+         * @enum {string}
+         */
+        BatchOutcome: "requested" | "skipped_in_library" | "skipped_duplicate" | "not_requested";
         /** @description One "because you listen to" shelf: seed plus similar albums. */
         BecauseYouListenTo: {
             /** @description Banner art URL, when resolved. */
@@ -11388,7 +11476,7 @@ export interface components {
              * Format: int64
              * @description Seed listen count backing the pick.
              */
-            listen_count?: number;
+            listen_count: number;
             /** @description Similar-albums shelf. */
             section: components["schemas"]["ChartSection"];
             /** @description Seed artist name. */
@@ -11397,6 +11485,72 @@ export interface components {
             seed_artist_mbid: string;
             /** @description Wide thumbnail URL, when resolved. */
             wide_thumb_url?: string | null;
+        };
+        /** @description The album a group of files came from. */
+        BinAlbumView: {
+            artist?: string | null;
+            /** @description The album has art of its own, served by its artwork route. */
+            cover_available: boolean;
+            /**
+             * @description The album has a page to open: it has files, or a MusicBrainz
+             *     release group.
+             */
+            has_page: boolean;
+            /** @description The local album id; the album page opens on it. */
+            id: string;
+            release_group_mbid?: string | null;
+            title: string;
+        };
+        /**
+         * @description What put a group of files in the bin.
+         * @enum {string}
+         */
+        BinKind: "album" | "track" | "extras" | "replaced" | "removed";
+        /** @description One removal or change whose files are in the recycle bin. */
+        BinRemovalView: {
+            album?: null | components["schemas"]["BinAlbumView"];
+            /**
+             * Format: int64
+             * @description Bytes of the copies found.
+             */
+            bytes: number;
+            /** @description Put back is offered. */
+            can_put_back: boolean;
+            /**
+             * Format: int64
+             * @description When the bin's expiry deletes its first copy, unix milliseconds;
+             *     absent while the retention can't be read.
+             */
+            expires_at?: number | null;
+            /**
+             * Format: int32
+             * @description Files in the bin.
+             */
+            files: number;
+            /**
+             * Format: int32
+             * @description Files waiting for an admin under "Some file writes need you".
+             */
+            held: number;
+            /** @description The removal's id, which Put back names. */
+            id: string;
+            kind: components["schemas"]["BinKind"];
+            /**
+             * Format: int32
+             * @description Copies not found where they should be.
+             */
+            not_found: number;
+            /**
+             * Format: int64
+             * @description When it was made, unix milliseconds.
+             */
+            removed_at: number;
+            /**
+             * Format: int32
+             * @description Copies that can't be checked: in a bin no longer set, behind a
+             *     link, or while the bins can't be told.
+             */
+            unchecked: number;
         };
         /** @description Active BrainzMash binding (kept; the pending proposal is transient). */
         BrainzmashActiveBinding: {
@@ -11479,33 +11633,37 @@ export interface components {
              */
             verified: boolean;
         };
-        /** @description Cache-clear request. Empty scope clears everything. */
+        /** @description Cache-clear request. No scope clears everything. */
         CacheClearBody: {
-            /**
-             * @description `all` (default: provider responses and images), `source` (one
-             *     provider's responses), `covers` (cover and artist images only) or
-             *     `audiodb` (TheAudioDB answers and album thumbnails).
-             */
-            scope?: string | null;
-            /** @description Source name when `scope` is `source`. */
-            source?: string | null;
+            /** @description What to clear. */
+            scope?: components["schemas"]["CacheClearScope"];
         };
         /** @description What one cache clear dropped. */
         CacheClearResponse: {
             /**
              * Format: int64
-             * @description Cover and artist images deleted from disk (for the `audiodb`
-             *     scope, AudioDB album thumbnails forgotten).
+             * @description Cover and artist images deleted from disk.
              */
             cleared_cover_images: number;
-            /** @description Entries dropped. */
+            /**
+             * Format: int64
+             * @description Provider answers dropped.
+             */
             cleared_entries: number;
             /** @description Plain-language summary. */
             message: string;
-            /** @description Entries left behind. */
+            /**
+             * Format: int64
+             * @description Provider answers left behind.
+             */
             remaining_entries: number;
         };
-        /** @description Provider byte-cache counters. */
+        /**
+         * @description What a cache clear drops.
+         * @enum {string}
+         */
+        CacheClearScope: "all" | "provider_data" | "covers";
+        /** @description Provider data and image cache counters. */
         CacheStatsResponse: {
             /**
              * Format: int64
@@ -11517,10 +11675,18 @@ export interface components {
              * @description Cover and artist images on disk.
              */
             cover_images: number;
-            /** @description Entries currently held. */
+            /**
+             * Format: int64
+             * @description Provider answers held.
+             */
             entries: number;
-            /** @description Registered invalidation roots by source. */
-            sources: string[];
+            /**
+             * @description Whether the provider cache file is working. When it is not, every
+             *     provider answer is fetched each time.
+             */
+            provider_data_on: boolean;
+            /** @description Rows and bytes per provider. */
+            sources: components["schemas"]["ProviderSourceStats"][];
         };
         /** @description `POST /cache/sync/cancel` answer. */
         CacheSyncCancelResponse: {
@@ -11586,22 +11752,11 @@ export interface components {
              */
             total_items: number;
         };
-        /** @description Choose a re-identification candidate. */
-        CandidateChoiceBody: {
-            /** @description The chosen candidate; empty only to leave the album unmanaged. */
-            candidate_key?: string;
-            /**
-             * @description Required for a candidate that is not automatic-safe, a release the
-             *     administrator named, or a custom edition.
-             */
-            confirmation?: boolean;
-            decision_mode?: components["schemas"]["DecisionModeBody"];
-            /**
-             * Format: int64
-             * @description The job's `row_revision` as last read.
-             */
-            expected_row_revision: number;
-        };
+        /**
+         * @description What one call came back with.
+         * @enum {string}
+         */
+        CallOutcome: "ok" | "not_found" | "rate_limited" | "failed";
         /** @description One file a candidate would fetch. */
         CandidateFile: {
             /**
@@ -11626,19 +11781,27 @@ export interface components {
         };
         /** @description Why a candidate sits where it does: one stable code and one sentence. */
         CandidateNote: {
-            /**
-             * @description Stable code (`complete`, `incomplete`, `lengths`, `quality`,
-             *     `no_tracklist`, `names_album`, `title_unclear`, `strong`, `weak`).
-             */
-            code: string;
+            /** @description Stable code. */
+            code: components["schemas"]["CandidateNoteCode"];
             /** @description What the candidate looks like, in one sentence. */
             text: string;
         };
         /**
+         * @description The stable code of a [`CandidateNote`].
+         * @enum {string}
+         */
+        CandidateNoteCode: "complete" | "incomplete" | "lengths" | "quality" | "no_tracklist" | "names_album" | "title_unclear" | "strong" | "weak";
+        /**
+         * @description Why a candidate is outside the download settings. Declared in the order
+         *     the page names them: the first that applies is shown.
+         * @enum {string}
+         */
+        CandidateRefusal: "quality_outside_range" | "over_size_cap" | "ignored_term" | "required_term_missing" | "below_minimum_score";
+        /**
          * @description How strongly a candidate is recommended.
          * @enum {string}
          */
-        CandidateTier: "recommended" | "possible";
+        CandidateTier: "recommended" | "possible" | "refused";
         /** @description One scored candidate inside a review. */
         CandidateView: {
             /** @description Candidate album artist. */
@@ -11677,12 +11840,11 @@ export interface components {
             /** @description How each of the album's files fits this release. */
             track_evidence: components["schemas"]["TrackEvidenceView"][];
         };
-        /** @description An applied correction. */
+        /** @description An applied correction, as recorded in the audit row and returned. */
         CatalogCorrectionResponse: {
             /** Format: int64 */
             catalog_revision: number;
-            /** @description `split`, `merge`, `move`, `reset` or `merge_artist`. */
-            kind: string;
+            kind: components["schemas"]["CorrectionKind"];
             retired_artist_ids: string[];
             source_album_ids: string[];
             surviving_artist_id?: string | null;
@@ -11694,123 +11856,108 @@ export interface components {
          * @enum {string}
          */
         CatalogSource: "musicbrainz" | "library";
-        /** @description One album inside a section or chart page. */
-        ChartAlbum: {
-            /** @description MusicBrainz artist id, when known. */
-            artist_mbid?: string | null;
-            /** @description Album artist name, when known. */
-            artist_name?: string | null;
-            /** @description Cover art URL, when resolved. */
-            image_url?: string | null;
-            /** @description True when the album has files in the library. */
-            in_library?: boolean;
+        /** @description One page of a ranked chart. */
+        ChartPage_AlbumRef: {
+            /** @description True when more rows follow. */
+            has_more: boolean;
+            /** @description Ranked rows for the page. */
+            items: {
+                /** @description The artist's MusicBrainz id, when known. */
+                artist_id?: string | null;
+                /** @description Credited artist, when known. */
+                artist_name?: string | null;
+                /** @description Cover URL, when known. */
+                cover_url?: string | null;
+                /** @description True when the library holds this album. */
+                in_library: boolean;
+                /**
+                 * Format: int64
+                 * @description Listen or play count behind the row, when known.
+                 */
+                listen_count?: number | null;
+                /** @description Native library id, when the album is owned. */
+                local_id?: string | null;
+                /** @description MusicBrainz release-group id, when known. */
+                musicbrainz_id?: string | null;
+                /** @description Release date (`YYYY-MM-DD` or coarser), when known. */
+                release_date?: string | null;
+                /** @description True when an acquisition request is open for it. */
+                requested: boolean;
+                /** @description Album title. */
+                title: string;
+                /**
+                 * Format: int32
+                 * @description First release year, when known.
+                 */
+                year?: number | null;
+            }[];
+            /** @description Human range label. */
+            label: string;
             /**
              * Format: int64
-             * @description Scrobble/listen count backing the rank, when known.
+             * @description Limit behind this page.
              */
-            listen_count?: number | null;
-            /** @description Native library id, when the album is owned. */
-            local_id?: string | null;
-            /** @description MusicBrainz release-group id, when known. */
-            mbid?: string | null;
-            /** @description Album title. */
-            name: string;
-            /** @description Release date (`YYYY-MM-DD` or coarser), when known. */
-            release_date?: string | null;
-            /** @description True when the album already has a request. */
-            requested?: boolean;
-            /** @description Provider that ranked this row (`listenbrainz`, `lastfm`). */
-            source?: string | null;
+            limit: number;
+            /**
+             * Format: int64
+             * @description Offset behind this page.
+             */
+            offset: number;
+            /** @description Range behind this page. */
+            range_key: components["schemas"]["StatsRange"];
         };
-        /** @description One artist inside a section or chart page. */
-        ChartArtist: {
-            /** @description Cover art URL, when resolved. */
-            image_url?: string | null;
-            /** @description True when the artist has files in the library. */
-            in_library?: boolean;
+        /** @description One page of a ranked chart. */
+        ChartPage_ArtistRef: {
+            /** @description True when more rows follow. */
+            has_more: boolean;
+            /** @description Ranked rows for the page. */
+            items: {
+                /** @description Image URL, when known. */
+                image_url?: string | null;
+                /** @description True when the library holds this artist. */
+                in_library: boolean;
+                /**
+                 * Format: int64
+                 * @description Listen or play count behind the row, when known.
+                 */
+                listen_count?: number | null;
+                /** @description Native library id, when the artist is owned. */
+                local_id?: string | null;
+                /** @description MusicBrainz artist id, when known. */
+                musicbrainz_id?: string | null;
+                /** @description Artist name. */
+                name: string;
+            }[];
+            /** @description Human range label. */
+            label: string;
             /**
              * Format: int64
-             * @description Scrobble/listen count backing the rank, when known.
+             * @description Limit behind this page.
              */
-            listen_count?: number | null;
-            /** @description Native library id, when the artist is owned. */
-            local_id?: string | null;
-            /** @description MusicBrainz artist id, when known. */
-            mbid?: string | null;
-            /** @description Display name. */
-            name: string;
-            /** @description Provider that ranked this row (`listenbrainz`, `lastfm`). */
-            source?: string | null;
+            limit: number;
+            /**
+             * Format: int64
+             * @description Offset behind this page.
+             */
+            offset: number;
+            /** @description Range behind this page. */
+            range_key: components["schemas"]["StatsRange"];
         };
-        /** @description One genre inside a section. */
-        ChartGenre: {
-            /**
-             * Format: int64
-             * @description Owned artists tagged with this genre, when counted.
-             */
-            artist_count?: number | null;
-            /** @description Seed artist id behind the row, when there is one. */
-            artist_mbid?: string | null;
-            /**
-             * Format: int64
-             * @description Scrobble/listen count backing the rank, when known.
-             */
-            listen_count?: number | null;
-            /** @description Genre name. */
-            name: string;
-        };
-        /**
-         * @description Valid chart ranges. v2 spelled these as path pairs
-         *     (`/trending/artists` plus `/trending/artists/{range_key}`); v3 takes one
-         *     route with `?range=`. Keys keep the v2 spelling.
-         * @enum {string}
-         */
-        ChartRange: "this_week" | "this_month" | "this_year" | "all_time";
         /** @description A titled shelf of rows: the unit both home and discover render. */
         ChartSection: {
-            /** @description Service the user must connect for the full shelf, when gated. */
-            connect_service?: string | null;
-            /** @description Fallback explanation when the shelf degraded, when shown. */
+            connect_service?: null | components["schemas"]["ShelfSource"];
+            /** @description Explanation shown in place of rows when the shelf could not fill. */
             fallback_message?: string | null;
             /** @description Shelf rows. */
-            items?: components["schemas"]["SectionItem"][];
+            items: components["schemas"]["SectionItem"][];
             /** @description Radio seed id, when playable. */
             radio_seed_id?: string | null;
-            /** @description Radio seed kind (`artist`, `album`, `genre`), when playable. */
-            radio_seed_type?: string | null;
-            /** @description Provider behind the shelf, when it has one. */
-            source?: string | null;
+            radio_seed_type?: null | components["schemas"]["RadioSeedKind"];
+            source?: null | components["schemas"]["ShelfSource"];
             /** @description Shelf title. */
             title: string;
-            /** @description Row kind (`artist`, `album`, `track`, `genre`). */
-            type: string;
-        };
-        /**
-         * @description Chart provider preference.
-         * @enum {string}
-         */
-        ChartSource: "listenbrainz" | "lastfm";
-        /** @description One track inside a section. */
-        ChartTrack: {
-            /** @description Album title, when known. */
-            album_name?: string | null;
-            /** @description MusicBrainz artist id, when known. */
-            artist_mbid?: string | null;
-            /** @description Artist name, when known. */
-            artist_name?: string | null;
-            /** @description Cover art URL, when resolved. */
-            image_url?: string | null;
-            /**
-             * Format: int64
-             * @description Scrobble/listen count backing the rank, when known.
-             */
-            listen_count?: number | null;
-            /** @description Last listen timestamp (RFC 3339), when known. */
-            listened_at?: string | null;
-            /** @description MusicBrainz recording id, when known. */
-            mbid?: string | null;
-            /** @description Track title. */
-            name: string;
+            /** @description What the rows are. */
+            type: components["schemas"]["SectionKind"];
         };
         /** @description Membership-check body. */
         CheckTracksBody: {
@@ -11828,9 +11975,11 @@ export interface components {
             };
         };
         /**
-         * @description Latest checkpoint pass, for the health payload. `None` on `/health`
-         *     until the checkpoint loop records its first pass.
+         * @description Which checkpoint mode produced an outcome record.
+         * @enum {string}
          */
+        CheckpointMode: "passive" | "truncate";
+        /** @description One database checkpoint pass, for the queue stats. */
         CheckpointView: {
             /**
              * Format: int64
@@ -11844,10 +11993,13 @@ export interface components {
             at_unix: number;
             /** @description True when a lock contender blocked the pass. */
             busy: boolean;
-            /** @description Non-lock failure text, when the pass failed. */
+            /**
+             * @description `CHECKPOINT_FAILED` when the pass failed on something other than a
+             *     lock. The cause is in the server log.
+             */
             error?: string | null;
-            /** @description `passive` or `truncate`. */
-            mode: string;
+            /** @description Mode that ran. */
+            mode: components["schemas"]["CheckpointMode"];
             /** @description True when background producers must yield. */
             suspended: boolean;
             /**
@@ -11961,6 +12113,11 @@ export interface components {
             /** @description Item count. */
             total: number;
         };
+        /**
+         * @description How far a finding can be trusted, in the finding's `confidence`.
+         * @enum {string}
+         */
+        Confidence: "complete" | "bounded";
         /** @description Inbound Connect Apps config. Both protocols default off. */
         ConnectApps: {
             /**
@@ -11973,13 +12130,6 @@ export interface components {
              * @default 10.10.6
              */
             advertise_server_version: string;
-            /** @default local-only */
-            discover_mode: components["schemas"]["DiscoverMode"];
-            /**
-             * @description Capability flag for the approval-safe exact-track endpoint.
-             * @default true
-             */
-            exact_track_approval_supported: boolean;
             /**
              * @description Serve the Jellyfin API.
              * @default false
@@ -12027,6 +12177,11 @@ export interface components {
             /** @description Owning source. */
             source: components["schemas"]["SourceName"];
         };
+        /**
+         * @description How the web UI's content-security policy is sent.
+         * @enum {string}
+         */
+        ContentSecurityPolicyMode: "enforce" | "report_only" | "off";
         /** @description Save an edited draft. */
         ContributionDraftBody: {
             /** @description The whole draft. */
@@ -12116,6 +12271,74 @@ export interface components {
             message: string;
         };
         /**
+         * @description A control the running worker has not acted on yet.
+         * @enum {string}
+         */
+        ControlRequest: "none" | "pause" | "stop";
+        /**
+         * @description Which correction was applied.
+         * @enum {string}
+         */
+        CorrectionKind: "split" | "merge" | "move" | "reset" | "merge_artist";
+        /** @description A run's counters, one per column of the runs table. */
+        Counters: {
+            /**
+             * Format: int64
+             * @description Files changed since the last scan.
+             */
+            changed_count: number;
+            /**
+             * Format: int64
+             * @description Files the walk found.
+             */
+            discovered_count: number;
+            /**
+             * Format: int64
+             * @description Files that could not be read or written.
+             */
+            errored_count: number;
+            /**
+             * Format: int64
+             * @description Files a policy leaves out.
+             */
+            excluded_count: number;
+            /**
+             * Format: int64
+             * @description Albums offered for identification.
+             */
+            identification_enqueued_count: number;
+            /**
+             * Format: int64
+             * @description Files written to the catalog.
+             */
+            indexed_count: number;
+            /**
+             * Format: int64
+             * @description Files the index phase looked at.
+             */
+            inspected_count: number;
+            /**
+             * Format: int64
+             * @description Catalog files the walk no longer found.
+             */
+            missing_count: number;
+            /**
+             * Format: int64
+             * @description Files new to the catalog.
+             */
+            new_count: number;
+            /**
+             * Format: int64
+             * @description Files the run will look at.
+             */
+            total_count: number;
+            /**
+             * Format: int64
+             * @description Files unchanged since the last scan.
+             */
+            unchanged_count: number;
+        };
+        /**
          * @description Cover-upload body. Base64 JSON instead of multipart: the app has no
          *     multipart feature and the frontend regenerates against this contract.
          */
@@ -12136,6 +12359,16 @@ export interface components {
             name: string;
             /** @description Import provenance (`<source>:<id>`), when the playlist was imported. */
             source_ref?: string | null;
+        };
+        /** @description Seal a custom edition. */
+        CustomEditionBody: {
+            /**
+             * Format: int64
+             * @description The `identity_revision` the edition status showed.
+             */
+            expected_identity_revision: number;
+            /** @description A MusicBrainz release of the group the files are kept under. */
+            release_mbid: string;
         };
         /** @description One album below the quality cutoff. */
         CutoffUnmetItem: {
@@ -12160,7 +12393,7 @@ export interface components {
         };
         /**
          * @description One decade shelf. Shelves carry counts; fetch the shelf's albums
-         *     through browse with the same `decade` value.
+         *     through the album list with the same `decade` value.
          */
         DecadeShelf: {
             /**
@@ -12182,10 +12415,10 @@ export interface components {
             items: components["schemas"]["DecadeShelf"][];
         };
         /**
-         * @description How to settle a re-identification.
+         * @description Who last set an identity row.
          * @enum {string}
          */
-        DecisionModeBody: "exact_release" | "custom_edition" | "leave_unmanaged";
+        DecisionSource: "automatic" | "manual" | "legacy_import" | "embedded";
         /** @description One deferred identification job, named. */
         DeferredJobView: {
             album_title: string | null;
@@ -12346,8 +12579,7 @@ export interface components {
             artist_mbid?: string | null;
             /** @description Surface the interaction happened on (`home`, `discover`, `queue`, `artist`). */
             feature: string;
-            /** @description Provider behind the row (`lastfm`, `listenbrainz`), when it had one. */
-            provider?: string | null;
+            provider?: null | components["schemas"]["ListenSource"];
             /** @description Artist-page section (`similar`, `top_songs`, `top_albums`), when it had one. */
             section?: string | null;
         };
@@ -12363,15 +12595,10 @@ export interface components {
             /** @description The MusicBrainz source tier the activity was recorded under. */
             source_mode: string;
         };
-        /**
-         * @description Compat discovery mode.
-         * @enum {string}
-         */
-        DiscoverMode: "local-only" | "lazy-mb" | "use-scrobble-targets";
         /** @description A discover teaser on home: one seed artist plus similar artists. */
         DiscoverPreview: {
             /** @description Similar artists. */
-            items?: components["schemas"]["ChartArtist"][];
+            items: components["schemas"]["ArtistRef"][];
             /** @description Seed artist name. */
             seed_artist: string;
             /** @description Seed MusicBrainz artist id. */
@@ -12379,8 +12606,8 @@ export interface components {
         };
         /** @description On-demand YouTube preview behind one queue card. */
         DiscoverQueuePreview: {
-            /** @description `available`, `not_found`, or `unavailable`. */
-            status: string;
+            /** @description Whether a preview was found. */
+            status: components["schemas"]["PreviewStatus"];
             /** @description Search URL fallback, when there is one. */
             youtube_search_url?: string | null;
             /** @description Watch URL, when available. */
@@ -12389,7 +12616,7 @@ export interface components {
         /** @description The queue deck: cards plus the build they came from. */
         DiscoverQueueResponse: {
             /** @description Deck cards in order. */
-            items?: components["schemas"]["QueueItem"][];
+            items?: components["schemas"]["QueueItemLight"][];
             /** @description Build id behind the deck. */
             queue_id: string;
         };
@@ -12411,94 +12638,43 @@ export interface components {
             queue_id?: string | null;
             /** @description True when the deck is older than its TTL. */
             stale?: boolean | null;
-            /** @description `ready`, `building`, `stale`, or `error`. */
-            status: string;
+            /** @description Build state. A saved queue past its age is `ready` with `stale` set. */
+            status: components["schemas"]["QueueBuildStatus"];
         };
         /**
-         * @description Discover shelves. Every shelf is optional: absence means no data, never
-         *     a failure.
+         * @description Discover: its sections, in page order, plus the page-level fields. A
+         *     section with no rows is left out.
          */
         DiscoverResponse: {
-            anniversaries?: null | components["schemas"]["ChartSection"];
-            artists_you_might_like?: null | components["schemas"]["ChartSection"];
-            /** @description Seed-driven similar-album shelves. */
-            because_you_listen_to?: components["schemas"]["BecauseYouListenTo"][];
-            /** @description Daily mix shelves. */
-            daily_mixes?: components["schemas"]["ChartSection"][];
             /** @description Whether the queue deck is enabled for the user. */
             discover_queue_enabled: boolean;
-            fresh_releases?: null | components["schemas"]["ChartSection"];
             /**
              * Format: int64
              * @description Build timestamp (unix seconds), when built.
              */
             generated_at?: number | null;
             /** @description Mosaic art keyed by genre name. */
-            genre_artwork?: {
+            genre_artwork: {
                 [key: string]: components["schemas"]["GenreArtwork"];
             };
             /** @description Genre artwork schema version. */
             genre_artwork_schema_version: string;
-            genre_list?: null | components["schemas"]["ChartSection"];
-            globally_trending?: null | components["schemas"]["ChartSection"];
             integration_status?: null | components["schemas"]["IntegrationStatus"];
-            lastfm_recent_scrobbles?: null | components["schemas"]["ChartSection"];
-            lastfm_weekly_album_chart?: null | components["schemas"]["ChartSection"];
-            lastfm_weekly_artist_chart?: null | components["schemas"]["ChartSection"];
-            listeners_like_you?: null | components["schemas"]["ChartSection"];
-            missing_essentials?: null | components["schemas"]["ChartSection"];
-            new_from_followed?: null | components["schemas"]["ChartSection"];
-            popular_in_your_genres?: null | components["schemas"]["ChartSection"];
-            /** @description Radio shelves. */
-            radio_sections?: components["schemas"]["ChartSection"][];
-            rediscover?: null | components["schemas"]["ChartSection"];
             /**
              * Format: int64
              * @description Refresh-start timestamp (unix seconds), when refreshing.
              */
             refresh_started_at?: number | null;
             /** @description True while a fuller build runs in the background (the UI polls). */
-            refreshing?: boolean;
-            /**
-             * @description Status per page zone (`picks`, `lounge`, `weekly`, `made`,
-             *     `because`, `fresh`, `library`, `genres`, `trending`): `loading`
-             *     before the first page, `updating` while a rebuild runs, else
-             *     `ready` or `empty`.
-             */
-            section_status?: {
-                [key: string]: string;
-            };
+            refreshing: boolean;
+            /** @description The sections, in page order. */
+            sections: components["schemas"]["PageSection"][];
             /** @description Connect-a-service cards. */
-            service_prompts?: components["schemas"]["ServicePrompt"][];
-            /** @description Per-service degradation notes (`ok`/`degraded`/`down`). */
+            service_prompts: components["schemas"]["ServicePrompt"][];
+            /** @description Listening services that failed during the build, when any did. */
             service_status?: {
-                [key: string]: string;
+                [key: string]: components["schemas"]["ServiceState"];
             } | null;
-            top_picks?: null | components["schemas"]["TopPicksSection"];
-            unexplored_genres?: null | components["schemas"]["ChartSection"];
-            weekly_exploration?: null | components["schemas"]["WeeklyExploration"];
-        };
-        /** @description An album in a discovery row. */
-        DiscoveryAlbum: {
-            /** @description Artist MBID, when known. */
-            artist_id?: string | null;
-            /** @description Credited artist. */
-            artist_name: string;
-            /** @description The album's cover. */
-            cover_url?: string | null;
-            /** @description True when the library holds this album. */
-            in_library: boolean;
-            /** @description Release-group MBID. */
-            musicbrainz_id: string;
-            /** @description True when an acquisition request is open for it. */
-            requested: boolean;
-            /** @description Title. */
-            title: string;
-            /**
-             * Format: int32
-             * @description First release year.
-             */
-            year?: number | null;
         };
         /** @description Body creating a discovery batch (one request per album). */
         DiscoveryBatchCreate: {
@@ -12544,34 +12720,31 @@ export interface components {
         };
         /** @description One album to request inside a new batch. */
         DiscoveryBatchItemIn: {
-            /** @description Album name. */
-            album_name?: string;
-            /** @description MusicBrainz artist id. */
-            artist_mbid?: string;
+            /** @description The artist's MusicBrainz id. */
+            artist_id?: string;
             /** @description Artist name. */
             artist_name?: string;
             /** @description MusicBrainz release-group id. */
-            release_group_mbid: string;
+            musicbrainz_id: string;
+            /** @description Album title. */
+            title?: string;
         };
         /** @description Per-album outcome inside a batch. */
         DiscoveryBatchItemStatus: {
-            /** @description Album name. */
-            album_name?: string;
-            /** @description MusicBrainz artist id. */
-            artist_mbid?: string;
+            /** @description The artist's MusicBrainz id. */
+            artist_id?: string;
             /** @description Artist name. */
             artist_name?: string;
             /** @description True when already owned. */
             in_library?: boolean;
-            /**
-             * @description `requested`, `skipped_in_library`, `skipped_duplicate`, or
-             *     `not_requested` (the requests service did not file it).
-             */
-            outcome: string;
             /** @description MusicBrainz release-group id. */
-            release_group_mbid: string;
+            musicbrainz_id: string;
+            /** @description What the batch did with the album. */
+            outcome: components["schemas"]["BatchOutcome"];
             /** @description Request state, when requested. */
             request_status?: string | null;
+            /** @description Album title. */
+            title?: string;
         };
         /** @description The user's batches. */
         DiscoveryBatchListResponse: {
@@ -12635,11 +12808,6 @@ export interface components {
             /** @description Hub title, e.g. "Recommended for you". */
             title: string;
         };
-        /**
-         * @description Which listening-data provider answered a discovery section.
-         * @enum {string}
-         */
-        DiscoverySource: "listenbrainz" | "lastfm";
         /** @description Plex discovery shelves for the hub page. */
         DiscoveryView: {
             /** @description Album shelves, in upstream order. */
@@ -12653,6 +12821,13 @@ export interface components {
             state: string;
             success: boolean;
         };
+        /**
+         * @description What started a download. Stored as the task's `origin`; origins decide
+         *     quota exemptions and how a landing treats the files, never routing.
+         *     A request row stores it too, and the Requests page shows it.
+         * @enum {string}
+         */
+        DispatchOrigin: "user" | "approval" | "retry" | "wanted" | "upgrade" | "edition" | "follow";
         /** @description Change display name. */
         DisplayNameUpdate: {
             /** @description New display name, 1-64 chars after trimming. */
@@ -12709,7 +12884,7 @@ export interface components {
             files_total: number;
             /** Format: int64 */
             progress_percent: number;
-            status: string;
+            status: components["schemas"]["TaskStatus"];
             task_id: string;
         };
         /** @description One page of the queue. */
@@ -12803,35 +12978,6 @@ export interface components {
             ignored_terms: string[];
             /**
              * Format: int64
-             * @description Lossless bit-depth ceiling.
-             * @default null
-             */
-            lossless_max_bit_depth: number | null;
-            /**
-             * Format: int64
-             * @description Lossless sample-rate ceiling.
-             * @default null
-             */
-            lossless_max_sample_rate_hz: number | null;
-            /**
-             * @description Lossless edition preference.
-             * @default highest
-             */
-            lossless_preference: string;
-            /**
-             * Format: int64
-             * @description Lossy upper bound.
-             * @default null
-             */
-            lossy_max_bitrate_kbps: number | null;
-            /**
-             * Format: int64
-             * @description Lossy lower bound.
-             * @default null
-             */
-            lossy_min_bitrate_kbps: number | null;
-            /**
-             * Format: int64
              * @description Concurrent downloads.
              * @default 3
              */
@@ -12854,12 +13000,6 @@ export interface components {
              * @default 0
              */
             max_size_mb: number;
-            /**
-             * Format: int64
-             * @description Preferred lossy bitrate target.
-             * @default null
-             */
-            preferred_lossy_bitrate_kbps: number | null;
             /**
              * Format: int64
              * @description Preferred-quality wait.
@@ -12894,11 +13034,6 @@ export interface components {
              */
             quality_min: string;
             /**
-             * @description Tier preference order, most preferred first.
-             * @default []
-             */
-            quality_preference_order: string[];
-            /**
              * @description Closed v2 quality recipe (empty means a v1 policy).
              * @default []
              */
@@ -12927,37 +13062,16 @@ export interface components {
              */
             search_review: string;
             /**
-             * @description Source-vs-quality selection.
-             * @default source_first
-             */
-            source_selection_mode: string;
-            /**
-             * @description Unknown-quality handling.
-             * @default allow_as_fallback
-             */
-            unknown_quality_behavior: string;
-            /**
              * @description Background upgrades switch.
              * @default false
              */
             upgrade_allowed: boolean;
             /**
              * Format: int64
-             * @description Minimum Usenet release age.
-             * @default 30
-             */
-            usenet_min_release_age_minutes: number;
-            /**
-             * Format: int64
              * @description Usenet retention in days (0 unknown).
              * @default 0
              */
             usenet_retention_days: number;
-            /**
-             * @description Verify downloads after landing.
-             * @default true
-             */
-            verify_downloads: boolean;
         };
         /**
          * @description GET view of the acquisition policy: the stored policy plus the
@@ -12968,6 +13082,11 @@ export interface components {
             quality_recipe_error?: string | null;
             /** @description Read-only recipe verdict: `v1`, `v2`, `non_convertible`, `invalid`. */
             quality_recipe_status: string;
+            /**
+             * @description Why the recycle bin path is not used, when it is not: each library
+             *     folder's `.recycle` takes its place. Read-only.
+             */
+            recycle_bin_warning?: string | null;
         };
         /**
          * @description `download_progress`: the worker polled one of the user's live
@@ -13039,21 +13158,30 @@ export interface components {
             task_id: string;
         };
         /**
-         * @description Why a download sits where it does: one stable code, one plain sentence
-         *     and what to do about it.
+         * @description Why a manual search failed or found nothing: one stable code, one
+         *     plain sentence and what to do about it.
          */
         DownloadReason: {
             /** @description What the person can do about it. */
             action: string;
-            /** @description Stable machine code (`stalled`, `weak_match`, `no_source`, ...). */
+            /** @description Stable machine code. */
             code: string;
             /** @description What happened, in one sentence. */
             text: string;
         };
         /**
-         * @description One download task as the queue shows it. Field names match v2's
-         *     `DownloadTaskResponse`, so the web UI reads them unchanged.
+         * @description Why a download task sits where it does: the reason, its kind, one
+         *     plain sentence and what to do about it.
          */
+        DownloadTaskReason: {
+            /** @description What the person can do about it. */
+            action: string;
+            code: components["schemas"]["Reason"];
+            kind: components["schemas"]["ReasonKind"];
+            /** @description What happened, in one sentence. */
+            text: string;
+        };
+        /** @description One download task as the queue shows it. */
         DownloadTaskResponse: {
             /**
              * @description `not_tracked`, `in_use`, `pending`, `complete`, `preserved` or
@@ -13086,8 +13214,6 @@ export interface components {
             download_type: string;
             /** Format: int64 */
             downloaded_bytes: number;
-            /** @description The worker's last outcome as recorded. Show `reason` instead. */
-            error_message?: string | null;
             /** Format: int64 */
             files_completed: number;
             /** Format: int64 */
@@ -13105,8 +13231,12 @@ export interface components {
              * @description When the next automatic retry is due, if one will run.
              */
             next_retry_at?: number | null;
-            /** @description `user`, `retry` or `upgrade`. */
+            /**
+             * @description What started the download: `user`, `approval`, `retry`, `wanted`,
+             *     `upgrade`, `edition` or `follow`.
+             */
             origin: string;
+            outcome_code?: null | components["schemas"]["Reason"];
             /** Format: int64 */
             progress_percent: number;
             /** Format: int64 */
@@ -13120,7 +13250,7 @@ export interface components {
             queue_position_end?: number | null;
             /** Format: int64 */
             queue_position_start?: number | null;
-            reason?: null | components["schemas"]["DownloadReason"];
+            reason?: null | components["schemas"]["DownloadTaskReason"];
             recording_mbid?: string | null;
             release_group_mbid: string;
             release_mbid?: string | null;
@@ -13140,11 +13270,7 @@ export interface components {
             /** @description `soulseek`, `usenet` or `plugin:<key>`. */
             source: string;
             source_username?: string | null;
-            /**
-             * @description `queued`, `downloading`, `processing`, `completed`, `partial`,
-             *     `failed` or `cancelled`.
-             */
-            status: string;
+            status: components["schemas"]["TaskStatus"];
             /** Format: int64 */
             total_size_bytes?: number | null;
             track_title?: string | null;
@@ -13204,8 +13330,7 @@ export interface components {
             id: number;
             /** @description What to do about it. */
             reason_action?: string | null;
-            /** @description Stable reason code when the item stopped short. */
-            reason_code?: string | null;
+            reason_code?: null | components["schemas"]["Reason"];
             release_group_mbid?: string | null;
             /**
              * @description `processing`, `imported`, `skipped`, `needs_review`, `failed` or
@@ -13232,10 +13357,6 @@ export interface components {
         /** @description Newest jobs first. */
         DropImportJobsResponse: {
             jobs: components["schemas"]["DropImportJobResponse"][];
-        };
-        /** @description The album a person picked for a review item. */
-        DropImportMatchRequest: {
-            release_group_mbid: string;
         };
         /** @description `drop_import_updated`: one of the user's drop-import jobs moved. */
         DropImportUpdated: {
@@ -13290,7 +13411,8 @@ export interface components {
             release_mbid?: string | null;
             /**
              * Format: int32
-             * @description Missing tracks asked for.
+             * @description Missing tracks asked for: edition tracks no file holds and no file
+             *     is another version of.
              */
             requested?: number | null;
             /** @description `started`, `already_in_progress`, or `already_complete`. */
@@ -13309,6 +13431,13 @@ export interface components {
              *     the same download; each is replaced only by a strictly better file.
              */
             upgrades?: number | null;
+            /**
+             * Format: int32
+             * @description Tracks a file of the copy is another version of, asked for in this
+             *     edition's version with `replace_versions`; each replaces that file
+             *     when it is as good or better.
+             */
+            versions?: number | null;
         };
         /** @description One candidate the matcher scored, as the edition picker shows it. */
         EditionCandidateView: {
@@ -13331,11 +13460,15 @@ export interface components {
              */
             score: number;
         };
+        /**
+         * @description What happens to one album's edition.
+         * @enum {string}
+         */
+        EditionChangeKind: "kept" | "moved" | "cleared" | "remap_queued";
         /** @description What happens to one album's edition. */
         EditionChangeView: {
             album_title: string;
-            /** @description `kept`, `moved`, `cleared` or `remap_queued`. */
-            change: string;
+            change: components["schemas"]["EditionChangeKind"];
             /** @description For a moved edition, the album it came from. */
             from_album_id?: string | null;
             local_album_id: string;
@@ -13364,27 +13497,94 @@ export interface components {
          * @enum {string}
          */
         EditionDatePreference: "earliest" | "latest" | "any";
-        /** @description Pin-set body. */
-        EditionPinBody: {
-            /** @description Any MusicBrainz release, from this album's group or another. */
-            release_mbid: string;
+        /** @description What MusicBrainz says about the planned edition. */
+        EditionFactsView: {
+            barcode?: string | null;
+            /** @description The first catalog number. */
+            catalog_number?: string | null;
+            country?: string | null;
+            /**
+             * @description Release date as MusicBrainz gives it (`YYYY`, `YYYY-MM` or
+             *     `YYYY-MM-DD`).
+             */
+            date?: string | null;
+            disambiguation?: string | null;
+            /** Format: int32 */
+            disc_count: number;
+            /** @description One format per medium that names one, in medium order. */
+            formats: string[];
+            /** @description The first label. */
+            label?: string | null;
+            status?: string | null;
+            title: string;
+            /** Format: int32 */
+            track_count: number;
+        };
+        /** @description The album's current or last edition fetch. */
+        EditionFetchResponse: {
+            latest?: null | components["schemas"]["EditionFetchView"];
         };
         /**
-         * @description The album's edition. `selected_release_mbid` is the album's edition
-         *     (its identity row); `pinned_release_mbid` is set when a person chose it.
+         * @description Where an edition fetch is.
+         * @enum {string}
          */
-        EditionPinResponse: {
-            /** @description Album id. */
-            album_id: string;
+        EditionFetchState: "waiting" | "fetching" | "done" | "failed" | "stopped";
+        /** @description One edition position an edition fetch asked for. */
+        EditionFetchTrack: {
+            /** Format: int32 */
+            disc: number;
+            /** Format: int32 */
+            position: number;
+            state: components["schemas"]["EditionFetchTrackState"];
+        };
+        /**
+         * @description Where one asked-for track is.
+         * @enum {string}
+         */
+        EditionFetchTrackState: "waiting" | "fetching" | "landed" | "failed" | "held";
+        /** @description One edition fetch: the download asking for the edition's tracks. */
+        EditionFetchView: {
+            /** @description A new fetch may be started for what is still missing. */
+            can_retry: boolean;
+            /** @description The download can be stopped. */
+            can_stop: boolean;
+            /** @description The edition fetched. */
+            release_mbid?: string | null;
             /**
-             * @description Who decided: `pin` (a person), `default` (automatic best fit), or
-             *     `none` (not identified).
+             * @description The fetch also replaces tracks the copy holds in another version;
+             *     a retry asks the same way.
              */
-            hint_source: string;
-            /** @description The edition, when a person chose it. */
-            pinned_release_mbid?: string | null;
-            /** @description The album's edition. */
-            selected_release_mbid?: string | null;
+            replace_versions: boolean;
+            state: components["schemas"]["EditionFetchState"];
+            /**
+             * @description The download fetching the tracks: the one started for them, or the
+             *     retry the queue started by itself after it.
+             */
+            task_id: string;
+            /**
+             * @description Each position asked for. Empty when the whole album was asked for
+             *     because the edition's plan could not be read.
+             */
+            tracks: components["schemas"]["EditionFetchTrack"][];
+        };
+        /**
+         * @description What happens to one file when the album takes the edition. Choosing
+         *     never deletes a file.
+         * @enum {string}
+         */
+        EditionFileFate: "keep" | "duplicate" | "other_version" | "extra";
+        /**
+         * @description What kind of edition the album has.
+         * @enum {string}
+         */
+        EditionKind: "release" | "custom" | "group_only" | "none";
+        /** @description The chosen edition's files are still being placed on it. */
+        EditionPlacingView: {
+            /**
+             * Format: int32
+             * @description Failed tries so far; above 0 means MusicBrainz did not answer.
+             */
+            attempts: number;
         };
         /** @description One of the album's files and what the edition makes of it. */
         EditionPlanFileView: {
@@ -13392,18 +13592,32 @@ export interface components {
             disc_number: number;
             /**
              * Format: int32
-             * @description The edition track the file keeps or duplicates.
+             * @description The edition track the file keeps, duplicates or is another version
+             *     of.
              */
             edition_disc_number?: number | null;
             /** Format: int32 */
             edition_position?: number | null;
+            /** @description An `other_version` file's edition track still counts as missing. */
+            fate: components["schemas"]["EditionFileFate"];
             /**
-             * @description `keep` (sits on its own edition track), `duplicate` (another copy
-             *     of a song the edition already has a file for) or `extra` (the
-             *     edition has no track for it). Choosing never deletes a file.
+             * Format: int64
+             * @description The file's length, when the scan read it.
              */
-            fate: string;
+            length_ms?: number | null;
             local_track_id: string;
+            /**
+             * @description DroppedNeedle has written this file since a person matched it by
+             *     hand, so "Undo match" is refused until that write is undone from
+             *     History. False whenever `matched_by_hand` is false.
+             */
+            match_written: boolean;
+            /**
+             * @description A person matched this file to its edition track by hand, and the
+             *     match stands: "Undo match" can take it back.
+             */
+            matched_by_hand: boolean;
+            note?: null | components["schemas"]["ReasonView"];
             title: string;
             /** Format: int32 */
             track_number: number;
@@ -13427,14 +13641,31 @@ export interface components {
             album_id: string;
             artist_name: string;
             duplicate_count: number;
+            edition: components["schemas"]["EditionFactsView"];
             extra_count: number;
             files: components["schemas"]["EditionPlanFileView"][];
+            /**
+             * Format: int64
+             * @description The album identity's row revision the plan was read at, 0 when the
+             *     album has none. Matching a file by hand echoes it.
+             */
+            identity_revision: number;
             /** @description The edition is already the album's edition. */
             is_current: boolean;
             kept_count: number;
+            /**
+             * @description Edition tracks no file holds, including those a file is another
+             *     version of.
+             */
             missing_count: number;
+            other_version_count: number;
             release_group_mbid: string;
             release_mbid: string;
+            /**
+             * @description The edition belongs to the album's current release group (false
+             *     for an album with none).
+             */
+            same_album: boolean;
             title: string;
             tracks: components["schemas"]["EditionPlanTrackView"][];
         };
@@ -13493,6 +13724,11 @@ export interface components {
             /** @default standard */
             version: components["schemas"]["EditionVersionPreference"];
         };
+        /**
+         * @description Where an album's edition stands.
+         * @enum {string}
+         */
+        EditionState: "chosen" | "confirmed" | "unconfirmed" | "unmatched" | "unidentified";
         /** @description Where one album's edition stands. */
         EditionStatusView: {
             album_id: string;
@@ -13505,6 +13741,35 @@ export interface components {
             chosen_at?: number | null;
             /** @description Who chose the edition, for a chosen one. */
             chosen_by_user_id?: string | null;
+            /**
+             * @description `release` (a MusicBrainz release), `custom` (a custom edition),
+             *     `group_only` (a release group with no release chosen) or `none`.
+             */
+            edition_kind: components["schemas"]["EditionKind"];
+            /**
+             * @description The app writes the edition's tags and file names by itself after a
+             *     choice: the album's folder manages it automatically and nothing
+             *     holds it back.
+             */
+            files_by_itself: boolean;
+            /**
+             * @description An identification of the album is queued or running, as after
+             *     "Let DroppedNeedle choose".
+             */
+            identifying: boolean;
+            /**
+             * Format: int64
+             * @description The identity's row revision, 0 when the album has none. A guarded
+             *     write echoes it.
+             */
+            identity_revision: number;
+            /**
+             * @description A file of the album sits in a folder that keeps its own tags (the
+             *     Local metadata policy, of the folder or a path rule): the app
+             *     writes no tags or names there, and downloads land as they came.
+             */
+            keeps_own_tags: boolean;
+            placing?: null | components["schemas"]["EditionPlacingView"];
             /** @description Why the edition is what it is, and what to do about it. */
             reason: components["schemas"]["ReasonView"];
             release_group_mbid?: string | null;
@@ -13513,20 +13778,184 @@ export interface components {
              * @description `chosen` (by a person), `confirmed`, `unconfirmed` (a best guess),
              *     `unmatched` (keeps its own tags), or `unidentified`.
              */
-            state: string;
+            state: components["schemas"]["EditionState"];
             /** @description The last edition change can still be taken back. */
             undo_available: boolean;
+            /** @description That write is still to happen. */
+            writing: boolean;
+        };
+        /**
+         * @description One tag that changes. Several values are joined with "; "; absent
+         *     means the tag is not there.
+         */
+        EditionTagChangeView: {
+            /**
+             * @description Tag field name, or `musicbrainz_ids` for the MusicBrainz ids,
+             *     counted in `to`.
+             */
+            field: string;
+            from?: string | null;
+            to?: string | null;
+        };
+        /** @description One file of a tag write and what it changes there. */
+        EditionTagFileView: {
+            /** @description Files written next to it (a cover, a lyrics file), by path. */
+            added_files: string[];
+            /** @description The embedded cover art changes. */
+            artwork_changed: boolean;
+            blocked?: null | components["schemas"]["ReasonView"];
+            changes: components["schemas"]["EditionTagChangeView"][];
+            /** @description The file's path in its library folder. */
+            path: string;
+            /** @description Tags outside the profile's fields that the write removes. */
+            removed_tags: string[];
+            track_id?: string | null;
+        };
+        /** @description Apply a planned tag write, or its undo. */
+        EditionTagsApplyBody: {
+            /**
+             * Format: int64
+             * @description The `row_revision` the job showed.
+             */
+            expected_row_revision: number;
+            /** @description Makes a retried apply answer with the same job. */
+            idempotency_key: string;
+            preview_token: string;
+        };
+        /** @description Preview the edition's tags in the album's files. */
+        EditionTagsBody: {
+            /**
+             * Format: int64
+             * @description The `identity_revision` the edition status showed.
+             */
+            expected_identity_revision: number;
+            /** @description The album's edition, as the edition status showed it. */
+            release_mbid: string;
+        };
+        /** @description A tag write as the edition sheet shows it. */
+        EditionTagsJobView: {
+            expired: boolean;
+            /** @description Every planned file, once planning is done. */
+            files: components["schemas"]["EditionTagFileView"][];
+            job_id: string;
+            /** @description Planned, current and not expired. */
+            ready_to_apply: boolean;
+            reason?: null | components["schemas"]["ReasonView"];
+            /**
+             * Format: int64
+             * @description Echo this on apply and undo.
+             */
+            row_revision: number;
+            /** @description Why a planned write can no longer be applied, in words. */
+            stale_reasons: string[];
+            step: components["schemas"]["EditionTagsStep"];
+            /** @description This job puts an earlier tag write back. */
+            undo: boolean;
+            /**
+             * @description A finished write, whole or partial, that `.../undo` can still put
+             *     back.
+             */
+            undo_available: boolean;
+        };
+        /** @description A tag write or its undo, queued, and the token that applies it. */
+        EditionTagsQueuedView: {
+            /**
+             * Format: double
+             * @description When the preview can no longer be applied (epoch seconds).
+             */
+            expires_at: number;
+            job_id: string;
+            /** @description Pass to `.../apply`; it is shown once. */
+            preview_token: string;
+        };
+        /**
+         * @description Where a tag write stands.
+         * @enum {string}
+         */
+        EditionTagsStep: "waiting" | "planning" | "ready" | "writing" | "done" | "failed";
+        /** @description Plan putting a tag write back. */
+        EditionTagsUndoBody: {
+            /**
+             * Format: int64
+             * @description The `row_revision` the written job showed.
+             */
+            expected_row_revision: number;
+            /** @description Makes a retried undo answer with the same job. */
+            idempotency_key: string;
         };
         /**
          * @description Standard or expanded editions.
          * @enum {string}
          */
         EditionVersionPreference: "standard" | "deluxe" | "any";
+        /**
+         * @description Effective policy for one scope or inventory row.
+         * @enum {string}
+         */
+        EffectivePolicy: "local_metadata" | "automatic" | "excluded";
+        /**
+         * @description Whether a planned file will be written.
+         * @enum {string}
+         */
+        Eligibility: "eligible" | "warning" | "blocked" | "stale";
         /** @description Change email. Null or blank clears it. */
         EmailUpdate: {
             /** @description New email, or null to clear. */
             email?: string | null;
         };
+        /** @description What the last finished run did. */
+        Emptied: {
+            /**
+             * Format: int64
+             * @description When it finished, unix milliseconds.
+             */
+            at: number;
+            /** @description Who asked, while the account exists. */
+            by?: string | null;
+            /**
+             * Format: int32
+             * @description Copies deleted, or found already gone.
+             */
+            deleted: number;
+            /** Format: int64 */
+            freed_bytes: number;
+            /**
+             * Format: int32
+             * @description Copies kept: changed in the bin, or not where it may delete.
+             */
+            kept: number;
+            /** @description Up to 20 of them, with why. */
+            kept_files: components["schemas"]["KeptName"][];
+            /**
+             * Format: int32
+             * @description Old bin folders no row named, emptied.
+             */
+            older_folders: number;
+            /**
+             * Format: int32
+             * @description Copies left for later: held by a put-back, or a bin that looked
+             *     empty.
+             */
+            waited: number;
+        };
+        /** @description Empty the bin of what it held at `before`. */
+        EmptyRecycleBinBody: {
+            /**
+             * Format: int64
+             * @description The summary's `as_of`: only copies in the bin by then are deleted.
+             */
+            before: number;
+        };
+        /** @description Empty was queued. */
+        EmptyRecycleBinView: {
+            /** @description A run was already waiting; it goes ahead with its own moment. */
+            joined: boolean;
+        };
+        /**
+         * @description Whether the bin is being emptied.
+         * @enum {string}
+         */
+        EmptyingState: "idle" | "emptying" | "stopped";
         /** @description The single enrich-batch body: both enrichable buckets in one call. */
         EnrichmentBatchRequest: {
             /** @description Albums to enrich (capped per bucket, extras ignored). */
@@ -13565,14 +13994,18 @@ export interface components {
             artists: components["schemas"]["ArtistEnrichment"][];
             /** @description Sources that degraded while answering; usually empty. */
             degradations: components["schemas"]["Degradation"][];
-            /** @description Provider that answered. */
-            source: components["schemas"]["EnrichmentSource"];
+            source?: null | components["schemas"]["ListenSource"];
         };
         /**
-         * @description Which provider answered the batch.
+         * @description Where an entry's files came from.
          * @enum {string}
          */
-        EnrichmentSource: "listenbrainz" | "lastfm" | "none";
+        EntryOrigin: "download" | "upload";
+        /**
+         * @description Where an entry is in its life.
+         * @enum {string}
+         */
+        EntryState: "held" | "placing" | "resolved" | "expired";
         /** @description The `error` object inside every error response. */
         ErrorBody: {
             /** @description SCREAMING_SNAKE machine code. */
@@ -13688,6 +14121,11 @@ export interface components {
          */
         EventsSweepScope: "followed" | "library";
         /**
+         * @description Per-track verdict against one candidate, ported from v2.
+         * @enum {string}
+         */
+        EvidenceClass: "supported" | "unknown" | "contradictory";
+        /**
          * @description Extension case policy.
          * @enum {string}
          */
@@ -13738,6 +14176,13 @@ export interface components {
              */
             retry_delay_seconds: number;
         };
+        /**
+         * @description Why a scan skipped or failed a path, or why a run ended early. The
+         *     `WALK_E*` codes name the operating system's error for a folder the scan
+         *     could not read.
+         * @enum {string}
+         */
+        FailureCode: "ROOT_UNAVAILABLE" | "ROOT_PERMISSION_DENIED" | "WALK_TIMEOUT" | "WALKER_UNAVAILABLE" | "PROBE_UNAVAILABLE" | "WALK_SUPERSEDED" | "WALK_ERROR" | "WALK_EPERM" | "WALK_ENOENT" | "WALK_EIO" | "WALK_EACCES" | "WALK_ENOTDIR" | "WALK_EISDIR" | "WALK_EINVAL" | "WALK_ENFILE" | "WALK_EMFILE" | "WALK_ENOSPC" | "WALK_EROFS" | "WALK_ENAMETOOLONG" | "WALK_ELOOP" | "WALK_EUNKNOWN" | "SYMLINK_ESCAPE_OUT" | "NON_REGULAR_FILE" | "WALK_NAME_ENCODING" | "NFC_TWIN_COLLISION" | "TAG_READ_DEFERRED" | "TAG_READ_FAILED" | "MTIME_SKEW" | "SUPERSEDED_POLICY_CHANGED" | "UNEXPECTED_WORKER_FAILURE" | "MASS_MISSING_GUARD" | "CATALOG_COMMIT_FAILED" | "RUN_END_PENDING";
         /** @description Per-kind counts. */
         FavoriteCounts: {
             /** @description Favorited albums. */
@@ -13767,11 +14212,6 @@ export interface components {
             counts: components["schemas"]["FavoriteCounts"];
             /** @description Favorites, optionally filtered by kind. */
             items: components["schemas"]["FavoriteItem"][];
-        };
-        /** @description Favorite query: optional kind filter. */
-        FavoriteQuery: {
-            /** @description Kind filter: album, artist, or track. */
-            kind?: string | null;
         };
         /** @description Favorite-status answer. */
         FavoriteStatusResponse: {
@@ -13878,6 +14318,37 @@ export interface components {
             /** @description Release years, newest first. */
             years: number[];
         };
+        /**
+         * @description One album's verdict in a repair report.
+         * @enum {string}
+         */
+        FindingCode: "valid" | "safe_detach" | "manual_identity" | "needs_review" | "unverifiable" | "stale" | "ready" | "mapping_ready" | "exact_release_required" | "exact_release_suggested" | "exact_release_auto_accepted";
+        /** @description One stored finding with the album it is about. */
+        FindingRow: {
+            album_artist_name?: string | null;
+            album_title: string;
+            /** Format: int64 */
+            album_year?: number | null;
+            apply_eligible: boolean;
+            apply_result?: null | components["schemas"]["ApplyResult"];
+            confidence: components["schemas"]["Confidence"];
+            cover_available: boolean;
+            finding_code: components["schemas"]["FindingCode"];
+            id: string;
+            local_album_id: string;
+            reason_code: string;
+            review_id?: string | null;
+            /** Format: int64 */
+            row_revision: number;
+            state: components["schemas"]["FindingState"];
+            /** Format: double */
+            updated_at: number;
+        };
+        /**
+         * @description Where a finding is.
+         * @enum {string}
+         */
+        FindingState: "open" | "applied" | "skipped" | "stale";
         /** @description Navidrome folder preference resolution for the caller. */
         FolderResolutionView: {
             /** @description Folders the server currently exposes. */
@@ -13911,8 +14382,8 @@ export interface components {
             artist_mbid: string;
             /** @description Whether auto-download is wanted. */
             auto_download: boolean;
-            /** @description Approval state: none, pending, approved, rejected or revoked. */
-            auto_download_state: string;
+            /** @description Approval state of the auto-download ask. */
+            auto_download_state: components["schemas"]["AutoDownloadState"];
             /** @description Whether the caller follows the artist. */
             followed: boolean;
         };
@@ -13922,8 +14393,8 @@ export interface components {
             artist_mbid: string;
             /** @description Whether auto-download is wanted. */
             auto_download: boolean;
-            /** @description Approval state: none, pending, approved, rejected or revoked. */
-            auto_download_state: string;
+            /** @description Approval state of the auto-download ask. */
+            auto_download_state: components["schemas"]["AutoDownloadState"];
             /**
              * Format: int64
              * @description When the follow started, epoch seconds.
@@ -13966,82 +14437,15 @@ export interface components {
             wav_tag_policy: components["schemas"]["WavTagPolicy"];
         };
         /**
-         * @description Frontend cache TTLs in backend units (milliseconds), verbatim from
-         *     the stored advanced section. The SPA reads this one endpoint instead
-         *     of the whole advanced surface.
+         * @description The advanced settings the web app reads at start. The browser's cache
+         *     lifetimes and the queue's polling interval are fixed in the web app.
          */
         FrontendCacheTTLs: {
-            /**
-             * Format: int64
-             * @description Discover TTL, ms.
-             * @default 1800000
-             */
-            discover: number;
-            /**
-             * Format: int64
-             * @description Discover-queue TTL, ms.
-             * @default 86400000
-             */
-            discover_queue: number;
             /**
              * @description Discover-queue auto-generate switch.
              * @default true
              */
             discover_queue_auto_generate: boolean;
-            /**
-             * Format: int64
-             * @description Discover-queue polling interval, ms.
-             * @default 4000
-             */
-            discover_queue_polling_interval: number;
-            /**
-             * Format: int64
-             * @description Home TTL, ms.
-             * @default 300000
-             */
-            home: number;
-            /**
-             * Format: int64
-             * @description Jellyfin sidebar TTL, ms.
-             * @default 120000
-             */
-            jellyfin_sidebar: number;
-            /**
-             * Format: int64
-             * @description Library TTL, ms.
-             * @default 300000
-             */
-            library: number;
-            /**
-             * Format: int64
-             * @description Local-files sidebar TTL, ms.
-             * @default 120000
-             */
-            local_files_sidebar: number;
-            /**
-             * Format: int64
-             * @description Playlist-sources TTL, ms.
-             * @default 900000
-             */
-            playlist_sources: number;
-            /**
-             * Format: int64
-             * @description Plex sidebar TTL, ms.
-             * @default 120000
-             */
-            plex_sidebar: number;
-            /**
-             * Format: int64
-             * @description Recently-added TTL, ms.
-             * @default 300000
-             */
-            recently_added: number;
-            /**
-             * Format: int64
-             * @description Search TTL, ms.
-             * @default 300000
-             */
-            search: number;
         };
         /** @description One genre alias. */
         GenreAlias: {
@@ -14059,9 +14463,9 @@ export interface components {
         /** @description Genre mosaic art: a collage of owned covers or a flat gradient. */
         GenreArtwork: {
             /** @description Owned covers composing the collage (empty for gradients). */
-            albums?: components["schemas"]["GenreArtworkAlbum"][];
-            /** @description `collage` or `gradient`. */
-            kind: string;
+            albums: components["schemas"]["GenreArtworkAlbum"][];
+            /** @description How the art is drawn. */
+            kind: components["schemas"]["ArtworkKind"];
             /** @description Artwork schema version. */
             version: string;
         };
@@ -14081,8 +14485,6 @@ export interface components {
         };
         /** @description Owned plus popular rows behind one genre page. */
         GenreDetailResponse: {
-            /** @description Flat artist rows (legacy consumers). */
-            artists?: components["schemas"]["ChartArtist"][];
             /** @description Genre name as requested. */
             genre: string;
             /** @description Mosaic art for the genre. */
@@ -14103,14 +14505,14 @@ export interface components {
              */
             album_count: number;
             /** @description Owned albums. */
-            albums?: components["schemas"]["ChartAlbum"][];
+            albums: components["schemas"]["AlbumRef"][];
             /**
              * Format: int64
              * @description Total owned artists.
              */
             artist_count: number;
             /** @description Owned artists. */
-            artists?: components["schemas"]["ChartArtist"][];
+            artists: components["schemas"]["ArtistRef"][];
         };
         /** @description Full genre listing. Catalogs hold dozens of genres, so no paging. */
         GenreList: {
@@ -14213,13 +14615,30 @@ export interface components {
         /** @description Popular artists and albums for a genre. */
         GenrePopularSection: {
             /** @description Popular albums. */
-            albums?: components["schemas"]["ChartAlbum"][];
+            albums: components["schemas"]["AlbumRef"][];
             /** @description Popular artists. */
-            artists?: components["schemas"]["ChartArtist"][];
+            artists: components["schemas"]["ArtistRef"][];
             /** @description More albums behind the offsets. */
             has_more_albums: boolean;
             /** @description More artists behind the offsets. */
             has_more_artists: boolean;
+        };
+        /** @description One genre inside a section. */
+        GenreRef: {
+            /**
+             * Format: int64
+             * @description Owned artists tagged with this genre, when counted.
+             */
+            artist_count?: number | null;
+            /** @description MusicBrainz id of the seed artist behind the row, when there is one. */
+            artist_id?: string | null;
+            /**
+             * Format: int64
+             * @description Listen or play count behind the row, when known.
+             */
+            listen_count?: number | null;
+            /** @description Genre name. */
+            name: string;
         };
         /**
          * @description Genre source.
@@ -14264,64 +14683,89 @@ export interface components {
             /** @description Release tag. */
             tag_name: string;
         };
-        /** @description Body for `PUT /albums/{album_id}/edition`. */
-        GroupEditionPinBody: {
-            /** @description Release MBID to pin; must be one of the album's editions. */
-            release_mbid: string;
+        /** @description Answer to handing every album back. */
+        HandBackAllResponse: {
+            /** @description Albums that now wait for their turn to be handed back. */
+            albums: number;
         };
-        /** @description Answer for the edition pin routes. */
-        GroupEditionPinResponse: {
-            /** @description The pinned edition, or absent after a clear. */
-            pinned_release_mbid?: string | null;
+        /** @description Hand-back answer. */
+        HandBackResponse: {
+            /** @description False when DroppedNeedle had not stepped back from the album. */
+            handed_back: boolean;
         };
         /**
-         * @description Health payload. `status` plus the running message keep the v2 shape;
-         *     `checkpoint` adds the latest checkpoint pass (`None` until the
-         *     checkpoint loop records one, or on states without a checkpoint service).
+         * @description Health payload, in the v2 shape. The route is public, so it says
+         *     nothing about the server's internals; admins read those from the
+         *     admin routes.
          */
         HealthResponse: {
-            checkpoint?: null | components["schemas"]["CheckpointView"];
             /** @description Human-readable running message. */
             message: string;
             /** @description Service state, `ok` when serving. */
             status: string;
         };
-        /** @description What an import or discard did. */
+        /** @description What an action did. */
         HeldActionResponse: {
-            /** @description Where the imported file now lives. */
-            final_path?: string | null;
-            /**
-             * @description A note when the outcome needs one (an upgrade's file that was no
-             *     better than the library's copy).
-             */
+            /** @description Files the library already held, so nothing was added. */
+            already_owned: number;
+            /** @description Files deleted. */
+            discarded: number;
+            /** @description Files now in the library. */
+            imported: number;
+            /** @description Why the first file still held stays, when one does. */
             message?: string | null;
-            /** @description `imported` or `discarded`. */
-            status: string;
+            /** @description Files still held. */
+            still_held: number;
         };
-        /** @description One file of a bulk re-check. */
-        HeldBulkReverifyItem: {
-            final_path?: string | null;
-            /** Format: int64 */
-            held_id: number;
-            /** @description Why a file was skipped or failed. */
-            message?: string | null;
-            release_group_mbid?: string | null;
-            /** @description `imported`, `still_held`, `skipped` or `error`. */
-            status: string;
-        };
-        /** @description Bulk re-check: these held ids, in order, or every held file. */
-        HeldBulkReverifyRequest: {
-            held_ids?: number[] | null;
-        };
-        /** @description A bulk re-check's results. */
-        HeldBulkReverifyResponse: {
-            results: components["schemas"]["HeldBulkReverifyItem"][];
-        };
-        /** @description One held file. */
-        HeldImportResponse: {
+        /** @description One entry of the held list: one download or upload, with its files. */
+        HeldEntryResponse: {
             album_title?: string | null;
             artist_name?: string | null;
-            /** Format: double */
+            /**
+             * Format: int64
+             * @description When it was made, in milliseconds.
+             */
+            created_at: number;
+            /**
+             * Format: int64
+             * @description The upload's drop import item.
+             */
+            drop_item_id?: number | null;
+            /**
+             * Format: int64
+             * @description When its held files are removed, in milliseconds.
+             */
+            expires_at: number;
+            files: components["schemas"]["HeldFileResponse"][];
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description When DroppedNeedle next retries the files offering Retry by itself,
+             *     in milliseconds. `None` when no file offers Retry, or when the next
+             *     try is at the held loop's next pass (within five minutes).
+             */
+            next_retry_at?: number | null;
+            origin: components["schemas"]["EntryOrigin"];
+            /** @description The song, for a track download. */
+            recording_mbid?: string | null;
+            release_group_mbid?: string | null;
+            /** @description `held` while it waits, `placing` while an action runs on it. */
+            state: components["schemas"]["EntryState"];
+        };
+        /**
+         * @description What a person can do with one held file, besides listening and
+         *     discarding, which every file offers.
+         * @enum {string}
+         */
+        HeldFileAction: "import" | "retry" | "use_this_version" | "use_this_file" | "recheck" | "get_from_album";
+        /** @description One held file. */
+        HeldFileResponse: {
+            actions: components["schemas"]["HeldFileAction"][];
+            /**
+             * Format: int64
+             * @description When it was held, in milliseconds.
+             */
             created_at: number;
             /** Format: int64 */
             disc_number?: number | null;
@@ -14331,7 +14775,7 @@ export interface components {
             /** Format: double */
             evidence_score?: number | null;
             /**
-             * @description What the rejecting check saw: the title and artist AcoustID heard
+             * @description What the check that held it saw: the title and artist AcoustID heard
              *     or the file's tags name, and AcoustID's score.
              */
             evidence_title?: string | null;
@@ -14340,54 +14784,66 @@ export interface components {
             file_format?: string | null;
             /** Format: int64 */
             id: number;
-            /** Format: double */
-            management_next_retry_at?: number | null;
-            /** Format: int64 */
-            management_retry_count: number;
-            /**
-             * @description `user`, `upgrade`, ... An upgrade's file replaces the library's
-             *     copy only when it is better.
-             */
-            origin: string;
-            original_filename?: string | null;
-            /** @description Stable reason code (`fingerprint_mismatch`, `target_occupied`, ...). */
-            reason: string;
+            /** @description Its name (and folder) as it came. */
+            original_name: string;
+            reason: components["schemas"]["Reason"];
             /** @description What the person can do about it. */
-            reason_action?: string | null;
+            reason_action: string;
             /** @description Specifics: which file, which marker. */
             reason_detail?: string | null;
+            /**
+             * @description `library` when our side held it and it is retried as it is; `hold`
+             *     when a person decides.
+             */
+            reason_kind: components["schemas"]["ReasonKind"];
             /** @description The reason as one plain sentence. */
-            reason_text?: string | null;
+            reason_text: string;
             recording_mbid?: string | null;
-            release_group_mbid?: string | null;
             release_mbid?: string | null;
             release_track_mbid?: string | null;
-            /** @description `soulseek`, `usenet` or `plugin:<key>`. */
+            /** @description `soulseek`, `usenet`, `plugin:<key>` or `upload`. */
             source: string;
             source_task_id?: string | null;
             /** Format: int64 */
             track_number?: number | null;
             track_title?: string | null;
-            /** Format: int64 */
-            year?: number | null;
         };
-        /** @description Held files, newest first. */
+        /** @description The files an action takes; every held file of the entry when left out. */
+        HeldFilesRequest: {
+            file_ids?: number[] | null;
+        };
+        /** @description Entries waiting for a decision, newest first. */
         HeldListResponse: {
-            items: components["schemas"]["HeldImportResponse"][];
+            entries: components["schemas"]["HeldEntryResponse"][];
         };
-        /** @description What a fingerprint re-check did. */
-        HeldReverifyResponse: {
-            final_path?: string | null;
-            /** @description `imported` when AcoustID now agrees, else `still_held`. */
-            status: string;
+        /** @description The album a curator picked, and the files it takes (all when left out). */
+        HeldMatchRequest: {
+            file_ids?: number[] | null;
+            release_group_mbid: string;
         };
-        /** @description A per-download held action's outcome. */
-        HeldUnitResponse: {
-            /** @description Files acted on. */
-            files: number;
-            /** @description `imported` or `discarded`. */
-            status: string;
+        /** @description Bulk re-check: these entries, in order, or every entry. */
+        HeldRecheckAllRequest: {
+            entry_ids?: number[] | null;
         };
+        /** @description A bulk re-check's results. */
+        HeldRecheckAllResponse: {
+            results: components["schemas"]["HeldRecheckItem"][];
+        };
+        /** @description One file of a bulk re-check. */
+        HeldRecheckItem: {
+            /** Format: int64 */
+            entry_id: number;
+            /** Format: int64 */
+            file_id: number;
+            /** @description Why it failed. */
+            message?: string | null;
+            status: components["schemas"]["HeldRecheckStatus"];
+        };
+        /**
+         * @description How one file of a bulk re-check went.
+         * @enum {string}
+         */
+        HeldRecheckStatus: "imported" | "still_held" | "error";
         /** @description One listening-history entry. */
         HistoryEntry: {
             /** @description Track album. */
@@ -14423,25 +14879,6 @@ export interface components {
              */
             total: number;
         };
-        /** @description History paging and filter query. */
-        HistoryQuery: {
-            /** @description `album` or `track`; unset means both. */
-            kind?: string | null;
-            /**
-             * Format: int32
-             * @description 1-based page.
-             */
-            page?: number | null;
-            /**
-             * Format: int32
-             * @description Rows per page (1..=100).
-             */
-            page_size?: number | null;
-            /** @description `newest` (default), `oldest`, or `status`. */
-            sort?: string | null;
-            /** @description Status filter. */
-            status?: string | null;
-        };
         /** @description Paged history list. */
         HistoryResponse: {
             /** @description Page rows. */
@@ -14468,70 +14905,24 @@ export interface components {
             total_pages: number;
         };
         /**
-         * @description Home shelves. Every shelf is optional: absence means the shelf has no
-         *     data, never a failure.
+         * @description Home: its sections, in page order, plus the page-level fields. A
+         *     section with no rows is left out.
          */
         HomeResponse: {
             discover_preview?: null | components["schemas"]["DiscoverPreview"];
-            favorite_artists?: null | components["schemas"]["ChartSection"];
-            fresh_releases?: null | components["schemas"]["ChartSection"];
             /** @description Mosaic art keyed by genre name. */
-            genre_artwork?: {
+            genre_artwork: {
                 [key: string]: components["schemas"]["GenreArtwork"];
             };
             /** @description Genre artwork schema version. */
             genre_artwork_schema_version: string;
-            genre_list?: null | components["schemas"]["ChartSection"];
             integration_status?: null | components["schemas"]["IntegrationStatus"];
-            library_albums?: null | components["schemas"]["ChartSection"];
-            library_artists?: null | components["schemas"]["ChartSection"];
-            popular_albums?: null | components["schemas"]["ChartSection"];
-            recently_added?: null | components["schemas"]["ChartSection"];
-            recently_played?: null | components["schemas"]["ChartSection"];
-            recommended_artists?: null | components["schemas"]["ChartSection"];
             /** @description True while a fuller build runs in the background (the UI polls). */
-            refreshing?: boolean;
+            refreshing: boolean;
+            /** @description The sections, in page order. */
+            sections: components["schemas"]["PageSection"][];
             /** @description Connect-a-service cards. */
-            service_prompts?: components["schemas"]["ServicePrompt"][];
-            /**
-             * @description Services that let the last build down: `unavailable` when every
-             *     read failed, `degraded` while ListenBrainz refuses popularity reads.
-             */
-            service_status?: {
-                [key: string]: string;
-            } | null;
-            top_genres?: null | components["schemas"]["ChartSection"];
-            trending_artists?: null | components["schemas"]["ChartSection"];
-            weekly_exploration?: null | components["schemas"]["WeeklyExploration"];
-            your_top_albums?: null | components["schemas"]["ChartSection"];
-        };
-        /**
-         * @description Home page cache lifetimes and the two trending rows (v2
-         *     `HomeSettings`). The ranges are v2's, enforced on save.
-         */
-        HomeSettings: {
-            /**
-             * Format: int64
-             * @description Personal rows cache lifetime, seconds (60-3600).
-             * @default 300
-             */
-            cache_ttl_personal: number;
-            /**
-             * Format: int64
-             * @description Trending rows cache lifetime, seconds (300-86400).
-             * @default 3600
-             */
-            cache_ttl_trending: number;
-            /**
-             * @description Show the "Globally trending" row.
-             * @default true
-             */
-            show_globally_trending: boolean;
-            /**
-             * @description Show the "What's hot" row.
-             * @default true
-             */
-            show_whats_hot: boolean;
+            service_prompts: components["schemas"]["ServicePrompt"][];
         };
         /**
          * @description The hub: one screen of highlights per source. Sections a source lacks
@@ -14595,9 +14986,12 @@ export interface components {
         IdentifyBody: {
             /** @description Catalog album id, as `GET /library/albums` lists it. */
             album_id: string;
-            /** @description Job kind: `automatic`, `manual`, `historical` (default: `manual`). */
-            kind?: string | null;
+            kind?: null | components["schemas"]["IdentifyKind"];
         };
+        /** @enum {string} */
+        IdentifyJobState: "queued" | "running" | "deferred" | "succeeded" | "failed" | "attention";
+        /** @enum {string} */
+        IdentifyKind: "automatic" | "manual" | "historical";
         /** @description Enqueue answer. */
         IdentifyResponse: {
             /** @description Local album id. */
@@ -14605,11 +14999,11 @@ export interface components {
             /** @description Job id. */
             job_id: string;
             /** @description Job state after enqueue. */
-            state: string;
+            state: components["schemas"]["IdentifyJobState"];
         };
         /**
-         * @description What the receiving album keeps when the combined albums name different
-         *     editions.
+         * @description What the receiving album keeps when the albums being combined name
+         *     different editions.
          * @enum {string}
          */
         IdentityChoiceBody: "detach" | "retain_manual";
@@ -14623,8 +15017,8 @@ export interface components {
         };
         /** @description Sealed identity after a review resolves. */
         IdentityView: {
-            /** @description Who decided: `automatic`, `manual`, `legacy_import`. */
-            decision_source: string;
+            /** @description Who decided. */
+            decision_source: components["schemas"]["DecisionSource"];
             /** @description Release-group MBID, when sealed. */
             release_group_mbid?: string | null;
             /** @description Release MBID, when an exact edition is sealed. */
@@ -14693,8 +15087,7 @@ export interface components {
             outcome: string;
             /** @description What to do about it. */
             reason_action?: string | null;
-            /** @description Stable reason code, when the landing was not a clean import. */
-            reason_code?: string | null;
+            reason_code?: null | components["schemas"]["Reason"];
             /** @description The reason as a plain sentence. */
             reason_text?: string | null;
         };
@@ -14811,19 +15204,19 @@ export interface components {
             /** @description Last.fm is connected. */
             lastfm: boolean;
             /** @description The native library has files. */
-            library?: boolean;
+            library: boolean;
             /** @description ListenBrainz charts and history are available. */
             listenbrainz: boolean;
             /** @description Local files back playback. Home-only; discover leaves it false. */
-            localfiles?: boolean;
+            localfiles: boolean;
             /** @description A Navidrome source is connected. */
-            navidrome?: boolean;
+            navidrome: boolean;
             /** @description A Plex source is connected. */
-            plex?: boolean;
+            plex: boolean;
             /** @description YouTube playback is configured. */
             youtube: boolean;
             /** @description The YouTube data API (quota'd) is configured. */
-            youtube_api?: boolean;
+            youtube_api: boolean;
         };
         /**
          * @description Jellyfin connection. The section URL is the single owner (the top-level
@@ -14881,27 +15274,34 @@ export interface components {
             /** @description Server users (empty unless the probe succeeded). */
             users: components["schemas"]["JellyfinUserInfo"][];
         };
-        /** @description One registered background job. */
+        /** @description One background loop. */
         JobView: {
-            /** @description `durable` or `ephemeral`. */
-            kind: string;
             /**
-             * Format: double
-             * @description Last heartbeat as unix seconds, when the job ever beat.
+             * @description Code of the last failure, such as `CHECKPOINT_FAILED`, until a
+             *     clean turn clears it.
+             */
+            last_error?: string | null;
+            /**
+             * Format: int64
+             * @description Last heartbeat as unix milliseconds, when the loop ever beat.
              */
             last_heartbeat_at?: number | null;
-            /** @description Job name, the registry key. */
+            /** @description Loop name. */
             name: string;
-            /** @description `idle`, `running`, `stopped`, or `failed`. */
-            state: string;
-            /** @description Waking channel, when the job has one. */
-            wakeup_channel?: string | null;
+            /** @description Liveness now. */
+            state: components["schemas"]["LoopState"];
         };
-        /** @description `kind` query shared by the per-request mutations. */
-        KindQuery: {
-            /** @description `album` (default) or `track`. */
-            kind?: string | null;
+        /** @description A copy a run kept. */
+        KeptName: {
+            /** @description The file's name. */
+            name: string;
+            why: components["schemas"]["KeptWhy"];
         };
+        /**
+         * @description Why a due copy was kept.
+         * @enum {string}
+         */
+        KeptWhy: "changed" | "not_in_bin" | "not_plain_file" | "unreadable";
         /** @description `GET /albums/{album_id}/lastfm`. */
         LastFmAlbumEnrichment: {
             /**
@@ -14956,7 +15356,7 @@ export interface components {
         };
         /**
          * @description Store per-user Last.fm API credentials. Either field may be the
-         *     `lastfm****` mask sentinel, meaning keep the stored value.
+         *     `********` mask, meaning keep the stored value.
          */
         LastFmCredentialsSet: {
             /** @description Last.fm API key, or the mask sentinel to keep it. */
@@ -15034,6 +15434,14 @@ export interface components {
             auth_url: string;
             /** @description Single-use token for the session exchange. */
             token: string;
+        };
+        /** @description Leave the album unmanaged. */
+        LeaveUnmanagedBody: {
+            /**
+             * Format: int64
+             * @description The `identity_revision` the edition status showed.
+             */
+            expected_identity_revision: number;
         };
         /** @description The whole feed. */
         LibraryActivity: {
@@ -15703,6 +16111,11 @@ export interface components {
          *     revision (the write CAS token).
          */
         LibraryManagementSettingsResponse: components["schemas"]["LibraryManagementSettings"] & {
+            /**
+             * @description Every tag field a profile can manage, in the editor's order, with
+             *     the genre row last.
+             */
+            managed_fields: components["schemas"]["ManagedFieldInfo"][];
             /** @description Settings content revision. */
             settings_revision: string;
         };
@@ -15969,26 +16382,21 @@ export interface components {
              * @default 03:00
              */
             daily_scan_time: string;
-            /**
-             * Format: int64
-             * @description Unix time of the last scan, if any.
-             * @default null
-             */
-            last_scan: number | null;
-            /**
-             * @description Whether the last scan succeeded.
-             * @default true
-             */
-            last_scan_success: boolean;
             /** @default 24hr */
             scan_frequency: components["schemas"]["ScanFrequency"];
         };
         /**
          * @description GET payload: the persisted schedule plus the server's timezone label, so
-         *     the UI can show what "daily at HH:MM" is relative to. The label is
-         *     computed per request and never persisted.
+         *     the UI can show what "daily at HH:MM" is relative to, and when the last
+         *     scan finished, from the scan history. Both are computed per request and
+         *     never persisted.
          */
         LibraryScanScheduleResponse: components["schemas"]["LibraryScanSchedule"] & {
+            /**
+             * Format: double
+             * @description When the last scan finished successfully, unix seconds.
+             */
+            last_scan_at?: number | null;
             /** @description Server-local timezone label for the daily-scan picker. */
             server_timezone: string;
         };
@@ -16010,10 +16418,10 @@ export interface components {
              */
             library_roots: components["schemas"]["LibraryRoot"][];
             /**
-             * @description Naming template.
-             * @default {albumartist}/{album} ({year})/{disc:02d}{track:02d} {title}.{ext}
+             * @description The naming script that places downloaded and dropped files.
+             * @default {albumartist}/{album}{conditional(is_empty(slice(default(original_date, date), 0, 4)), "", concat(" (", slice(default(original_date, date), 0, 4), ")"))}/{disc:02d}{track:02d} {title}.{ext}
              */
-            naming_template: string;
+            naming_script: string;
             /**
              * @description Staging path.
              * @default
@@ -16030,6 +16438,11 @@ export interface components {
             actions_applied: string[];
             /** @description Affected scope ids. */
             affected_scope_ids: string[];
+            /**
+             * @description Where the import naming script puts an example track; absent when
+             *     the stored script places nothing.
+             */
+            naming_example?: string | null;
             /** @description Pending revision, when awaiting reconciliation. */
             pending_policy_revision?: string | null;
             /** @description Content revision (write CAS token). */
@@ -16061,10 +16474,7 @@ export interface components {
              */
             current_tier: string;
         };
-        /**
-         * @description One monitored Lidarr artist annotated for the requesting user (v2
-         *     `LidarrArtistCandidate`).
-         */
+        /** @description One monitored Lidarr artist annotated for the requesting user. */
         LidarrArtistCandidate: {
             /** @description True when the user already follows this MBID. */
             already_following: boolean;
@@ -16077,7 +16487,7 @@ export interface components {
             /** @description True when importing would arm auto-download (`all`). */
             would_auto_download: boolean;
         };
-        /** @description Candidate list (v2 `LidarrArtistListResponse`). */
+        /** @description Candidate list. */
         LidarrArtistListResponse: {
             /** @description Monitored artists with valid MBIDs. */
             artists: components["schemas"]["LidarrArtistCandidate"][];
@@ -16088,8 +16498,8 @@ export interface components {
             total: number;
         };
         /**
-         * @description Admin-configured read-only Lidarr import connection (v2
-         *     `LidarrImportConnectionSettings`). Not a management integration.
+         * @description Admin-configured read-only Lidarr import connection. Not a management
+         *     integration.
          */
         LidarrConnectionSettings: {
             /** @description API key, Fernet-encrypted at rest, masked on read. */
@@ -16097,13 +16507,13 @@ export interface components {
             /** @description Lidarr base URL, normalised to a bare origin. */
             url: string;
         };
-        /** @description Import selection (v2 `LidarrImportRequest`). */
+        /** @description Import selection. */
         LidarrImportRequest: {
             /** @description MBIDs to import; unknown or unmonitored entries are ignored. */
             selected_mbids: string[];
         };
         /**
-         * @description Import summary (v2 `LidarrImportResponse`). `imported` counts brand-new
+         * @description Import summary. `imported` counts brand-new
          *     follows only; `already_following` is the disjoint pre-existing subset;
          *     `auto_download_enabled` counts brand-new auto-download follows only.
          */
@@ -16131,7 +16541,7 @@ export interface components {
              */
             skipped_invalid: number;
         };
-        /** @description Result of testing submitted Lidarr credentials (v2 `LidarrTestResponse`). */
+        /** @description Result of testing submitted Lidarr credentials. */
         LidarrTestResponse: {
             /** @description User-safe summary. Never echoes the URL or host. */
             message: string;
@@ -16198,6 +16608,12 @@ export interface components {
              */
             username: string;
         };
+        /**
+         * @description A listening-data service: the primary source setting, and the one the
+         *     discover shelves, charts, radio and enrichment answers name.
+         * @enum {string}
+         */
+        ListenSource: "listenbrainz" | "lastfm";
         /** @description Set the first local password on an account without one. */
         LocalPasswordSet: {
             /** @description New password, at least 12 chars. */
@@ -16234,6 +16650,12 @@ export interface components {
             /** @description Username, matched case-insensitively. */
             username: string;
         };
+        /**
+         * @description Liveness of a loop row. The table's CHECK still allows `idle`, which
+         *     nothing writes since every loop runs on the supervisor.
+         * @enum {string}
+         */
+        LoopState: "running" | "stopped" | "failed";
         /** @description One lyric line. */
         LyricLine: {
             /**
@@ -16277,6 +16699,14 @@ export interface components {
              */
             write_synced: boolean;
         };
+        /** @description Lyrics settings: the switch for the online LRCLIB lookup. */
+        LyricsSettings: {
+            /**
+             * @description Look up lyrics on LRCLIB when the server has none for a track.
+             * @default true
+             */
+            enabled: boolean;
+        };
         /** @description Stored lyrics for one track. Missing lyrics read as 404, never empty. */
         LyricsView: {
             /** @description True when lines carry timestamps. */
@@ -16306,15 +16736,26 @@ export interface components {
             bundle_id: string;
             /** @description Applied files. */
             files: components["schemas"]["ManageAppliedFile"][];
-            /** @description `committed` or `cleanup_pending`. */
-            outcome: string;
+            /** @description Whether cleanup finished. */
+            outcome: components["schemas"]["PublishOutcome"];
         };
+        /**
+         * @description How one planned file is written.
+         * @enum {string}
+         */
+        ManageFileKind: "same_path" | "move";
         /** @description One planned file inside a preview. */
         ManageFileView: {
+            /**
+             * @description For a retag, the tags the write changes, in display order: album,
+             *     album artist, title, artist, track, disc, date, label, catalog
+             *     number, barcode, then `musicbrainz_ids`. Unchanged tags are left
+             *     out. Empty for a move.
+             */
+            changes: components["schemas"]["ManageTagChange"][];
             /** @description Destination `root/rel`. */
             dest: string;
-            /** @description `same_path` or `move`. */
-            kind: string;
+            kind: components["schemas"]["ManageFileKind"];
             /** @description Source `root/rel`. */
             source: string;
             /** @description Stable local track id. */
@@ -16348,6 +16789,11 @@ export interface components {
             root_id: string;
         };
         /**
+         * @description What a management preview does.
+         * @enum {string}
+         */
+        ManageKind: "retag" | "organize";
+        /**
          * @description Build a sealed management preview. Identity always resolves from
          *     the accepted identify rows for `album_id`; tracks without an
          *     accepted exact mapping block the preview loudly.
@@ -16357,8 +16803,7 @@ export interface components {
             album_id: string;
             /** @description Files in the bundle. */
             items: components["schemas"]["ManageItemBody"][];
-            /** @description `retag` (same-path write) or `organize` (move). */
-            kind: string;
+            kind: components["schemas"]["ManageKind"];
         };
         /** @description Sealed preview answer. The token is single-use and short-lived. */
         ManagePreviewResponse: {
@@ -16374,6 +16819,25 @@ export interface components {
             /** @description Single-use confirmation token. */
             preview_token: string;
         };
+        /** @description One tag a retag would change. */
+        ManageTagChange: {
+            /**
+             * @description Tag field name (`album`, `track_number`, ...), or `musicbrainz_ids`
+             *     for every MusicBrainz id field together.
+             */
+            field: string;
+            /**
+             * @description The file's value now, several values joined with "; "; null when
+             *     absent. Always null for `musicbrainz_ids`.
+             */
+            from?: string | null;
+            /**
+             * @description The value after the write; null when the write removes the tag.
+             *     For `musicbrainz_ids`, how many id fields change and stay, such as
+             *     "4 changed, 2 kept".
+             */
+            to?: string | null;
+        };
         /** @description Undo one published bundle as a new previewed operation. */
         ManageUndoBody: {
             /** @description Source operation bundle id. */
@@ -16383,8 +16847,8 @@ export interface components {
         ManageUndoResponse: {
             /** @description Undo operation bundle id. */
             bundle_id: string;
-            /** @description `committed` or `cleanup_pending`. */
-            outcome: string;
+            /** @description Whether cleanup finished. */
+            outcome: components["schemas"]["PublishOutcome"];
             /** @description Restored track ids. */
             restored: string[];
         };
@@ -16402,6 +16866,25 @@ export interface components {
             field: string;
             /** @default replace */
             mode: components["schemas"]["FieldMode"];
+        };
+        /** @description One row of a profile's field table. */
+        ManagedFieldInfo: {
+            /** @description Whether replace offers to clear the value when the source has none. */
+            clearable: boolean;
+            /** @description What the editor calls it. */
+            label: string;
+            /** @description Whether merge is offered. */
+            mergeable: boolean;
+            /** @description The modes the field offers. */
+            modes: components["schemas"]["FieldMode"][];
+            /** @description The profile's name for the field. */
+            name: string;
+            /**
+             * @description What MusicBrainz fact the value comes from. `None`: nothing gives
+             *     one, so the file keeps its value unless a tagging script sets it,
+             *     or replace with clear removes it.
+             */
+            source?: string | null;
         };
         /** @description Save settings with the dry runs that confirm them. */
         ManagementActivationConfirmBody: {
@@ -16440,7 +16923,7 @@ export interface components {
             file_count: number;
             sample_paths: string[];
         };
-        /** @description Catalog filter for a `filter` selection. */
+        /** @description Catalog filter for a `filter` selection; empty matches everything. */
         ManagementCatalogFilterBody: {
             album_artist_only?: boolean;
             artist_ids?: string[];
@@ -16457,7 +16940,7 @@ export interface components {
             expected_operation_row_revision: number;
         };
         /**
-         * @description What to do with a file whose place is taken.
+         * @description What to do with a file whose destination is taken.
          * @enum {string}
          */
         ManagementDuplicateAction: "keep_existing" | "keep_incoming_alternate" | "recycle_existing_keep_incoming" | "recycle_incoming_keep_existing";
@@ -16491,7 +16974,7 @@ export interface components {
             mode: string;
             operation: components["schemas"]["OperationView"];
             origin: string;
-            phase: string;
+            phase: components["schemas"]["ManagementPhase"];
             profile_id: string;
             profile_name: string;
             profile_revision: string;
@@ -16506,6 +16989,35 @@ export interface components {
             /** @description Pass back as `cursor` for the next page; null on the last. */
             next_cursor?: string | null;
         };
+        /** @description Why library management leaves an album's files alone. */
+        ManagementHoldView: {
+            /**
+             * Format: int64
+             * @description For `your_choice`: the exclusion's revision, which re-enabling
+             *     management echoes.
+             */
+            exclusion_revision?: number | null;
+            /**
+             * @description True while the album waits for its turn after every album was
+             *     handed back at once.
+             */
+            handing_back: boolean;
+            /**
+             * Format: int64
+             * @description Since when, unix milliseconds.
+             */
+            held_at: number;
+            /**
+             * @description `your_choice` when a person chose to leave the album unmanaged.
+             *     Otherwise why DroppedNeedle stepped back by itself: `files_changed`
+             *     (its files were changed outside DroppedNeedle), `retag_followed`
+             *     (it was retagged outside DroppedNeedle), `run_undone` (a person
+             *     undid DroppedNeedle's changes to it) or `replaced_hands_off` (its
+             *     files appeared beside a hands-off album in the scan that saw that
+             *     album's files go).
+             */
+            kind: string;
+        };
         /** @description A management job: a preview, an apply in progress, or a finished one. */
         ManagementJobView: {
             /** Format: int64 */
@@ -16514,7 +17026,7 @@ export interface components {
             catalog_revision: number;
             /** Format: int64 */
             completed_count: number;
-            control_request: string;
+            control_request: components["schemas"]["ControlRequest"];
             /** Format: double */
             created_at: number;
             /** Format: int64 */
@@ -16538,8 +17050,7 @@ export interface components {
              */
             operation_row_revision: number;
             origin: string;
-            /** @description `planning`, `ready`, `applying`, `undoing`, or `complete`. */
-            phase: string;
+            phase: components["schemas"]["ManagementPhase"];
             policy_revision: string;
             profile_id: string;
             profile_name: string;
@@ -16556,11 +17067,8 @@ export interface components {
             /** @description Why the preview can no longer be applied, in words. */
             stale_reasons: string[];
             stale_sample_relative_paths: string[];
-            /**
-             * @description The operation state: `queued`, `running`, `paused`, `ready`,
-             *     `succeeded`, `failed`, `cancelled`, or `stopped`.
-             */
-            state: string;
+            /** @description The operation state. */
+            state: components["schemas"]["OperationState"];
             /** Format: int64 */
             succeeded_count: number;
             summary: components["schemas"]["ManagementSummaryView"];
@@ -16592,6 +17100,13 @@ export interface components {
             /** @description The library folder it is in. */
             root_path: string;
         };
+        /**
+         * @description Where a management job is: planning its files, a preview waiting to be
+         *     applied, writing (applying, undoing or restoring originals), or done.
+         *     The worker takes a queued job in any phase but `ready` and `complete`.
+         * @enum {string}
+         */
+        ManagementPhase: "planning" | "ready" | "applying" | "undoing" | "restoring" | "complete";
         /** @description What checking one library folder found. */
         ManagementPlacementCheckView: {
             /**
@@ -16642,8 +17157,7 @@ export interface components {
              *     `tags_changed`, `path_changed`, `sidecars`.
              */
             diff: Record<string, never>;
-            /** @description `eligible`, `warning`, `blocked`, or `stale`. */
-            eligibility: string;
+            eligibility: components["schemas"]["Eligibility"];
             /** Format: int64 */
             estimated_temporary_bytes: number;
             local_album_id?: string | null;
@@ -16694,8 +17208,6 @@ export interface components {
         };
         /** @description Delete every saved original for good. */
         ManagementPurgeBody: {
-            /** Format: int64 */
-            expected_catalog_revision: number;
             idempotency_key: string;
             impact_token: string;
             /** @description Must be `CONFIRM`. */
@@ -16709,11 +17221,6 @@ export interface components {
             baseline_count: number;
             /** Format: int64 */
             blocked_journal_count: number;
-            /**
-             * Format: int64
-             * @description Echo on the purge.
-             */
-            catalog_revision: number;
             /** @description Echo on the purge. */
             impact_token: string;
             /** Format: int64 */
@@ -16803,8 +17310,7 @@ export interface components {
             journal_states: string[];
             plan: components["schemas"]["ManagementPlanItemView"];
             result: Record<string, never>;
-            /** @description `pending`, `running`, `succeeded`, `failed`, or `not_scheduled`. */
-            work_state: string;
+            work_state: components["schemas"]["ResultState"];
         };
         /** @description One page of results. */
         ManagementResultPage: {
@@ -16953,11 +17459,53 @@ export interface components {
             /** Format: int64 */
             track_revision: number;
         };
+        /**
+         * @description Why the app stepped back from an album.
+         * @enum {string}
+         */
+        ManagementTakeoverCause: "files_changed" | "retag_followed" | "run_undone" | "replaced_hands_off";
+        /** @description Albums DroppedNeedle stepped back from. */
+        ManagementTakeoverPage: {
+            /**
+             * Format: int64
+             * @description Albums already handed back that wait for their turn.
+             */
+            handing_back: number;
+            /** @description Newest first, 100 at most. */
+            items: components["schemas"]["ManagementTakeoverView"][];
+            /**
+             * Format: int64
+             * @description How many there are in all.
+             */
+            total: number;
+        };
+        /** @description An album DroppedNeedle stepped back from. */
+        ManagementTakeoverView: {
+            album_id: string;
+            album_title: string;
+            artist_name?: string | null;
+            cause: components["schemas"]["ManagementTakeoverCause"];
+            /**
+             * Format: int64
+             * @description When it stepped back, unix milliseconds.
+             */
+            noticed_at: number;
+        };
         /** @description Preview undoing an applied job. */
         ManagementUndoPreviewBody: {
             /** Format: int64 */
             expected_operation_row_revision: number;
             idempotency_key: string;
+        };
+        /** @description Match a file by hand. */
+        MatchFileBody: {
+            /**
+             * Format: int64
+             * @description The `identity_revision` the edition plan showed.
+             */
+            expected_identity_revision: number;
+            /** @description A track of the album's current edition that no file holds. */
+            release_track_mbid: string;
         };
         /** @description MBID match result: the remote album behind a MusicBrainz id. */
         MatchView: {
@@ -16975,20 +17523,15 @@ export interface components {
          * @enum {string}
          */
         MbSourceMode: "official" | "mirror" | "community" | "brainzmash";
-        /** @description A previewed membership change to apply. */
-        MembershipApplyBody: {
-            album_artist_name?: string | null;
-            expected_album_revisions?: {
-                [key: string]: number;
-            };
+        /**
+         * @description A previewed membership change to apply: the previewed change and its
+         *     token.
+         */
+        MembershipApplyBody: components["schemas"]["MembershipPreviewBody"] & {
             /** @description Replaying a key returns the first result instead of applying twice. */
             idempotency_key?: string | null;
-            identity_choice?: components["schemas"]["IdentityChoiceBody"];
             /** @description The token the preview returned. */
             preview_token: string;
-            target_album_id?: string | null;
-            title?: string | null;
-            track_ids: string[];
         };
         /** @description A membership change to preview. */
         MembershipPreviewBody: {
@@ -17016,25 +17559,22 @@ export interface components {
              */
             track_ids: string[];
         };
-        /**
-         * @description A correction preview. Album and artist previews share this shape, as
-         *     in v2.
-         */
+        /** @description An album membership preview. */
         MembershipPreviewResponse: {
-            /** @description Ids that will point at the receiving album or artist. */
+            /** @description Album ids that will point at the receiving album. */
             aliases: string[];
             automatic_groups: components["schemas"]["AutomaticGroupView"][];
             edition_changes: components["schemas"]["EditionChangeView"][];
-            /** @description Competing editions or MusicBrainz artists. */
+            /** @description Competing editions. */
             identity_conflicts: string[];
             /** @description Send this back to apply exactly this change (valid 15 minutes). */
             preview_token: string;
-            /** @description Artist merge: references that move to the survivor, by kind. */
+            /** @description Always empty for an album change. */
             reference_counts: {
                 [key: string]: number;
             };
             source_album_ids: string[];
-            /** @description The receiving album (the surviving artist for an artist merge). */
+            /** @description The receiving album. */
             target_album_id?: string | null;
             track_ids: string[];
         };
@@ -17110,7 +17650,7 @@ export interface components {
         /** @description `GET /albums/{album_id}/more-by-artist`. */
         MoreByArtistResponse: {
             /** @description Other release groups by the artist, in MusicBrainz browse order. */
-            albums: components["schemas"]["DiscoveryAlbum"][];
+            albums: components["schemas"]["AlbumRef"][];
             /** @description The artist's name, empty when MusicBrainz had nothing. */
             artist_name: string;
         };
@@ -17185,12 +17725,6 @@ export interface components {
             community_acknowledged: boolean;
             /**
              * Format: int64
-             * @description Concurrent searches.
-             * @default 1
-             */
-            concurrent_searches: number;
-            /**
-             * Format: int64
              * @description Source generation.
              * @default 1
              */
@@ -17224,12 +17758,6 @@ export interface components {
              */
             community_acknowledged: boolean | null;
             /**
-             * Format: int64
-             * @description Concurrent searches.
-             * @default 6
-             */
-            concurrent_searches: number;
-            /**
              * Format: double
              * @description Requests per second.
              * @default 1
@@ -17258,11 +17786,6 @@ export interface components {
             /** @description Folder name. */
             name: string;
         };
-        /**
-         * @description Which service backs scrobble-targeted discovery.
-         * @enum {string}
-         */
-        MusicSource: "listenbrainz" | "lastfm";
         /** @description One naming script. */
         NamingScript: {
             /**
@@ -17408,11 +17931,6 @@ export interface components {
              */
             priority: number;
             /**
-             * @description Indexer type tag (stored as `type`; renamed for the keyword).
-             * @default newznab
-             */
-            type: string;
-            /**
              * @description Indexer base URL.
              * @default
              */
@@ -17430,13 +17948,8 @@ export interface components {
         NextSourceResponse: {
             /** Format: int64 */
             candidate_index?: number | null;
-            status: string;
+            status: components["schemas"]["TaskStatus"];
             success: boolean;
-        };
-        /** @description Query for clearing presence: which device stopped. */
-        NowPlayingDeleteQuery: {
-            /** @description Device slug (`web` default, the v2 spelling). */
-            device?: string | null;
         };
         /**
          * @description One live session, already privacy-projected (same JSON as the
@@ -17511,13 +18024,6 @@ export interface components {
             /** @description IdP authorize URL (PKCE + state baked in). */
             authorize_url: string;
         };
-        /** @description OIDC callback query (IdP redirect target). */
-        OidcCallbackQuery: {
-            /** @description Authorization code from the IdP. */
-            code: string;
-            /** @description State echoed from the authorize step. */
-            state: string;
-        };
         /** @description OIDC connection. */
         OidcConnection: {
             /**
@@ -17560,12 +18066,10 @@ export interface components {
         };
         /** @description The evidence behind one candidate release. */
         OperationCandidateEvidenceView: {
-            /** @description `supported`, `unknown`, or `contradictory`. */
-            album_artist_classification: string;
+            album_artist_classification: components["schemas"]["EvidenceClass"];
             album_artist_name: string;
             album_title: string;
-            /** @description `supported`, `unknown`, or `contradictory`. */
-            album_title_classification: string;
+            album_title_classification: components["schemas"]["EvidenceClass"];
             artist_mbid?: string | null;
             /**
              * Format: double
@@ -17616,6 +18120,11 @@ export interface components {
             /** @description Whether the operation succeeded. */
             success: boolean;
         };
+        /**
+         * @description Where a job is in its life.
+         * @enum {string}
+         */
+        OperationState: "queued" | "running" | "paused" | "ready" | "succeeded" | "failed" | "cancelled" | "stopped";
         /** @description One local file against one candidate release. */
         OperationTrackEvidenceView: {
             /** Format: int32 */
@@ -17623,11 +18132,12 @@ export interface components {
             /** Format: int32 */
             candidate_track_position?: number | null;
             candidate_track_title?: string | null;
-            /** @description `supported`, `unknown`, or `contradictory`. */
-            classification: string;
+            classification: components["schemas"]["EvidenceClass"];
             /**
              * @description What ties the file to the release track (`embedded_id`, `acoustid`,
-             *     `title_position_length`), or why it does not.
+             *     `title_position_length`, or `track_id_elsewhere`: the recording ID,
+             *     on a file whose track ID belongs to another edition), or why it does
+             *     not.
              */
             evidence_kinds: string[];
             local_track_id: string;
@@ -17638,8 +18148,8 @@ export interface components {
         OperationView: {
             /** Format: int64 */
             completed_count: number;
-            /** @description A control the worker has not acted on yet: `none`, `pause`, `stop`. */
-            control_request: string;
+            /** @description A control the worker has not acted on yet. */
+            control_request: components["schemas"]["ControlRequest"];
             /** Format: double */
             created_at: number;
             /** Format: int64 */
@@ -17668,11 +18178,8 @@ export interface components {
             selected_reidentification_candidate_key?: string | null;
             /** Format: int64 */
             skipped_count: number;
-            /**
-             * @description `queued`, `running`, `paused`, `ready`, `succeeded`, `failed`,
-             *     `cancelled`, or `stopped`.
-             */
-            state: string;
+            /** @description Where the job is in its life. */
+            state: components["schemas"]["OperationState"];
             /** Format: int64 */
             succeeded_count: number;
             terminal_code?: string | null;
@@ -17694,8 +18201,7 @@ export interface components {
              *     `reason_code`, `candidate_keys`).
              */
             result: Record<string, never>;
-            /** @description `pending`, `running`, `succeeded`, `failed`, or `skipped`. */
-            state: string;
+            state: components["schemas"]["WorkState"];
         };
         Option: null | {
             [key: string]: "degraded" | "error";
@@ -17781,6 +18287,15 @@ export interface components {
             sidecar_patterns: string[];
             /** @default remove_after_confirmed_move */
             source_cleanup: components["schemas"]["SourceCleanupMode"];
+        };
+        /** @description One section of a page. */
+        PageSection: {
+            /** @description Its rows. */
+            content: components["schemas"]["SectionContent"];
+            /** @description Which section it is. */
+            key: components["schemas"]["SectionKey"];
+            /** @description The zone it is shown in. */
+            zone: components["schemas"]["SectionZone"];
         };
         /** @description Change password on an account that already has one. */
         PasswordChange: {
@@ -17905,10 +18420,26 @@ export interface components {
              */
             track_count: number;
         };
+        /** @description Who made an artist's picture and under which licence. Plain text. */
+        PhotoCredit: {
+            /** @description The author, when the source names one. */
+            author?: string | null;
+            /** @description The picture's page at its source, http or https. */
+            file_url: string;
+            /** @description The licence's short name, such as `CC BY-SA 4.0`. */
+            licence?: string | null;
+            /** @description The licence's page, http or https. */
+            licence_url?: string | null;
+        };
         /** @description Pick one candidate. */
         PickRequest: {
             /** @description `candidate_index` of the candidate to download. */
             candidate_index: number;
+            /**
+             * @description Download it even though it is outside the download settings (its
+             *     `refusal` is not empty). Without it such a pick answers 409.
+             */
+            confirm_policy_break?: boolean;
         };
         /** @description The download a pick started. */
         PickResponse: {
@@ -18056,8 +18587,7 @@ export interface components {
             count?: number;
             /** @description Playlist to extend. */
             playlist_id: string;
-            /** @description Provider preference (`listenbrainz`, `lastfm`). */
-            source?: string | null;
+            source?: null | components["schemas"]["ListenSource"];
         };
         /** @description Suggested rows for a playlist. */
         PlaylistSuggestionsResponse: {
@@ -18238,11 +18768,6 @@ export interface components {
              * @default
              */
             plex_url: string;
-            /**
-             * @description Scrobble back to Plex.
-             * @default true
-             */
-            scrobble_to_plex: boolean;
         };
         /** @description One Plex music-library section. */
         PlexLibrarySectionInfo: {
@@ -18320,6 +18845,11 @@ export interface components {
             valid: boolean;
         };
         /**
+         * @description What a plugin may declare it does.
+         * @enum {string}
+         */
+        PluginCapability: "scrobbler" | "purchase_links" | "download_client" | "indexer" | "subscriber" | "publisher" | "metadata_provider" | "scheduler" | "streaming_source" | "library_writer";
+        /**
          * @description One linked external account. Never carries the secret, only the name.
          *     The schema rename keeps this distinct from the remotes
          *     `ConnectionStatus` in the one OpenAPI document; the wire shape is
@@ -18349,17 +18879,62 @@ export interface components {
             /** @description Tags or genres. */
             tags: string[];
         };
+        /**
+         * @description Whether a plugin's file is still in the library.
+         * @enum {string}
+         */
+        PluginFileState: "added" | "taken_back";
+        /** @description One file a plugin added to the library. */
+        PluginFileView: {
+            /**
+             * Format: int64
+             * @description When it was added, in unix milliseconds.
+             */
+            added_at: number;
+            /** @description The change that added it; undo it to take the file back. */
+            bundle_id: string;
+            /** @description Path under the library folder. */
+            relative_path: string;
+            /** @description Library folder id. */
+            root_id: string;
+            /**
+             * Format: int64
+             * @description Size in bytes.
+             */
+            size: number;
+            state: components["schemas"]["PluginFileState"];
+        };
+        /** @description A page of a plugin's files, newest first. */
+        PluginFilesPage: {
+            items: components["schemas"]["PluginFileView"][];
+            /** @description Cursor for the next page, when there is one. */
+            next_cursor?: string | null;
+        };
+        /** @description One plugin's answer to `plugin.health`. */
+        PluginHealth: {
+            /** @description Whether it has the settings it needs. */
+            configured: boolean;
+            /** @description Detail for the admin. */
+            message?: string;
+            /** @description Whether it works. */
+            status: components["schemas"]["PluginHealthStatus"];
+        };
+        /**
+         * @description What a plugin says about itself.
+         * @enum {string}
+         */
+        PluginHealthStatus: "ok" | "error";
         /** @description One plugin as the admin UI sees it. */
         PluginInfo: {
             /**
              * @description Declared capabilities the server sends calls for while the plugin is
-             *     enabled (those active for its `api_version`).
+             *     enabled.
              */
-            active_capabilities?: string[];
+            active_capabilities?: components["schemas"]["PluginCapability"][];
             /** @description Author string. */
             author?: string;
-            /** @description Declared capability ids. */
-            capabilities?: string[];
+            /** @description Declared capabilities. */
+            capabilities?: components["schemas"]["PluginCapability"][];
             /** @description Short description. */
             description?: string;
             /** @description Display name. */
@@ -18418,7 +18993,7 @@ export interface components {
             /** @description Author string. */
             author?: string;
             /** @description Declared capabilities. */
-            capabilities: string[];
+            capabilities: components["schemas"]["PluginCapability"][];
             /**
              * @description The exact commit that will be installed. Send it back to install
              *     exactly this code.
@@ -18480,6 +19055,7 @@ export interface components {
              * @description Events skipped because the plugin was still busy with the last one.
              */
             dropped_events?: number;
+            health?: null | components["schemas"]["PluginHealth"];
             /** @description Capabilities the plugin said it implements. */
             implemented_capabilities?: string[];
             /** @description Last start failure, crash or protocol problem. */
@@ -18510,7 +19086,7 @@ export interface components {
         };
         /** @description One enabled plugin acquisition source. */
         PluginSource: {
-            /** @description Whether the source is ready to use. */
+            /** @description Whether the plugin says it has the settings it needs. */
             configured?: boolean;
             /** @description Display name. */
             display_name?: string;
@@ -18518,11 +19094,10 @@ export interface components {
             has_client?: boolean;
             /** @description Whether the plugin serves searches for this source. */
             has_indexer?: boolean;
-            /**
-             * @description `ok` (running), `degraded` (restarting), `error` (cannot start) or
-             *     `unknown` (starting or stopped).
-             */
-            health?: string;
+            /** @description Health of the source. */
+            health: components["schemas"]["PluginSourceHealth"];
+            /** @description The plugin's own health message, when it gave one. */
+            health_message?: string;
             /** @description Source key (`plugin:<name>` or `usenet`). */
             key: string;
             /** @description Owning plugin name. */
@@ -18530,6 +19105,11 @@ export interface components {
             /** @description Indexer target source. */
             target_source?: string;
         };
+        /**
+         * @description Health of one plugin source.
+         * @enum {string}
+         */
+        PluginSourceHealth: "ok" | "degraded" | "error" | "unknown";
         /** @description Update an installed plugin from its GitHub source. */
         PluginSourceUpdateRequest: {
             /**
@@ -18570,51 +19150,13 @@ export interface components {
             };
         };
         /**
-         * @description Admin preview of an unsaved policy against persisted state:
-         *     persisted-state bucket counts only.
-         */
-        PolicyImpactResponse: {
-            /**
-             * Format: int64
-             * @description Rows awaiting review.
-             */
-            awaiting_review: number;
-            /**
-             * Format: int64
-             * @description Held reviews.
-             */
-            held_reviews: number;
-            /** @description Whether a down-level image would preserve acquisition behavior. */
-            legacy_representable: boolean;
-            /**
-             * Format: int64
-             * @description Manual search jobs that would re-resolve.
-             */
-            manual_search_jobs: number;
-            /**
-             * Format: int64
-             * @description Queued rows with no attempts yet.
-             */
-            queued_without_attempts: number;
-            /**
-             * Format: int64
-             * @description Remote-queued zero-byte rows.
-             */
-            remote_queued_zero_byte: number;
-            /**
-             * Format: int64
-             * @description Transferring rows (immutable under the new policy).
-             */
-            transferring_immutable: number;
-        };
-        /**
          * @description Which kind of scope a policy-tree node stands for.
          * @enum {string}
          */
         PolicyNodeKind: "root" | "rule";
         /**
          * @description Safe, signed-in-user projection of the acquisition policy: the quality
-         *     summary sentence plus the source-mode label only, no admin internals.
+         *     summary sentence and the recipe verdict only, no admin internals.
          */
         PolicySummaryResponse: {
             /** @description Whether a down-level image reproduces acquisition behavior. */
@@ -18623,31 +19165,8 @@ export interface components {
             quality_recipe_error?: string | null;
             /** @description Read-only recipe verdict: `v1`, `v2`, `non_convertible`, `invalid`. */
             quality_recipe_status: string;
-            /** @description Source-mode label. */
-            source_mode: string;
             /** @description Backend-composed contract sentence. */
             summary: string;
-        };
-        /** @description One page of a popular-albums or your-top chart. */
-        PopularAlbumsPage: {
-            /** @description True when more rows follow. */
-            has_more: boolean;
-            /** @description Ranked albums for the page. */
-            items: components["schemas"]["ChartAlbum"][];
-            /** @description Human range label. */
-            label: string;
-            /**
-             * Format: int64
-             * @description Limit behind this page.
-             */
-            limit: number;
-            /**
-             * Format: int64
-             * @description Offset behind this page.
-             */
-            offset: number;
-            /** @description Range key behind this page. */
-            range_key: string;
         };
         /**
          * @description One precache run starting. The run continues in the background under
@@ -18680,10 +19199,15 @@ export interface components {
             ready_album_count: number;
             selected_root_count: number;
         };
+        /**
+         * @description Whether a queue card's YouTube preview was found.
+         * @enum {string}
+         */
+        PreviewStatus: "available" | "not_found" | "unavailable";
         /** @description One previewed track. */
         PreviewTrackItem: {
             /** @description Artist name. */
-            artist_name?: string;
+            artist_name: string;
             /**
              * Format: int64
              * @description Preview length in seconds, when known.
@@ -18695,14 +19219,14 @@ export interface components {
              */
             position?: number | null;
             /** @description Preview audio URL (short-lived, never long-cached). */
-            preview_url?: string;
+            preview_url: string;
             /** @description Track title. */
             title: string;
         };
         /** @description Primary music source selection. */
         PrimaryMusicSource: {
             /** @default listenbrainz */
-            source: components["schemas"]["MusicSource"];
+            source: components["schemas"]["ListenSource"];
         };
         /** @description Post-publish notifications. */
         ProfileNotificationSettings: {
@@ -18723,11 +19247,48 @@ export interface components {
          */
         ProfileResponse: components["schemas"]["UserResponse"];
         /**
+         * @description A service a connect-a-service card points at.
+         * @enum {string}
+         */
+        PromptService: "listenbrainz" | "lastfm" | "jellyfin" | "download-client";
+        /**
+         * @description The calls one rate row sent at one priority that ended one way, since
+         *     the server started.
+         */
+        ProviderCallsView: {
+            /**
+             * Format: int64
+             * @description Answer body bytes read, headers excluded.
+             */
+            body_bytes: number;
+            /**
+             * Format: int64
+             * @description Calls sent, retries included.
+             */
+            calls: number;
+            /**
+             * Format: int64
+             * @description Calls sent in the last minute.
+             */
+            calls_last_minute: number;
+            /** @description What came back. */
+            outcome: components["schemas"]["CallOutcome"];
+            /** @description How urgent the callers were. */
+            priority: components["schemas"]["RequestPriority"];
+            /** @description Rate row name, as in the limiter rows, e.g. `musicbrainz`. */
+            source: string;
+        };
+        /**
          * @description What the surviving artist keeps when the merged artists name different
          *     MusicBrainz artists.
          * @enum {string}
          */
         ProviderChoiceBody: "detach" | "retain_survivor";
+        /**
+         * @description Where a cached answer came from. Every key starts with one.
+         * @enum {string}
+         */
+        ProviderDataSource: "musicbrainz" | "listenbrainz" | "lastfm" | "audiodb" | "wikidata" | "purchase" | "plugins" | "youtube" | "lrclib" | "previews";
         /** @description One provider's limiter posture. */
         ProviderLimiterView: {
             /**
@@ -18748,12 +19309,27 @@ export interface components {
             /** @description Provider name, e.g. `musicbrainz`. */
             source: string;
         };
-        /** @description Provider limiter and slot snapshot. */
+        /** @description What one provider holds in the cache file. */
+        ProviderSourceStats: {
+            /**
+             * Format: int64
+             * @description Their size in bytes.
+             */
+            bytes: number;
+            /**
+             * Format: int64
+             * @description Answers held.
+             */
+            rows: number;
+            /** @description The provider. */
+            source: components["schemas"]["ProviderDataSource"];
+        };
+        /** @description Provider limiters and the outbound calls counted since start. */
         ProviderStatsResponse: {
-            /** @description Limiter posture per provider. */
-            providers: components["schemas"]["ProviderLimiterView"][];
-            /** @description Slot-lane posture. */
-            slots: components["schemas"]["SlotView"];
+            /** @description Call counts per rate row, priority and outcome, in row order. */
+            calls: components["schemas"]["ProviderCallsView"][];
+            /** @description Limiter posture per rate row, in name order. */
+            limiters: components["schemas"]["ProviderLimiterView"][];
         };
         /** @description Single Prowlarr connection (Prowlarr multiplexes its own indexers). */
         ProwlarrConnection: {
@@ -18788,6 +19364,30 @@ export interface components {
             version?: string | null;
         };
         /**
+         * @description The addresses at which this DroppedNeedle is served, for a deployment
+         *     whose reverse proxy leaves the server with the wrong idea of its own
+         *     address. The session origin check accepts a change from a page at one of
+         *     them, on top of the address it works out for itself.
+         *
+         *     A section of its own, so that saving another one can never empty it.
+         *     `origins` has no default for the same reason: a save that misspells the
+         *     field is refused, where a default would store an empty list. A settings
+         *     file with no such section still reads as the empty list.
+         */
+        PublicAddress: {
+            /**
+             * @description Up to eight origins such as `https://music.example.com` or
+             *     `http://192.168.1.5:8688`: scheme, host and optional port, no path.
+             *     Stored the way a browser sends `Origin`.
+             */
+            origins: string[];
+        };
+        /**
+         * @description Outcome of one bundle publication.
+         * @enum {string}
+         */
+        PublishOutcome: "committed" | "cleanup_pending";
+        /**
          * @description What kind of purchase a link offers.
          * @enum {string}
          */
@@ -18816,6 +19416,21 @@ export interface components {
             free: components["schemas"]["PurchaseLink"][];
             /** @description Mail-order stores. */
             physical: components["schemas"]["PurchaseLink"][];
+        };
+        /**
+         * @description What a repair job checks, in `library_repair_snapshots.purpose`
+         *     with v2's names.
+         * @enum {string}
+         */
+        Purpose: "existing_matches" | "management_readiness" | "catalog_identity_hygiene" | "play_history_filing";
+        /** @description What a put-back did not bring back. */
+        PutBackView: {
+            /**
+             * @description Files that were not put back because their copy is gone from the
+             *     recycle bin or changed there, as paths inside their library folder.
+             *     Empty when every file went back.
+             */
+            missing: string[];
         };
         /**
          * @description One ordered, closed format-quality recipe entry. Unknown keys are
@@ -18847,15 +19462,10 @@ export interface components {
              * @description Custom FLAC sample rate.
              */
             sample_rate_hz?: number | null;
-            /**
-             * Format: int64
-             * @description Custom MP3 target, or canonical standard bound.
-             */
-            target_bitrate_kbps?: number | null;
         };
         /** @description One blocklisted release. */
         QuarantineEntry: {
-            /** @description v2's client label: `slskd`, `sabnzbd`, or the source for plugins. */
+            /** @description The client label: `slskd`, `sabnzbd`, or the source for plugins. */
             client_id: string;
             /** @description The blocked file (soulseek) or job (usenet). */
             filename: string;
@@ -18881,6 +19491,36 @@ export interface components {
             /** Format: int64 */
             page: number;
         };
+        /**
+         * @description What a generate trigger did.
+         * @enum {string}
+         */
+        QueueAction: "started" | "already_building" | "already_ready" | "disabled";
+        /**
+         * @description Where one user's queue build stands.
+         * @enum {string}
+         */
+        QueueBuildStatus: "idle" | "building" | "ready" | "error";
+        /** @description How deep one job kind's queue is. */
+        QueueDepthView: {
+            /**
+             * Format: int64
+             * @description Jobs that failed for good and are still kept.
+             */
+            failed: number;
+            /** @description Job kind, such as `scrobble.lastfm`. */
+            kind: string;
+            /**
+             * Format: int64
+             * @description Jobs waiting to run.
+             */
+            queued: number;
+            /**
+             * Format: int64
+             * @description Jobs running now.
+             */
+            running: number;
+        };
         /** @description Enrichment behind one queue card. */
         QueueEnrichment: {
             /** @description Artist biography snippet, when known. */
@@ -18897,11 +19537,11 @@ export interface components {
             /** @description Release date, when known. */
             release_date?: string | null;
             /** @description Genre/style tags. */
-            tags?: string[];
+            tags: string[];
             /** @description Whether YouTube search is available at all. */
-            youtube_search_available?: boolean;
+            youtube_search_available: boolean;
             /** @description YouTube search URL fallback. */
-            youtube_search_url?: string;
+            youtube_search_url: string;
             /** @description YouTube URL for the album, when found. */
             youtube_url?: string | null;
         };
@@ -18912,8 +19552,8 @@ export interface components {
         };
         /** @description What the generate trigger did, plus current build state. */
         QueueGenerateResponse: {
-            /** @description `started`, `already_building`, or `fresh`. */
-            action: string;
+            /** @description What the trigger did. */
+            action: components["schemas"]["QueueAction"];
             /**
              * Format: int64
              * @description Build timestamp (unix seconds), when built.
@@ -18930,8 +19570,8 @@ export interface components {
             queue_id?: string | null;
             /** @description True when the deck is older than its TTL. */
             stale?: boolean | null;
-            /** @description `ready`, `building`, `stale`, or `error`. */
-            status: string;
+            /** @description Build state after the trigger. */
+            status: components["schemas"]["QueueBuildStatus"];
         };
         /** @description Body ignoring one queue card. */
         QueueIgnoreRequest: {
@@ -18944,53 +19584,32 @@ export interface components {
             /** @description Release name for the ignore ledger. */
             release_name: string;
         };
-        /** @description One queue card, light or enriched. */
-        QueueItem: components["schemas"]["QueueItemFull"] | components["schemas"]["QueueItemLight"];
-        /** @description One queue card with its enrichment attached. */
-        QueueItemFull: {
-            /** @description Album name. */
-            album_name: string;
-            /** @description MusicBrainz artist id. */
-            artist_mbid: string;
-            /** @description Artist name. */
-            artist_name: string;
-            /** @description Cover art URL, when resolved. */
-            cover_url?: string | null;
-            enrichment?: null | components["schemas"]["QueueEnrichment"];
-            /** @description True when already owned. */
-            in_library?: boolean;
-            /** @description True for wildcard (out-of-profile) picks. */
-            is_wildcard?: boolean;
-            /** @description Human reason behind the pick. */
-            recommendation_reason: string;
-            /** @description MusicBrainz release-group id. */
-            release_group_mbid: string;
-        };
         /** @description One lightweight queue card: the deck renders these before enrichment. */
         QueueItemLight: {
-            /** @description Album name. */
-            album_name: string;
-            /** @description MusicBrainz artist id. */
-            artist_mbid: string;
+            /** @description The artist's MusicBrainz id. */
+            artist_id: string;
             /** @description Artist name. */
             artist_name: string;
-            /** @description Cover art URL, when resolved. */
+            /** @description Cover URL, when known. */
             cover_url?: string | null;
             /** @description True when already owned. */
-            in_library?: boolean;
+            in_library: boolean;
             /** @description True for wildcard (out-of-profile) picks. */
-            is_wildcard?: boolean;
+            is_wildcard: boolean;
+            /** @description MusicBrainz release-group id. */
+            musicbrainz_id: string;
             /** @description Human reason behind the pick. */
             recommendation_reason: string;
-            /** @description MusicBrainz release-group id. */
-            release_group_mbid: string;
+            /** @description Album title. */
+            title: string;
         };
-        /** @description Queue and job-registry snapshot. */
+        /** @description Background loops, job queues and the latest checkpoint pass. */
         QueueStatsResponse: {
-            /** @description Demand per durable-work channel. */
-            channels: components["schemas"]["WakeupChannelView"][];
-            /** @description Registered background jobs in name order. */
+            checkpoint?: null | components["schemas"]["CheckpointView"];
+            /** @description Background loops in name order. */
             jobs: components["schemas"]["JobView"][];
+            /** @description Job kinds with queued, running or failed jobs, in kind order. */
+            queues: components["schemas"]["QueueDepthView"][];
         };
         /** @description Body checking which cards already landed in the library. */
         QueueValidateRequest: {
@@ -19076,6 +19695,11 @@ export interface components {
             user_id: string;
         };
         /**
+         * @description Which tracks a radio plan may use.
+         * @enum {string}
+         */
+        RadioMode: "library" | "hybrid";
+        /**
          * @description Body planning track-level radio. The UI resolves playback per track
          *     (library rows use the native stream endpoint, the rest use YouTube or
          *     30-second previews).
@@ -19090,22 +19714,19 @@ export interface components {
             exclude_recording_mbids?: string[];
             /** @description Seed rows for `items` plans. */
             items?: components["schemas"]["RadioSeedItem"][];
-            /**
-             * @description `library` (owned only) or `hybrid` (owned plus provider picks, the
-             *     default).
-             */
-            mode?: string;
+            /** @description Which tracks the plan may use. */
+            mode?: components["schemas"]["RadioMode"];
             /** @description Seed id (mbid or genre name); empty for item seeds. */
             seed_id?: string | null;
-            /** @description Seed kind (`artist`, `album`, `genre`, `items`). */
-            seed_type: string;
+            /** @description What the plan starts from. */
+            seed_type: components["schemas"]["RadioSeedKind"];
         };
         /** @description A complete radio plan. */
         RadioPlanResponse: {
             /** @description Plan title. */
             title: string;
             /** @description Planned tracks in order. */
-            tracks?: components["schemas"]["RadioPlanTrack"][];
+            tracks: components["schemas"]["RadioPlanTrack"][];
         };
         /** @description One planned radio track. */
         RadioPlanTrack: {
@@ -19114,7 +19735,7 @@ export interface components {
             /** @description Album title, when known. */
             album_name?: string | null;
             /** @description MusicBrainz artist id, when known. */
-            artist_mbid?: string;
+            artist_mbid: string;
             /** @description Artist name. */
             artist_name: string;
             /**
@@ -19125,7 +19746,7 @@ export interface components {
             /** @description File container for owned rows, when known. */
             file_format?: string | null;
             /** @description True when owned (resolves to the native stream endpoint). */
-            in_library?: boolean;
+            in_library: boolean;
             /** @description Native file id for owned rows, when known. */
             local_file_id?: string | null;
             /** @description MusicBrainz recording id, when known. */
@@ -19142,10 +19763,9 @@ export interface components {
             count?: number;
             /** @description Seed id (mbid or genre name). */
             seed_id: string;
-            /** @description Seed kind (`artist`, `album`, `genre`). */
-            seed_type: string;
-            /** @description Provider preference (`listenbrainz`, `lastfm`). */
-            source?: string | null;
+            /** @description What the shelf starts from (`artist`, `album` or `genre`). */
+            seed_type: components["schemas"]["RadioSeedKind"];
+            source?: null | components["schemas"]["ListenSource"];
         };
         /** @description One seed row for an item-seeded radio plan. */
         RadioSeedItem: {
@@ -19159,10 +19779,67 @@ export interface components {
             artist_name?: string;
         };
         /**
+         * @description The seed a radio shelf or plan starts from.
+         * @enum {string}
+         */
+        RadioSeedKind: "artist" | "album" | "genre" | "items";
+        /**
+         * @description What a rating is on: the table's `item_kind` values.
+         * @enum {string}
+         */
+        RatedKind: "artist" | "album" | "track";
+        /** @description Rating-lookup body: local ids of each kind, at most 1000 of each. */
+        RatingLookupBody: {
+            /** @description Album ids. */
+            album_ids?: string[];
+            /** @description Artist ids. */
+            artist_ids?: string[];
+            /** @description Track ids. */
+            track_ids?: string[];
+        };
+        /**
+         * @description The caller's ratings of the looked-up ids. Each map holds only the ids
+         *     the caller rated: an absent id is not rated.
+         */
+        RatingLookupResponse: {
+            /** @description Album id to rating. */
+            albums: {
+                [key: string]: number;
+            };
+            /** @description Artist id to rating. */
+            artists: {
+                [key: string]: number;
+            };
+            /** @description Track id to rating. */
+            tracks: {
+                [key: string]: number;
+            };
+        };
+        /** @description Rating-status answer. */
+        RatingStatusResponse: {
+            /**
+             * @description The id the rating is stored under: the item's current id, which
+             *     differs from the one sent after a merge.
+             */
+            item_id: string;
+            /** @description Rated kind. */
+            kind: components["schemas"]["RatedKind"];
+            /**
+             * Format: int32
+             * @description The caller's rating now, 0 when cleared.
+             */
+            rating: number;
+        };
+        /**
          * @description Raw-AAC tag policy.
          * @enum {string}
          */
         RawAacTagPolicy: "save_apev2" | "do_not_write" | "remove_apev2";
+        /**
+         * @description One reason, stored and sent by its snake_case spelling.
+         * @enum {string}
+         */
+        Reason: "weak_match" | "no_artist_evidence" | "mostly_unmatched" | "tag_mismatch" | "fingerprint_mismatch" | "fingerprint_unconfirmed" | "album_version_only" | "no_release" | "no_tracks" | "version_lower_quality" | "no_better_than_yours" | "owned_elsewhere" | "owned_on_album" | "no_album_match" | "album_not_found" | "tags_disagree" | "not_chosen_edition" | "samples" | "too_many_files" | "interrupted" | "import_failed" | "held_by_earlier_version" | "target_occupied" | "upgrade_blocked" | "library_changed" | "library_unavailable" | "naming_script_failed" | "library_folder_missing" | "local_fault" | "files_missing" | "files_unlisted" | "outside_downloads_folder" | "size_mismatch" | "corrupt" | "no_audio" | "sample" | "wrong_edition" | "not_pinned_edition" | "wrong_album" | "quality_rejected" | "not_an_upgrade" | "wrong_track" | "stalled" | "queue_timeout" | "queue_gave_way" | "never_started" | "deadline" | "source_failed" | "no_source" | "download_failed" | "album_lookup_unavailable" | "recording_unknown" | "no_album_for_recording" | "no_album_folder" | "no_album_release" | "album_releases_exhausted" | "track_not_found" | "no_download_source" | "settings_unreadable" | "journal_unreadable" | "musicbrainz_unavailable" | "held_for_review" | "tracks_missing" | "already_owned" | "cancelled" | "moved_on";
         /** @description How many reviews one reason holds. */
         ReasonCount: {
             /** Format: int64 */
@@ -19171,6 +19848,11 @@ export interface components {
             /** @description The reason code as filed (filter by this). */
             reason_code: string;
         };
+        /**
+         * @description Where a reason shows and what it offers.
+         * @enum {string}
+         */
+        ReasonKind: "hold" | "library" | "source" | "wait" | "settled";
         /**
          * @description Why a job or work item ended where it did: a stable code, a plain
          *     sentence, and what to do about it.
@@ -19189,6 +19871,54 @@ export interface components {
             expires_at: number;
             /** @description Display code (`XXXX-XXXX-XXXX-XXXX-XXXX`). */
             recovery_code: string;
+        };
+        /** @description One page of the recycle bin, newest first. */
+        RecycleBinPage: {
+            /** @description The bins can be looked at now. */
+            bins_known: boolean;
+            items: components["schemas"]["BinRemovalView"][];
+            /** @description Pass back as `cursor` for the next page; absent on the last. */
+            next_cursor?: string | null;
+            /**
+             * Format: int64
+             * @description Days a copy stays in the bin; absent while it can't be read.
+             */
+            retention_days?: number | null;
+        };
+        /** @description Whether the bin is being emptied, and what the last run did. */
+        RecycleBinStatus: {
+            last_emptied?: null | components["schemas"]["Emptied"];
+            state: components["schemas"]["EmptyingState"];
+        };
+        /** @description What emptying the bin now would delete. */
+        RecycleBinSummary: {
+            /**
+             * Format: int64
+             * @description When this was read, unix milliseconds. Empty deletes only what was
+             *     in the bin then.
+             */
+            as_of: number;
+            /**
+             * Format: int64
+             * @description Their bytes.
+             */
+            bytes: number;
+            /**
+             * Format: int32
+             * @description Files it would delete (one changed in the bin is kept instead).
+             */
+            files: number;
+            /**
+             * Format: int32
+             * @description Older bin folders the app did not record, which it would empty.
+             */
+            older_folders: number;
+            /**
+             * Format: int32
+             * @description Files it would leave: held, in use by a put-back, not found, or in
+             *     a bin it may not empty.
+             */
+            staying: number;
         };
         /**
          * @description Another user's private playlist: existence, count, and owner only. Never
@@ -19237,28 +19967,11 @@ export interface components {
             /** @description Changes whenever the job re-evaluates. */
             evidence_revision: string;
         };
-        /** @description Start an explicit re-identification. */
-        ReidentifyBody: {
-            /**
-             * Format: int64
-             * @description The album's revision as last read; refused when it moved.
-             */
-            expected_album_revision?: number | null;
-            /** @description The album's input revision as last read; refused when it moved. */
-            expected_input_revision?: string | null;
-            /** @description Makes a retried request return the same job. */
-            idempotency_key?: string | null;
-            /** @description Confirms a one-off lookup for files under a Local metadata policy. */
-            one_off_local_metadata?: boolean;
-            /** @description Evaluate only this exact MusicBrainz release. */
-            release_mbid?: string | null;
-        };
         /** @description Reimport outcome: the task as the import left it. */
         ReimportResponse: {
-            /** @description Why the import did not complete, when it did not. */
-            error_message?: string | null;
-            /** @description Task status after the import (`completed`, `partial`, `failed`). */
-            status: string;
+            reason?: null | components["schemas"]["DownloadTaskReason"];
+            /** @description Task status after the import. */
+            status: components["schemas"]["TaskStatus"];
             /** @description Whether the files reached the library (`completed` or `partial`). */
             success: boolean;
         };
@@ -19679,24 +20392,25 @@ export interface components {
              */
             year?: number | null;
         };
+        /**
+         * @description What kind of removal an undo record undoes, read from its reason code.
+         * @enum {string}
+         */
+        RemovalKind: "album" | "track" | "extras";
         /** @description What a removal took out of the catalog. */
         RemovalResponse: {
             /** @description The removed album (canonical local id) or track id. */
             id: string;
             /** @description Track ids now gone from the catalog. */
             removed_track_ids: string[];
-            /** @description Always true on a 200. */
-            success: boolean;
         };
         /** @description Extra files to move to the recycle bin. */
         RemoveExtrasBody: {
-            /** @description Local track ids the album's edition plan marks `duplicate` or `extra`. */
+            /** @description Local track ids the album's edition plan marks anything but `keep`. */
             track_ids: string[];
         };
         /** @description What removing extras did. */
         RemoveExtrasView: {
-            /** @description Pass to the undo route to put the files back. */
-            action_id: string;
             removed_track_ids: string[];
         };
         /** @description Bulk-remove body. */
@@ -19770,37 +20484,11 @@ export interface components {
             refresh_required: boolean;
         };
         /** @description One album's finding. */
-        RepairFindingView: {
-            album_artist_name?: string | null;
-            album_title: string;
-            /** Format: int64 */
-            album_year?: number | null;
-            apply_eligible: boolean;
-            /**
-             * @description `DETACHED`, `MAPPINGS_ACCEPTED`, `EDITION_ACCEPTED`, or
-             *     `STALE_SUBJECT`.
-             */
-            apply_result?: string | null;
+        RepairFindingView: components["schemas"]["FindingRow"] & {
             automatic_undo?: null | components["schemas"]["AutomaticEditionUndoInfoView"];
-            /** @description `complete` when Apply may act on it, `bounded` otherwise. */
-            confidence: string;
-            cover_available: boolean;
-            /** @description Always empty: v3 keeps no separate evidence rows. */
-            evidence_id?: string | null;
-            finding_code: string;
-            id: string;
-            local_album_id: string;
             /** @description What the finding means and what to do about it. */
             reason: components["schemas"]["ReasonView"];
-            reason_code: string;
-            review_id?: string | null;
-            /** Format: int64 */
-            row_revision: number;
-            /** @description `open`, `applied`, `skipped`, or `stale`. */
-            state: string;
             suggested_edition?: null | components["schemas"]["SuggestedEditionView"];
-            /** Format: double */
-            updated_at: number;
         };
         /** @description What a finished check found. */
         RepairSummaryView: {
@@ -19834,11 +20522,7 @@ export interface components {
             playable_after_detach_track_count: number;
             /** Format: int64 */
             provider_deferred_count: number;
-            /**
-             * @description `existing_matches`, `management_readiness`, or
-             *     `catalog_identity_hygiene`.
-             */
-            purpose: string;
+            purpose: components["schemas"]["Purpose"];
             /** Format: int64 */
             ready_album_count: number;
             /** Format: int64 */
@@ -19893,6 +20577,12 @@ export interface components {
         RequestItem: {
             /** @description Album title. */
             album_title: string;
+            /**
+             * @description A failed track request whose download found only the album's
+             *     version of the song: it can be taken from the album instead. None
+             *     when not applicable.
+             */
+            album_version_only?: boolean | null;
             /** @description Artist MBID. */
             artist_mbid?: string | null;
             /** @description Artist name. */
@@ -19909,7 +20599,7 @@ export interface components {
             completed_at?: number | null;
             /**
              * @description Custom artwork URL override. None: artwork resolves client-side
-             *     from the MBID, which is what v2's built cover URL did anyway.
+             *     from the MBID.
              */
             cover_url?: string | null;
             /**
@@ -19922,7 +20612,7 @@ export interface components {
             /**
              * Format: int64
              * @description Epoch seconds when the transfer should finish. None: no live ETA
-             *     source exists (v2 never sent one either).
+             *     source exists.
              */
             eta?: number | null;
             /**
@@ -19934,6 +20624,11 @@ export interface components {
             /** @description Album or recording MBID. */
             musicbrainz_id: string;
             /**
+             * @description What made the request: a person's ask (`user`) or a followed
+             *     artist's new release (`follow`).
+             */
+            origin: components["schemas"]["DispatchOrigin"];
+            /**
              * Format: double
              * @description Download progress percent (0-100) from the linked task, when linked.
              */
@@ -19942,8 +20637,10 @@ export interface components {
             protocol?: string | null;
             /** @description Picked candidate quality from the linked task, once picked. */
             quality?: string | null;
-            /** @description `album` or `track`. */
-            request_kind: string;
+            /** @description The edition (release MBID) the request fetches, when one is set. */
+            release_mbid?: string | null;
+            /** @description Whole album or one track. */
+            request_kind: components["schemas"]["RequestKind"];
             /**
              * Format: int64
              * @description Epoch seconds when asked.
@@ -19977,7 +20674,7 @@ export interface components {
             status: string;
             /**
              * @description Task status detail groups behind the card's expander. None until a
-             *     producer exists (v2 never sent these either).
+             *     producer exists.
              */
             status_messages?: components["schemas"]["RequestStatusMessage"][] | null;
             /** @description Linked download task. */
@@ -19988,12 +20685,7 @@ export interface components {
             track_title?: string | null;
             /** @description Primary owner id. */
             user_id?: string | null;
-            /**
-             * @description Why a dispatched request has not started, as a stable code.
-             *     `no_download_source`: no download source is set up, so the request
-             *     is held and starts by itself once one is.
-             */
-            waiting_reason?: string | null;
+            waiting_reason?: null | components["schemas"]["WaitingReason"];
             /**
              * Format: int32
              * @description Release year.
@@ -20001,9 +20693,19 @@ export interface components {
             year?: number | null;
         };
         /**
+         * @description What kind of thing a request asks for.
+         * @enum {string}
+         */
+        RequestKind: "album" | "track";
+        /**
+         * @description How urgent a provider call is. Lower wins ties in the rate limiter.
+         *     There is no default: every caller names its priority.
+         * @enum {string}
+         */
+        RequestPriority: "user_initiated" | "image_fetch" | "prefetch_visible" | "background_sync" | "opportunistic";
+        /**
          * @description One grouped status detail behind the request card's expander. Intake
-         *     has no producer for these yet (v2 never sent them
-         *     either), so views answer None until one exists.
+         *     has no producer for these yet, so views answer None until one exists.
          */
         RequestStatusMessage: {
             /** @description Detail lines. */
@@ -20011,6 +20713,12 @@ export interface components {
             /** @description Group heading, when grouped. */
             title?: string | null;
         };
+        /**
+         * @description Pending control on a run, as the runs table stores it and the API
+         *     reports it.
+         * @enum {string}
+         */
+        RequestedControl: "none" | "pause" | "stop";
         /**
          * @description Personal-mix refresh outcome. The schema renames to avoid discover's
          *     unrelated `RefreshResponse` in the shared document.
@@ -20097,15 +20805,6 @@ export interface components {
             /** @description Whether the check passed. */
             passed: boolean;
         };
-        /** @description Take back a removal of extras. */
-        RestoreExtrasBody: {
-            action_id: string;
-        };
-        /** @description Whether the files went back. */
-        RestoreExtrasView: {
-            /** @description False when a file could not be put back; it stays in the recycle bin. */
-            restored: boolean;
-        };
         /**
          * @description Pre-restore verification report. Read-only: nothing here writes or moves
          *     the live database (the actual restore stays an offline CLI).
@@ -20120,11 +20819,105 @@ export interface components {
             /** @description True when an offline restore of this backup should succeed. */
             restorable: boolean;
         };
+        /**
+         * @description Where one planned file's write is after apply.
+         * @enum {string}
+         */
+        ResultState: "pending" | "running" | "succeeded" | "failed" | "skipped" | "not_scheduled";
         /** @description A file a retag would rewrite to the chosen edition's tags. */
         RetagFileView: {
             rel_path: string;
             root_id: string;
             track_id: string;
+        };
+        /** @description One album of a retag pair, as the card shows it. */
+        RetagPairAlbumView: {
+            album_artist_name: string;
+            edition?: null | components["schemas"]["RetagPairEditionView"];
+            id: string;
+            /**
+             * Format: int64
+             * @description The edition's revision, 0 for none. Send it back with a join.
+             */
+            identity_revision: number;
+            title: string;
+            /**
+             * Format: int64
+             * @description Indexed tracks.
+             */
+            track_count: number;
+        };
+        /** @description A dismissed retag pair. */
+        RetagPairDismissResponse: {
+            /** @description False when the pair was dismissed already. */
+            dismissed: boolean;
+        };
+        /** @description An album's edition on a retag pair. */
+        RetagPairEditionView: {
+            /** @description Chosen by a person or carried over from v2. */
+            chosen: boolean;
+            /** @description A custom edition is active. It does not carry over a join. */
+            custom: boolean;
+            release_group_mbid: string;
+            release_mbid?: string | null;
+        };
+        /** @description Join a retag pair. */
+        RetagPairJoinBody: {
+            /**
+             * @description Each album's `identity_revision` as shown, by album id. Both albums
+             *     must be named.
+             */
+            expected_identity_revisions: {
+                [key: string]: number;
+            };
+            /**
+             * @description The album whose chosen edition stays. Required when
+             *     `editions_differ` is true, and must be absent otherwise.
+             */
+            keep_edition_of?: string | null;
+        };
+        /** @description A joined retag pair. */
+        RetagPairJoinResponse: {
+            /** @description The album that stays. The old album's id now opens it. */
+            album_id: string;
+        };
+        /**
+         * @description The open retag pairs, newest first (at most 100), and how many there
+         *     are.
+         */
+        RetagPairListResponse: {
+            pairs: components["schemas"]["RetagPairView"][];
+            /** Format: int64 */
+            total: number;
+        };
+        /**
+         * @description Why the scan left a retag pair for a person.
+         * @enum {string}
+         */
+        RetagPairReasonView: "chosen_matches_differ" | "tracks_elsewhere" | "custom_edition" | "replaced_hands_off";
+        /**
+         * @description Two album rows that look like one retagged album, which the scan would
+         *     not join by itself.
+         */
+        RetagPairView: {
+            /**
+             * @description Two different chosen editions remain once a custom edition on the
+             *     old album is left out: the join must name the one to keep.
+             */
+            editions_differ: boolean;
+            /**
+             * @description The row the files sit on now, or the album it was merged into
+             *     since. A join keeps this one.
+             */
+            new_album: components["schemas"]["RetagPairAlbumView"];
+            /** @description The row the files left. It holds the favorites, plays and links. */
+            old_album: components["schemas"]["RetagPairAlbumView"];
+            reason: components["schemas"]["RetagPairReasonView"];
+            /**
+             * Format: int64
+             * @description When the scan recorded the pair (Unix milliseconds).
+             */
+            recorded_at: number;
         };
         /** @description Retry-all-failed outcome. */
         RetryAllResponse: {
@@ -20224,6 +21017,8 @@ export interface components {
             /** @description Makes a retried request return the same job (single review only). */
             idempotency_key?: string | null;
         };
+        /** @enum {string} */
+        ReviewState: "pending" | "approved" | "rejected" | "dismissed" | "excluded";
         /** @description One identification review and the album it is about. */
         ReviewView: {
             /** @description Local album id. */
@@ -20251,8 +21046,8 @@ export interface components {
             resolved_by?: string | null;
             /** @description Selected candidate key, once approved. */
             selected_candidate_key?: string | null;
-            /** @description `pending`, `approved`, `rejected`, `dismissed` or `excluded`. */
-            state: string;
+            /** @description Review state. */
+            state: components["schemas"]["ReviewState"];
             /**
              * Format: int64
              * @description When it last changed (Unix milliseconds).
@@ -20354,8 +21149,7 @@ export interface components {
             id: string;
             /** @description Absolute root directory. */
             path: string;
-            /** @description Effective policy: `automatic`, `local_metadata`, `excluded`. */
-            policy: string;
+            policy: components["schemas"]["EffectivePolicy"];
         };
         /** @description Root registry listing. */
         RootsResponse: {
@@ -20368,7 +21162,10 @@ export interface components {
              *     tracks take no new managed writes until then.
              */
             held_publish_bundles: string[];
-            /** @description Opaque policy revision running scans checkpoint against. */
+            /**
+             * @description Policy revision of the roots and rules, as the library settings
+             *     show it. Send it back as `expected_policy_revision`.
+             */
             policy_revision: string;
             /** @description Configured roots. */
             roots: components["schemas"]["RootView"][];
@@ -20398,11 +21195,6 @@ export interface components {
              */
             category: string;
             /**
-             * @description Client type tag.
-             * @default sabnzbd
-             */
-            client_type: string;
-            /**
              * @description Where DroppedNeedle sees SABnzbd's completed dir.
              * @default /sabnzbd-downloads
              */
@@ -20412,12 +21204,6 @@ export interface components {
              * @default false
              */
             enabled: boolean;
-            /**
-             * Format: int64
-             * @description Post-processing level.
-             * @default 3
-             */
-            post_processing: number;
             /**
              * Format: int64
              * @description Job priority.
@@ -20430,10 +21216,7 @@ export interface components {
              */
             url: string;
         };
-        /**
-         * @description Live SABnzbd status against the saved config (v2 `SabnzbdTestResponse`,
-         *     status half).
-         */
+        /** @description Live SABnzbd status against the saved config. */
         SabnzbdStatusResponse: {
             /** @description Category list, when the probe reached it. */
             categories: string[];
@@ -20497,12 +21280,12 @@ export interface components {
             /** Format: int64 */
             row_revision: number;
             run_id: string;
-            state: string;
+            state: components["schemas"]["ScanState"];
             /** Format: int64 */
             stream_revision: number;
         };
         /**
-         * @description How the request was taken.
+         * @description How `request_run` disposed of a request (v2 `ScanRequestResult`).
          * @enum {string}
          */
         ScanDisposition: "started" | "queued" | "coalesced" | "expanded" | "conflict";
@@ -20518,6 +21301,11 @@ export interface components {
             /** Format: int64 */
             estimated_file_count: number | null;
         };
+        /**
+         * @description Classify verdict. Spelling matches v2 `comparison_result` exactly.
+         * @enum {string}
+         */
+        ScanFileVerdict: "new" | "changed" | "unchanged" | "excluded" | "candidate_missing";
         /** @description One discovered file inside a run, with its scan-assigned track id. */
         ScanFileView: {
             /** @description Path relative to the root. */
@@ -20527,7 +21315,7 @@ export interface components {
             /** @description Scan-assigned stable track id, once indexed. */
             track_id?: string | null;
             /** @description Classify verdict. */
-            verdict: string;
+            verdict: components["schemas"]["ScanFileVerdict"];
         };
         /**
          * @description Automatic-scan cadence values.
@@ -20535,21 +21323,29 @@ export interface components {
          */
         ScanFrequency: "manual" | "5min" | "10min" | "30min" | "1hr" | "6hr" | "12hr" | "24hr" | "3d" | "7d" | "daily";
         /**
+         * @description Scan kind. `rescan_files` re-reads every in-policy file even when its
+         *     stat revision is unchanged; `policy_reconcile` walks but skips tag reads.
+         * @enum {string}
+         */
+        ScanKind: "incremental" | "rescan_files" | "policy_reconcile";
+        /**
          * @description Scan kind a caller can ask for.
          * @enum {string}
          */
         ScanKindBody: "incremental" | "rescan_files" | "policy_reconcile";
+        /**
+         * @description A run's phase as the API reports it and the runs table stores it:
+         *     `queued` before the run starts, then the phase it is in or reached.
+         * @enum {string}
+         */
+        ScanPhase: "queued" | "discovering" | "indexing" | "reconciling";
         /** @description Scan request answer. */
         ScanResponse: {
-            /**
-             * @description Request disposition: `started`, `queued`, `coalesced`,
-             *     `expanded`, `conflict`.
-             */
-            disposition: string;
+            disposition: components["schemas"]["ScanDisposition"];
             /** @description Run id (fresh or coalesced). */
             run_id: string;
             /** @description Run state after the request. */
-            state: string;
+            state: components["schemas"]["ScanState"];
         };
         /** @description The run holding the worker and the next queued one. */
         ScanRunCurrentResponse: {
@@ -20561,13 +21357,13 @@ export interface components {
             /** @description What to do about it. */
             action: string;
             /** @description Stable machine code, for example `TAG_READ_FAILED`. */
-            failure_code: string;
+            failure_code: components["schemas"]["FailureCode"];
             /** @description Technical detail for diagnostics; not meant for display. */
             failure_detail: string;
             /** @description What happened, in plain words. */
             message: string;
-            /** @description `discovering`, `indexing` or `reconciling`. */
-            phase: string;
+            /** @description Phase the file failed in. */
+            phase: components["schemas"]["ScanPhase"];
             /**
              * Format: double
              * @description Unix seconds.
@@ -20605,8 +21401,7 @@ export interface components {
         };
         /** @description Answer to a scan request. */
         ScanRunRequestedResponse: {
-            /** @description Kind of the run in the way, on a conflict. */
-            conflicting_kind: string | null;
+            conflicting_kind: null | components["schemas"]["ScanKind"];
             disposition: components["schemas"]["ScanDisposition"];
             /** @description Why the request waits, when it does. */
             queued_reason: string | null;
@@ -20618,21 +21413,18 @@ export interface components {
             /** @description The run that will do the work. */
             run_id: string;
             /** @description That run's state. */
-            state: string;
+            state: components["schemas"]["ScanState"];
         };
         /** @description One scan run. */
         ScanRunView: {
-            /** @description Scope label: `all` or `selected`. */
-            aggregate_scope: string;
+            aggregate_scope: components["schemas"]["AggregateScope"];
             /**
              * Format: int64
              * @description Requests folded into this run.
              */
             coalesced_request_count: number;
             /** @description Progress counters. */
-            counters: {
-                [key: string]: number;
-            };
+            counters: components["schemas"]["Counters"];
             /**
              * Format: int64
              * @description Event revision.
@@ -20641,9 +21433,9 @@ export interface components {
             /** @description Run id. */
             id: string;
             /** @description Run kind. */
-            kind: string;
+            kind: components["schemas"]["ScanKind"];
             /** @description Current phase. */
-            phase: string;
+            phase: components["schemas"]["ScanPhase"];
             /** @description Seconds spent per phase. */
             phase_timings: {
                 [key: string]: number;
@@ -20655,10 +21447,9 @@ export interface components {
             queued_at: number;
             /** @description Who asked for the run, when someone did. */
             requested_by_user_id?: string | null;
-            /** @description Pending control: `none`, `pause` or `stop`. */
-            requested_control: string;
-            /** @description Phase a paused run picks up from. */
-            resume_phase?: string | null;
+            /** @description Pending control. */
+            requested_control: components["schemas"]["RequestedControl"];
+            resume_phase?: null | components["schemas"]["ScanPhase"];
             /**
              * Format: int64
              * @description Row revision; pause, resume and stop send it back.
@@ -20670,7 +21461,7 @@ export interface components {
              */
             started_at?: number | null;
             /** @description Run state. */
-            state: string;
+            state: components["schemas"]["ScanState"];
             /** @description What to do about the terminal code. */
             terminal_action?: string | null;
             /**
@@ -20678,12 +21469,11 @@ export interface components {
              * @description Terminal time, when terminal.
              */
             terminal_at?: number | null;
-            /** @description Terminal code, when terminal. */
-            terminal_code?: string | null;
+            terminal_code?: null | components["schemas"]["FailureCode"];
             /** @description What the terminal code means, in plain words. */
             terminal_message?: string | null;
             /** @description What triggered the run. */
-            trigger: string;
+            trigger: components["schemas"]["ScanTrigger"];
             /**
              * Format: double
              * @description Last update time.
@@ -20700,12 +21490,22 @@ export interface components {
         /** @description One scope inside a run. */
         ScanScopeView: {
             /** @description Effective policy for the scope. */
-            effective_policy: string;
+            effective_policy: components["schemas"]["EffectivePolicy"];
             /** @description Path relative to the root. */
             relative_path: string;
             /** @description Root id. */
             root_id: string;
         };
+        /**
+         * @description A run's state, as the API reports it and the runs table stores it.
+         * @enum {string}
+         */
+        ScanState: "queued" | "discovering" | "indexing" | "reconciling" | "pausing" | "paused" | "stopping" | "completed" | "cancelled" | "superseded_policy_changed" | "failed";
+        /**
+         * @description What triggered the run.
+         * @enum {string}
+         */
+        ScanTrigger: "manual" | "automatic" | "subsonic" | "startup_resume" | "policy_apply";
         /** @description One native now-playing forward, by name (v2 `NowPlayingRequest` fields). */
         ScrobbleNowPlayingRequest: {
             /** @description Album title. */
@@ -20779,28 +21579,16 @@ export interface components {
         /** @description Answer to a scrobble or now-playing forward (v2 `ScrobbleResponse`). */
         ScrobbleResponse: {
             /**
-             * @description Whether the play counted. Submit is true whenever history recorded,
-             *     even with no linked account; now-playing is true only when at least
-             *     one service queued it (the v2 accepted-quirk, kept).
+             * @description Whether the play counted. Submit is true when history recorded it,
+             *     even with no linked account, and false when the play could not be
+             *     saved; now-playing is true only when at least one service has it
+             *     (the v2 accepted-quirk, kept).
              */
             accepted: boolean;
             /** @description Per-service outcomes, keyed by service name. */
             services?: {
                 [key: string]: components["schemas"]["ServiceResult"];
             };
-        };
-        /** @description Scrobble targets. */
-        ScrobbleSettings: {
-            /**
-             * @description Scrobble to Last.fm (per-user credentials).
-             * @default false
-             */
-            scrobble_to_lastfm: boolean;
-            /**
-             * @description Scrobble to ListenBrainz.
-             * @default false
-             */
-            scrobble_to_listenbrainz: boolean;
         };
         /** @description One native scrobble, by name (v2 `ScrobbleRequest` fields). */
         ScrobbleSubmitRequest: {
@@ -20824,6 +21612,12 @@ export interface components {
              * @description Play time, unix seconds.
              */
             timestamp: number;
+            /**
+             * @description The library track played. Files the play under that track, whose own
+             *     recording and release group replace any sent. Only for a play from
+             *     the library (source `local` or none).
+             */
+            track_id?: string | null;
             /** @description Track title. */
             track_name: string;
         };
@@ -20864,7 +21658,10 @@ export interface components {
              * @description Echoed offset.
              */
             offset: number;
-            /** @description This page of hits, best first. */
+            /**
+             * @description This page of hits, best first. Library rows page in step with
+             *     MusicBrainz hits, so a page can hold up to `limit` of each.
+             */
             results: components["schemas"]["SearchResultItem"][];
             /** @description Provider health for this bucket. */
             status: components["schemas"]["SearchRemoteStatus"];
@@ -20878,7 +21675,7 @@ export interface components {
             file_count: number;
             /** @description Files it would fetch, when the source lists them. */
             files: components["schemas"]["CandidateFile"][];
-            /** @description Format label (`FLAC`, `MP3 320`, `lossless`), when known. */
+            /** @description Format label (`FLAC 24-bit`, `MP3 320`, `lossless`), when known. */
             format?: string | null;
             /**
              * Format: int64
@@ -20889,6 +21686,11 @@ export interface components {
             has_free_slot?: boolean | null;
             /** @description Usenet: the indexer that listed it. */
             indexer?: string | null;
+            /**
+             * @description Soulseek: held tracks whose length is unknown or off the edition's,
+             *     when the tracklist is known.
+             */
+            length_misses?: number | null;
             /** @description Why, in one sentence. */
             note: components["schemas"]["CandidateNote"];
             /**
@@ -20901,6 +21703,16 @@ export interface components {
              * @description Soulseek: files waiting in the peer's upload queue.
              */
             queue_length?: number | null;
+            /**
+             * @description Every way it is outside the download settings, the one to show
+             *     first. Empty when it is inside them.
+             */
+            refusal?: components["schemas"]["CandidateRefusal"][];
+            /**
+             * Format: double
+             * @description Plugin: the plugin's own score for it, from 0 to 1.
+             */
+            score?: number | null;
             /**
              * Format: int64
              * @description Total size in bytes (0 when unknown).
@@ -21026,12 +21838,16 @@ export interface components {
             /**
              * Format: int32
              * @description Match score, 0-100. MusicBrainz hits carry MusicBrainz's relevance;
-             *     library rows score 100 exact, 90 prefix, 70 substring. Ranks hits,
-             *     never filters them.
+             *     library rows score 100 exact, 90 prefix, 70 substring, and songs
+             *     matched only through their artist or album 60. A MusicBrainz hit
+             *     the library holds carries the better of the two. Library rows that
+             *     match exactly or as a prefix rank above every other row. Ranks
+             *     hits, never filters them.
              */
             score: number;
             /** @description Display title (artist name, album title, or track title). */
             title: string;
+            track?: null | components["schemas"]["SearchTrackDetail"];
             /** @description Artist type, or an `Album + Live` style type label. */
             type_info?: string | null;
             /**
@@ -21040,18 +21856,87 @@ export interface components {
              */
             year?: number | null;
         };
-        /** @description Matching albums plus playable tracks. */
-        SearchResults: {
-            /** @description Albums matching the query. */
-            albums: components["schemas"]["AlbumCard"][];
-            /** @description Tracks matching the query. */
-            tracks: components["schemas"]["SuggestionTrack"][];
+        /** @description What playing a library song and linking its album need. */
+        SearchTrackDetail: {
+            /** @description Owning library album id. */
+            album_id: string;
+            /** @description Album title as tagged on the track. */
+            album_title: string;
+            /** @description Library id of the first credited track artist, when credited. */
+            artist_id?: string | null;
+            /** @description True when the owning album has artwork. */
+            cover_available: boolean;
+            /**
+             * Format: int64
+             * @description Disc number.
+             */
+            disc_number: number;
+            /**
+             * Format: double
+             * @description Duration, seconds, when probed.
+             */
+            duration_seconds?: number | null;
+            /** @description Container or codec label, e.g. `flac`. */
+            format: string;
+            /** @description The album's release group, when identified; covers fall back to it. */
+            release_group_mbid?: string | null;
+            /**
+             * Format: int64
+             * @description Track number within the disc.
+             */
+            track_number: number;
         };
+        /** @description A section's rows, tagged by `shape`. */
+        SectionContent: {
+            /** @enum {string} */
+            shape: "shelf";
+            /** @description The shelf. */
+            shelf: components["schemas"]["ChartSection"];
+        } | {
+            /** @enum {string} */
+            shape: "shelves";
+            /** @description The shelves. */
+            shelves: components["schemas"]["ChartSection"][];
+        } | {
+            /** @description One per seed artist. */
+            entries: components["schemas"]["BecauseYouListenTo"][];
+            /** @enum {string} */
+            shape: "because";
+        } | {
+            /** @description The picks. */
+            picks: components["schemas"]["TopPicksSection"];
+            /** @enum {string} */
+            shape: "picks";
+        } | {
+            /** @enum {string} */
+            shape: "weekly";
+            /** @description The playlist. */
+            weekly: components["schemas"]["WeeklyExploration"];
+        };
+        /** @description One row inside a section, tagged by `kind`. */
+        SectionItem: (components["schemas"]["ArtistRef"] & {
+            /** @enum {string} */
+            kind: "artist";
+        }) | (components["schemas"]["AlbumRef"] & {
+            /** @enum {string} */
+            kind: "album";
+        }) | (components["schemas"]["TrackRef"] & {
+            /** @enum {string} */
+            kind: "track";
+        }) | (components["schemas"]["GenreRef"] & {
+            /** @enum {string} */
+            kind: "genre";
+        });
         /**
-         * @description One row inside a section. The `type` field on the section names which
-         *     variant the rows hold; untagged so the wire keeps flat v2-style items.
+         * @description One section of the home or discover page.
+         * @enum {string}
          */
-        SectionItem: components["schemas"]["ChartArtist"] | components["schemas"]["ChartAlbum"] | components["schemas"]["ChartTrack"] | components["schemas"]["ChartGenre"];
+        SectionKey: "popular_albums" | "trending_artists" | "weekly_exploration" | "your_top_albums" | "recently_played" | "recently_added" | "genre_list" | "favorite_artists" | "library_artists" | "library_albums" | "discover_queue" | "top_picks" | "listeners_like_you" | "playlist_discovery" | "daily_mixes" | "radio_sections" | "because_you_listen_to" | "artists_you_might_like" | "popular_in_your_genres" | "fresh_releases" | "new_from_followed" | "missing_essentials" | "rediscover" | "anniversaries" | "lastfm_recent_scrobbles" | "unexplored_genres" | "globally_trending" | "lastfm_weekly_artist_chart" | "lastfm_weekly_album_chart";
+        /**
+         * @description What a section's rows are.
+         * @enum {string}
+         */
+        SectionKind: "artists" | "albums" | "tracks" | "genres";
         /** @description One toggleable UI section. */
         SectionPrefItem: {
             /** @description Backend availability (requires + linked services). */
@@ -21093,8 +21978,22 @@ export interface components {
             /** @description Toggles to apply. */
             sections: components["schemas"]["SectionPrefUpdateItem"][];
         };
+        /**
+         * @description A group of sections on a page.
+         * @enum {string}
+         */
+        SectionZone: "whats_hot" | "for_you" | "your_library" | "browse_genres" | "essentials" | "made_for_you" | "because_you_listened" | "new_and_fresh" | "from_your_library" | "trending_now";
         /** @description Security posture settings (no secrets; the HIBP path is a local file). */
         SecuritySettings: {
+            /** @default enforce */
+            content_security_policy: components["schemas"]["ContentSecurityPolicyMode"];
+            /**
+             * @description Up to eight origins that may show DroppedNeedle in a frame, such as
+             *     a dashboard at `https://home.example.com`. Empty: nobody may.
+             *     Stored the way a browser sends `Origin`.
+             * @default []
+             */
+            frame_ancestors: string[];
             /**
              * @description Check passwords against Have-I-Been-Pwned.
              * @default true
@@ -21171,28 +22070,38 @@ export interface components {
             /** @description Card body. */
             description: string;
             /** @description Feature bullets. */
-            features?: string[];
+            features: string[];
             /** @description Icon name. */
             icon: string;
-            /** @description Service key (`listenbrainz`, `lastfm`, ...). */
-            service: string;
+            /** @description The service to connect. */
+            service: components["schemas"]["PromptService"];
             /** @description Card title. */
             title: string;
         };
         /**
-         * @description Per-service forwarding outcome (v2 `ServiceResult`). Forwarding runs in
-         *     the background, so `success` means the report was queued for delivery,
-         *     not that the service has accepted it (v2 waited for the service).
+         * @description Per-service forwarding outcome. Delivery runs in the background, so this
+         *     says the report is waiting to be sent, not that the service took it.
          */
         ServiceResult: {
-            /** @description Why the report was not queued (the forwarding queue was full). */
+            /** @description Why the report is not waiting (the play was not saved). */
             error?: string | null;
             /**
-             * @description True when the report was queued for that service. Delivery happens
-             *     afterwards with retries; a later refusal is logged, not reported.
+             * @description True when the report is waiting for that service. A scrobble waits
+             *     in a kept queue and is sent, retried while the service is down,
+             *     within two weeks of the play; a now-playing report is sent once.
              */
-            success: boolean;
+            queued: boolean;
         };
+        /**
+         * @description How a listening service fared in a discover build.
+         * @enum {string}
+         */
+        ServiceState: "degraded" | "unavailable";
+        /**
+         * @description Session kind, v2 `session_kind` values kept verbatim.
+         * @enum {string}
+         */
+        SessionKind: "standard" | "companion";
         /** @description Own sessions. */
         SessionListResponse: {
             /** @description All live sessions, current first. */
@@ -21214,8 +22123,8 @@ export interface components {
             expires_at: number;
             /** @description Session id. */
             id: string;
-            /** @description `standard` or `companion`. */
-            kind: string;
+            /** @description Browser or companion-device session. */
+            kind: components["schemas"]["SessionKind"];
             /** @description Companion device name, or the browser user agent. */
             label: string;
             /**
@@ -21238,6 +22147,14 @@ export interface components {
             /** @description Display name to keep, when favoriting. */
             name?: string | null;
         };
+        /** @description Set-rating body. */
+        SetRatingBody: {
+            /**
+             * Format: int32
+             * @description 1 to 5 stars, or 0 to clear the rating.
+             */
+            rating: number;
+        };
         /** @description First-admin setup body. Runs only against an empty user table. */
         SetupBody: {
             /** @description Display name; defaults to the username casing. */
@@ -21256,37 +22173,28 @@ export interface components {
             /** @description True when no users exist yet and setup must run. */
             setup_required: boolean;
         };
+        /**
+         * @description Where a shelf's rows came from.
+         * @enum {string}
+         */
+        ShelfSource: "listenbrainz" | "lastfm" | "jellyfin" | "musicbrainz" | "library" | "local";
         /** @description `GET /albums/{album_id}/similar`. */
         SimilarAlbumsResponse: {
             /** @description Albums by similar artists. */
-            albums: components["schemas"]["DiscoveryAlbum"][];
+            albums: components["schemas"]["AlbumRef"][];
             /** @description False when ListenBrainz is not set up. */
             configured: boolean;
             /** @description Provider that answered. */
-            source: components["schemas"]["DiscoverySource"];
-        };
-        /** @description One similar artist. */
-        SimilarArtist: {
-            /** @description True when the library holds this artist. */
-            in_library: boolean;
-            /**
-             * Format: int64
-             * @description Listen count from the provider (zero when it reports none).
-             */
-            listen_count: number;
-            /** @description Artist MBID. */
-            musicbrainz_id: string;
-            /** @description Artist name. */
-            name: string;
+            source: components["schemas"]["ListenSource"];
         };
         /** @description `GET /artists/{artist_mbid}/similar`. */
         SimilarArtistsResponse: {
             /** @description False when the provider is not set up; the list is then empty. */
             configured: boolean;
             /** @description Similar artists, most similar first. */
-            similar_artists: components["schemas"]["SimilarArtist"][];
+            similar_artists: components["schemas"]["ArtistRef"][];
             /** @description Provider that answered. */
-            source: components["schemas"]["DiscoverySource"];
+            source: components["schemas"]["ListenSource"];
         };
         /** @description Reviews one reason held back. */
         SkippedReviews: {
@@ -21294,60 +22202,16 @@ export interface components {
             count: number;
             reason: components["schemas"]["ReasonView"];
         };
-        /** @description Slot-lane posture. */
-        SlotView: {
-            /** @description Free background-lane permits. */
-            background_slots_available: number;
-            /** @description Background callers currently waiting for quiet. */
-            background_waiters: number;
-            /** @description Free image-lane permits. */
-            image_slots_available: number;
-            /** @description Whether user activity is inside the quiet window. */
-            user_active: boolean;
-            /** @description Free user-lane permits. */
-            user_slots_available: number;
-        };
-        /** @description slskd download-client connection. */
+        /**
+         * @description slskd download-client connection. Quality, timeouts and retries live in
+         *     the download policy.
+         */
         SlskdConnection: {
             /**
              * @description API key (encrypted at rest).
              * @default
              */
             api_key: string;
-            /**
-             * Format: int64
-             * @description Retry base interval.
-             * @default 15
-             */
-            auto_retry_base_interval_minutes: number;
-            /**
-             * @description Automatic retry switch.
-             * @default true
-             */
-            auto_retry_enabled: boolean;
-            /**
-             * Format: int64
-             * @description Retry attempts.
-             * @default 6
-             */
-            auto_retry_max_attempts: number;
-            /**
-             * @description Client type tag.
-             * @default slskd
-             */
-            client_type: string;
-            /**
-             * Format: int64
-             * @description Remote-queue wait timeout.
-             * @default 120
-             */
-            download_queued_timeout_minutes: number;
-            /**
-             * Format: int64
-             * @description Frozen-transfer stall timeout.
-             * @default 30
-             */
-            download_stall_timeout_minutes: number;
             /**
              * @description Relative subpath inside the mount where slskd saves (confined).
              * @default
@@ -21359,51 +22223,6 @@ export interface components {
              */
             enabled: boolean;
             /**
-             * @description FLAC/MP3 only.
-             * @default true
-             */
-            flac_mp3_only: boolean;
-            /**
-             * Format: int64
-             * @description Concurrent downloads.
-             * @default 3
-             */
-            max_concurrent_downloads: number;
-            /**
-             * Format: int64
-             * @description Failover attempts per request.
-             * @default 3
-             */
-            max_failover_attempts: number;
-            /**
-             * Format: int64
-             * @description Preferred-quality wait.
-             * @default 15
-             */
-            preferred_quality_wait_minutes: number;
-            /**
-             * Format: double
-             * @description Preflight auto-accept score.
-             * @default 0.7
-             */
-            preflight_score_auto_accept: number;
-            /**
-             * Format: double
-             * @description Preflight manual-review floor.
-             * @default 0.5
-             */
-            preflight_score_manual_min: number;
-            /**
-             * @description Best accepted tier label.
-             * @default lossless
-             */
-            quality_max: string;
-            /**
-             * @description Worst accepted tier label.
-             * @default mp3_320
-             */
-            quality_min: string;
-            /**
              * @description Absolute incomplete-downloads dir ("" disables the fallback).
              * @default
              */
@@ -21413,15 +22232,10 @@ export interface components {
              * @default
              */
             url: string;
-            /**
-             * @description Verify downloads after landing.
-             * @default true
-             */
-            verify_downloads: boolean;
         };
         /**
-         * @description Live slskd client status (v2 `DownloadClientStatusResponse`, trimmed to
-         *     the client half; the mount half belongs to the downloads module).
+         * @description Live slskd client status. The mount check belongs to the downloads
+         *     module.
          */
         SlskdStatusResponse: {
             /** @description Credentials/URL present. */
@@ -21503,21 +22317,18 @@ export interface components {
          * @enum {string}
          */
         SourceStatus: "degraded" | "error";
-        /**
-         * @description Authorize URL for the caller's Spotify link flow (v2
-         *     `SpotifyAuthUrlResponse`).
-         */
+        /** @description Authorize URL for the caller's Spotify link flow. */
         SpotifyAuthUrlResponse: {
             /** @description `accounts.spotify.com/authorize` URL with state. */
             auth_url: string;
         };
-        /** @description Import start (v2 `SpotifyImportRequest`). */
+        /** @description Import start. */
         SpotifyImportRequest: {
             /** @description Name for the internal playlist record. */
             name: string;
         };
         /**
-         * @description Import acknowledgement (v2 `SpotifyImportResponse`). The populate runs
+         * @description Import acknowledgement. The populate runs
          *     as the `spotify:import` durable job; the id is usable immediately.
          */
         SpotifyImportResponse: {
@@ -21538,7 +22349,7 @@ export interface components {
              */
             track_count?: number | null;
         };
-        /** @description One owned Spotify playlist (v2 `SpotifyPlaylistItem`). */
+        /** @description One owned Spotify playlist. */
         SpotifyPlaylistItem: {
             /** @description Picked cover URL, smallest image at least 250 wide. */
             cover_url?: string | null;
@@ -21558,17 +22369,17 @@ export interface components {
              */
             track_count: number;
         };
-        /** @description Owned playlists (v2 `SpotifyPlaylistListResponse`). */
+        /** @description Owned playlists. */
         SpotifyPlaylistListResponse: {
             /** @description Playlists owned by the caller's Spotify account. */
             playlists: components["schemas"]["SpotifyPlaylistItem"][];
         };
-        /** @description The computed OAuth redirect URI (v2 `GET /spotify/redirect-uri`). */
+        /** @description The computed OAuth redirect URI. */
         SpotifyRedirectUri: {
             /** @description Byte-exact URI registered in the Spotify dashboard. */
             redirect_uri: string;
         };
-        /** @description Admin Spotify app settings (v2 `SpotifySettings`, GH-298). */
+        /** @description Admin Spotify app settings (issue #298). */
         SpotifySettings: {
             /** @description Spotify app client id, returned unmasked. */
             client_id: string;
@@ -21579,6 +22390,12 @@ export interface components {
             /** @description Optional absolute origin the OAuth redirect URI is built from. */
             spotify_redirect_origin: string;
         };
+        /**
+         * @description A listening-statistics window: the chart pages' `range`, and the
+         *     ListenBrainz statistics range.
+         * @enum {string}
+         */
+        StatsRange: "this_week" | "this_month" | "this_year" | "all_time";
         /** @description Library totals. Track and size totals count streamable tracks only. */
         StatsView: {
             /**
@@ -21657,6 +22474,88 @@ export interface components {
              * @description Scheduled retries stopped.
              */
             stopped: number;
+        };
+        /**
+         * @description The events the stream sends, keyed by name, for the API document. On
+         *     the wire each one is an SSE frame whose `event:` line is `event` here
+         *     and whose `data:` line is `data` as JSON. The hub encodes frames itself
+         *     (`Frame::encode`); this type only describes them.
+         */
+        StreamEvent: {
+            /** @description To everyone: library activity revisions moved. */
+            data: components["schemas"]["ActivityChanged"];
+            /** @enum {string} */
+            event: "activity.changed";
+        } | {
+            /** @description To everyone: live listening sessions. */
+            data: components["schemas"]["NowPlayingSnapshot"];
+            /** @enum {string} */
+            event: "snapshot";
+        } | {
+            /** @description To everyone: the download queue moved. */
+            data: components["schemas"]["DownloadsChanged"];
+            /** @enum {string} */
+            event: "downloads.changed";
+        } | {
+            /** @description To everyone: library image precache progress. */
+            data: components["schemas"]["CacheSyncProgress"];
+            /** @enum {string} */
+            event: "cache.sync";
+        } | {
+            /** @description To one user: the wanted watcher found new candidates. */
+            data: components["schemas"]["WantedNotice"];
+            /** @enum {string} */
+            event: "wanted_new_candidates";
+        } | {
+            /** @description To one user: the wanted watcher started a download. */
+            data: components["schemas"]["WantedNotice"];
+            /** @enum {string} */
+            event: "wanted_auto_dispatched";
+        } | {
+            /** @description To one user: a wanted album reached the library. */
+            data: components["schemas"]["WantedNotice"];
+            /** @enum {string} */
+            event: "wanted_fulfilled";
+        } | {
+            /** @description To one user: a followed artist's new release was queued. */
+            data: components["schemas"]["AutoDownloadEnqueued"];
+            /** @enum {string} */
+            event: "auto_download_enqueued";
+        } | {
+            /** @description To one user: someone else imported an album they requested. */
+            data: components["schemas"]["RequestImported"];
+            /** @enum {string} */
+            event: "request_imported";
+        } | {
+            /** @description To one user: an imported playlist has its tracks. */
+            data: components["schemas"]["PlaylistImported"];
+            /** @enum {string} */
+            event: "playlist_imported";
+        } | {
+            /** @description To one user: their drop-import job moved. */
+            data: components["schemas"]["DropImportUpdated"];
+            /** @enum {string} */
+            event: "drop_import_updated";
+        } | {
+            /** @description To one user: their weekly mix was rebuilt, or could not be. */
+            data: components["schemas"]["PersonalMixRefreshed"];
+            /** @enum {string} */
+            event: "personal_mix_refreshed";
+        } | {
+            /** @description To one user: new concerts for an artist they follow. */
+            data: components["schemas"]["ConcertsNew"];
+            /** @enum {string} */
+            event: "concerts_new";
+        } | {
+            /** @description To one user: one of their downloads moved. */
+            data: components["schemas"]["DownloadProgress"];
+            /** @enum {string} */
+            event: "download_progress";
+        } | {
+            /** @description To one user: one of their manual album searches moved. */
+            data: components["schemas"]["SearchJobUpdated"];
+            /** @enum {string} */
+            event: "search_job_updated";
         };
         /** @description Typeahead response: one merged list across buckets, best first. */
         SuggestResponse: {
@@ -21749,14 +22648,6 @@ export interface components {
             /** @description Reason-tagged tracks, pools interleaved. */
             items: components["schemas"]["SuggestionTrack"][];
         };
-        /** @description Status-sync outcome. */
-        SyncResponse: {
-            /**
-             * Format: int32
-             * @description Rows reconciled.
-             */
-            reconciled: number;
-        };
         /**
          * @description Degraded services, empty when everything is healthy (v2
          *     `SystemHealthResponse`).
@@ -21812,6 +22703,11 @@ export interface components {
              */
             source: string;
         };
+        /**
+         * @description Persisted download-task status.
+         * @enum {string}
+         */
+        TaskStatus: "queued" | "downloading" | "processing" | "completed" | "partial" | "failed" | "cancelled";
         /** @description slskd test verdict: validity plus the reported version. */
         TestConnectionResponse: {
             /** @description Human summary. */
@@ -21821,60 +22717,39 @@ export interface components {
             /** @description Server version, when known. */
             version?: string | null;
         };
-        /** @description One of an artist's most played albums. */
-        TopAlbum: {
-            /** @description Credited artist. */
-            artist_name: string;
-            /** @description The album's cover, when the release group is known. */
-            cover_url?: string | null;
-            /** @description True when the library holds this album. */
-            in_library: boolean;
-            /**
-             * Format: int64
-             * @description Listen or play count.
-             */
-            listen_count: number;
-            /** @description Release-group MBID, when known. */
-            release_group_mbid?: string | null;
-            /** @description True when an acquisition request is open for it. */
-            requested: boolean;
-            /** @description Album title. */
-            title: string;
-        };
         /** @description `GET /artists/{artist_mbid}/top-albums`. */
         TopAlbumsResponse: {
             /** @description Albums, most played first. */
-            albums: components["schemas"]["TopAlbum"][];
+            albums: components["schemas"]["AlbumRef"][];
             /** @description False when the provider is not set up. */
             configured: boolean;
             /** @description Provider that answered. */
-            source: components["schemas"]["DiscoverySource"];
+            source: components["schemas"]["ListenSource"];
         };
         /** @description One personalized top pick. */
         TopPickItem: {
             /** @description Picked album. */
-            album: components["schemas"]["ChartAlbum"];
+            album: components["schemas"]["AlbumRef"];
             /**
              * Format: int64
              * @description Match score, 0-100.
              */
             match_pct: number;
             /** @description Human reasons behind the pick. */
-            reasons?: string[];
+            reasons: string[];
             /** @description Seed artist name, when there is one. */
             seed_artist?: string | null;
         };
         /** @description The personalized top-picks shelf. */
         TopPicksSection: {
             /** @description Ranked picks. */
-            items?: components["schemas"]["TopPickItem"][];
+            items: components["schemas"]["TopPickItem"][];
             /**
              * @description True while picks are trending-only because personalization has not
              *     resolved yet (the UI shows a "still personalising" hint).
              */
-            personalizing?: boolean;
-            /** @description Provider behind the picks, when it has one. */
-            source?: string | null;
+            personalizing: boolean;
+            source?: null | components["schemas"]["ShelfSource"];
             /** @description Shelf title. */
             title: string;
         };
@@ -21915,7 +22790,7 @@ export interface components {
             /** @description Songs, most played first. */
             songs: components["schemas"]["TopSong"][];
             /** @description Provider that answered. */
-            source: components["schemas"]["DiscoverySource"];
+            source: components["schemas"]["ListenSource"];
         };
         TrackAlignment: {
             classification?: components["schemas"]["AlignmentClassification"];
@@ -21950,8 +22825,7 @@ export interface components {
         };
         /** @description How one file fits a candidate release. */
         TrackEvidenceView: {
-            /** @description `supported`, `unknown` or `contradictory`. */
-            classification: string;
+            classification: components["schemas"]["EvidenceClass"];
             /** @description What the verdict rests on (`recording_id`, `title`, `length`, ...). */
             evidence_kinds: string[];
             local_track_id: string;
@@ -22036,6 +22910,18 @@ export interface components {
             /** @description Linked download task, when dispatched. */
             task_id?: string | null;
         };
+        /** @description One page of the track list. */
+        TrackListPage: {
+            /** @description This page of tracks. */
+            items: components["schemas"]["TrackView"][];
+            /** @description Pass as `after` for the next page; absent on the last page. */
+            next?: string | null;
+            /**
+             * Format: int64
+             * @description Tracks matching the filter, all pages.
+             */
+            total: number;
+        };
         /** @description One page of catalog tracks. */
         TrackPage: {
             /** @description This page of tracks. */
@@ -22069,6 +22955,28 @@ export interface components {
             provider?: string | null;
             /** @description Track title, when found. */
             title?: string | null;
+        };
+        /** @description One track inside a section. */
+        TrackRef: {
+            /** @description Album title, when known. */
+            album_name?: string | null;
+            /** @description The artist's MusicBrainz id, when known. */
+            artist_id?: string | null;
+            /** @description Artist name, when known. */
+            artist_name?: string | null;
+            /** @description Cover URL, when known. */
+            cover_url?: string | null;
+            /**
+             * Format: int64
+             * @description Listen or play count behind the row, when known.
+             */
+            listen_count?: number | null;
+            /** @description Last listen timestamp (RFC 3339), when known. */
+            listened_at?: string | null;
+            /** @description MusicBrainz recording id, when known. */
+            musicbrainz_id?: string | null;
+            /** @description Track title. */
+            title: string;
         };
         /**
          * @description The tags in one audio file, field for field v2's `AudioTag`. The
@@ -22214,27 +23122,6 @@ export interface components {
          * @enum {string}
          */
         TransportDto: "cookie" | "bearer";
-        /** @description One page of a trending-artists chart. */
-        TrendingArtistsPage: {
-            /** @description True when more rows follow. */
-            has_more: boolean;
-            /** @description Ranked artists for the page. */
-            items: components["schemas"]["ChartArtist"][];
-            /** @description Human range label. */
-            label: string;
-            /**
-             * Format: int64
-             * @description Limit behind this page.
-             */
-            limit: number;
-            /**
-             * Format: int64
-             * @description Offset behind this page.
-             */
-            offset: number;
-            /** @description Range key behind this page. */
-            range_key: string;
-        };
         /**
          * @description Unicode normalization for paths.
          * @enum {string}
@@ -22439,7 +23326,7 @@ export interface components {
             release_group_mbid?: string | null;
             release_mbid?: string | null;
             /** @description `unconfirmed` or `unmatched`. */
-            state: string;
+            state: components["schemas"]["EditionState"];
             title: string;
             /** Format: double */
             updated_at: number;
@@ -22454,23 +23341,11 @@ export interface components {
             /** Format: int64 */
             total: number;
         };
-        /** @description One durable-work channel's demand. */
-        WakeupChannelView: {
-            /** @description Channel name. */
-            channel: string;
-            /**
-             * Format: int64
-             * @description Wakeups consumed.
-             */
-            consumed_seq: number;
-            /** @description True when requested work is still unconsumed. */
-            pending: boolean;
-            /**
-             * Format: int64
-             * @description Wakeups requested.
-             */
-            requested_seq: number;
-        };
+        /**
+         * @description Why a live request waits. It starts by itself once the cause clears.
+         * @enum {string}
+         */
+        WaitingReason: "no_download_source" | "request_quota_full" | "storage_full";
         /** @description Wanted mutation outcome. */
         WantedActionResponse: {
             /** @description Watch state after this call. */
@@ -22515,8 +23390,8 @@ export interface components {
              * @description Epoch seconds when the next check is due, when scheduled.
              */
             next_check_at?: number | null;
-            /** @description Watch state: `watching`, `paused`, or loop-set `dormant`. */
-            state: string;
+            /** @description Watch state. */
+            state: components["schemas"]["WatchState"];
             /** @description Owner id (admins see every row). */
             user_id?: string | null;
             /** @description Owner display name (admins only; the "watched for" chip). */
@@ -22610,12 +23485,6 @@ export interface components {
              */
             auto_download_on_find: boolean;
             /**
-             * Format: int64
-             * @description Days before a watch goes dormant.
-             * @default 365
-             */
-            dormant_after_days: number;
-            /**
              * @description Master switch (rollback lever, read per sweep).
              * @default true
              */
@@ -22633,6 +23502,12 @@ export interface components {
             watch_partial_albums: boolean;
         };
         /**
+         * @description A wanted watch's state. The `wanted_watches.state` CHECK lists exactly
+         *     these values.
+         * @enum {string}
+         */
+        WatchState: "watching" | "stopped" | "fulfilled";
+        /**
          * @description WAV tag policy.
          * @enum {string}
          */
@@ -22642,11 +23517,11 @@ export interface components {
             /** @description Playlist date (`YYYY-MM-DD`). */
             playlist_date: string;
             /** @description Provider playlist URL, when there is one. */
-            source_url?: string;
+            source_url: string;
             /** @description Shelf title. */
             title: string;
             /** @description Playlist tracks in order. */
-            tracks?: components["schemas"]["WeeklyTrack"][];
+            tracks: components["schemas"]["WeeklyTrack"][];
         };
         /** @description One track of the weekly exploration playlist. */
         WeeklyTrack: {
@@ -22741,6 +23616,11 @@ export interface components {
          * @enum {string}
          */
         WorkKind: "scan" | "identification" | "identity_preparation" | "reidentification" | "identity_review" | "maintenance" | "library_management" | "recovery";
+        /**
+         * @description Where one work item is.
+         * @enum {string}
+         */
+        WorkState: "pending" | "running" | "succeeded" | "failed" | "skipped";
         /**
          * @description What a work entry counts.
          * @enum {string}
@@ -23316,6 +24196,15 @@ export interface operations {
                     "application/json": components["schemas"]["SpotifyAuthUrlResponse"];
                 };
             };
+            /** @description Spotify is not set up, or no Redirect Origin is set and the request names no address to build one from */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
         };
     };
     get_spotify_job: {
@@ -23404,6 +24293,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpotifyRedirectUri"];
+                };
+            };
+            /** @description No Redirect Origin is set and the request names no address to build one from */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -23647,7 +24545,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -23674,7 +24574,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -23701,7 +24603,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -23747,7 +24651,12 @@ export interface operations {
     };
     admin_list_users: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Rows per page, 1 to 100 (default 100). */
+                limit?: number;
+                /** @description Rows to skip (default 0). */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -23833,7 +24742,7 @@ export interface operations {
             };
         };
     };
-    get_quota: {
+    get_user_quota: {
         parameters: {
             query?: never;
             header?: never;
@@ -23980,28 +24889,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the album is not in the library */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24031,112 +24948,57 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the album is not in the library */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-        };
-    };
-    set_album_edition: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Release-group MBID, or a library album id identified as one */
-                album_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GroupEditionPinBody"];
-            };
-        };
-        responses: {
-            /** @description Pinned */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
                 content: {
-                    "application/json": components["schemas"]["GroupEditionPinResponse"];
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Not a MusicBrainz id or bad body */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not a curator */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown album, edition not of this album, or album not in the library */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The library holds the album more than once */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
-    clear_album_edition: {
+    edition_fetch_handler: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Release-group MBID, or a library album id identified as one */
+                /** @description Release-group MBID */
                 album_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Cleared */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GroupEditionPinResponse"];
+                    "application/json": components["schemas"]["EditionFetchResponse"];
                 };
             };
             /** @description Not a MusicBrainz id */
@@ -24144,48 +25006,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-                content?: never;
-            };
-            /** @description Not a curator */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown album or album not in the library */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The library holds the album more than once */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
     acquire_edition_handler: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
+            query?: {
                 /**
                  * @description Local album id of the copy the edition picker planned; the chosen
                  *     copy of the release group when absent.
                  */
-                album_id: string | null;
+                album_id?: string;
+                /**
+                 * @description Also fetch this edition's version of each track a file of the copy
+                 *     is another version of, and replace that file with it (the default).
+                 *     With `false` those files stay and their tracks are not fetched.
+                 */
+                replace_versions?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Release-group MBID */
+                album_id: string;
             };
             cookie?: never;
         };
@@ -24199,12 +25044,14 @@ export interface operations {
                     "application/json": components["schemas"]["EditionAcquireResponse"];
                 };
             };
-            /** @description No download source, not enough disk space, or not in the library */
+            /** @description Not enough disk space, or not in the library */
             400: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24234,28 +25081,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24287,28 +25142,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown release */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24343,14 +25206,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24385,14 +25252,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24422,21 +25293,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24466,21 +25343,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24510,28 +25393,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the album is not in the library */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24566,14 +25457,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24603,28 +25498,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the album is not in the library */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24654,28 +25557,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown artist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the artist is not in the library */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24709,28 +25620,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Artist not followed */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Follow before enabling auto-download */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24760,14 +25679,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24801,14 +25724,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24838,7 +25765,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24871,14 +25800,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24911,14 +25844,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24953,21 +25890,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz down and the library has no albums by the artist */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -24977,7 +25920,7 @@ export interface operations {
                 /** @description How many to return, 1 to 50. */
                 count?: number;
                 /** @description Provider to ask; default is the primary music source setting. */
-                source?: components["schemas"]["DiscoverySource"];
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path: {
@@ -25002,14 +25945,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25019,7 +25966,7 @@ export interface operations {
                 /** @description How many to return, 1 to 50. */
                 count?: number;
                 /** @description Provider to ask; default is the primary music source setting. */
-                source?: components["schemas"]["DiscoverySource"];
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path: {
@@ -25044,14 +25991,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25061,7 +26012,7 @@ export interface operations {
                 /** @description How many to return, 1 to 50. */
                 count?: number;
                 /** @description Provider to ask; default is the primary music source setting. */
-                source?: components["schemas"]["DiscoverySource"];
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path: {
@@ -25086,14 +26037,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25146,21 +26101,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Too many attempts for this client or username */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Jellyfin unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25196,14 +26157,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Too many attempts for this client or username */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25266,7 +26231,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25296,14 +26263,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description OIDC provider unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25332,7 +26303,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25385,21 +26358,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Access denied */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25430,21 +26409,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Access denied */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25475,14 +26460,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25509,7 +26498,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25536,21 +26527,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25577,21 +26574,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Missing or invalid session */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex or the configured server is unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25688,14 +26691,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Setup has already been completed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25774,7 +26781,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Image bytes or placeholder SVG */
+            /** @description Image bytes */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -25800,14 +26807,59 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No image for this artist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    artist_cover_credit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description MusicBrainz artist id */
+                artist_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The credit, or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtistImageCredit"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25826,7 +26878,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Cover bytes or placeholder SVG */
+            /** @description Cover bytes */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -25852,14 +26904,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No art for this release group */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25878,7 +26943,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Cover bytes or placeholder SVG */
+            /** @description Cover bytes */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -25904,14 +26969,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No art for this release */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25938,7 +27016,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -25969,14 +27049,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26010,17 +27094,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26053,7 +27141,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The batch store failed */
             500: {
@@ -26093,14 +27183,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Storage full (STORAGE_FULL) */
             403: {
@@ -26111,8 +27205,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Request quota spent (QUOTA_EXCEEDED) */
-            429: {
+            /** @description Acquisition is not running (NOT_AVAILABLE) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26120,8 +27214,8 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Acquisition is not running (NOT_AVAILABLE) */
-            503: {
+            /** @description Request quota spent (QUOTA_EXCEEDED) */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26157,14 +27251,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown batch id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26197,21 +27295,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown batch id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26242,21 +27346,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown seed album or playlist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A music provider failed */
             502: {
@@ -26295,14 +27405,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The library check failed */
             500: {
@@ -26341,14 +27455,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26379,14 +27497,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26415,14 +27537,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The ignore could not be saved */
             500: {
@@ -26458,7 +27584,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The ledger could not be read */
             500: {
@@ -26497,14 +27625,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz or YouTube failed */
             502: {
@@ -26540,7 +27672,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26571,14 +27705,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The library check failed */
             500: {
@@ -26618,14 +27756,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26652,14 +27794,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description YouTube unconfigured */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26691,17 +27837,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description YouTube search quota used up for today (RATE_LIMITED) */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26710,7 +27851,16 @@ export interface operations {
                 };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description YouTube search quota used up for today (RATE_LIMITED) */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26748,17 +27898,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description YouTube search quota used up for today (RATE_LIMITED) */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26767,7 +27912,16 @@ export interface operations {
                 };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description YouTube search quota used up for today (RATE_LIMITED) */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26804,21 +27958,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown seed album or playlist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A music provider failed */
             502: {
@@ -26858,21 +28018,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown seed album or playlist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A music provider failed */
             502: {
@@ -26908,7 +28074,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -26940,17 +28108,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26983,7 +28155,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27013,21 +28187,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Downloads restricted */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No local album holds the id, or no files left */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27057,21 +28237,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Downloads restricted */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, or no files left to archive */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27110,28 +28296,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Downloads restricted, or the file left the library roots */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track, or the file is gone */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Range not satisfiable */
             416: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27188,222 +28382,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CutoffUnmetResponse"];
-                };
-            };
-        };
-    };
-    list_held_handler: {
-        parameters: {
-            query?: {
-                /** @description Only this album's held files. */
-                release_group_mbid?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldListResponse"];
-                };
-            };
-        };
-    };
-    discard_local_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Download task id */
-                source_task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldUnitResponse"];
-                };
-            };
-        };
-    };
-    retry_local_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Download task id */
-                source_task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldUnitResponse"];
-                };
-            };
-        };
-    };
-    reverify_bulk_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HeldBulkReverifyRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldBulkReverifyResponse"];
-                };
-            };
-        };
-    };
-    discard_verdict_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Download task id */
-                source_task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldUnitResponse"];
-                };
-            };
-        };
-    };
-    held_audio_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Held file id */
-                held_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The held file */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description The requested byte range */
-            206: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/octet-stream": unknown;
-                };
-            };
-            /** @description The range lies outside the file */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    discard_held_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Held file id */
-                held_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldActionResponse"];
-                };
-            };
-        };
-    };
-    import_held_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Held file id */
-                held_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldActionResponse"];
-                };
-            };
-        };
-    };
-    reverify_held_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Held file id */
-                held_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HeldReverifyResponse"];
                 };
             };
         };
@@ -27832,7 +28810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/event-stream": string;
+                    "text/event-stream": components["schemas"]["StreamEvent"];
                 };
             };
             /** @description Not authenticated */
@@ -27840,7 +28818,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27870,14 +28850,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27913,14 +28897,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27947,7 +28935,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -27974,7 +28964,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28001,7 +28993,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28032,14 +29026,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28069,21 +29067,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Geocoder unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28110,7 +29114,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28137,7 +29143,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28169,14 +29177,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28210,14 +29222,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28244,7 +29260,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28271,7 +29289,225 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_handler: {
+        parameters: {
+            query?: {
+                /** @description Only this album's entries. */
+                release_group_mbid?: string;
+                /** @description Only entries holding files of this download. */
+                task_id?: string;
+                /** @description Admins: every user's entries. */
+                all?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldListResponse"];
+                };
+            };
+        };
+    };
+    audio_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held file id */
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The held file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description The requested byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description The range lies outside the file */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recheck_all_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldRecheckAllRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldRecheckAllResponse"];
+                };
+            };
+        };
+    };
+    get_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held entry id */
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldEntryResponse"];
+                };
+            };
+        };
+    };
+    discard_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held entry id */
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldFilesRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldActionResponse"];
+                };
+            };
+        };
+    };
+    import_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held entry id */
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldFilesRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldActionResponse"];
+                };
+            };
+        };
+    };
+    match_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held entry id */
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldMatchRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldActionResponse"];
+                };
+            };
+        };
+    };
+    recheck_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Held entry id */
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldFilesRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldActionResponse"];
+                };
             };
         };
     };
@@ -28298,7 +29534,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28335,14 +29573,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28369,10 +29611,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28385,14 +29629,14 @@ export interface operations {
     popular_albums: {
         parameters: {
             query?: {
-                /** @description Range key, this_week default */
-                range?: string;
+                /** @description Range, this_week default */
+                range?: components["schemas"]["StatsRange"];
                 /** @description Page size */
                 limit?: number;
                 /** @description Page offset */
                 offset?: number;
-                /** @description listenbrainz or lastfm */
-                source?: string;
+                /** @description Provider, listenbrainz default */
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path?: never;
@@ -28406,7 +29650,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PopularAlbumsPage"];
+                    "application/json": components["schemas"]["ChartPage_AlbumRef"];
                 };
             };
             /** @description Bad range or source */
@@ -28414,17 +29658,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28437,14 +29685,14 @@ export interface operations {
     trending_artists: {
         parameters: {
             query?: {
-                /** @description Range key, this_week default */
-                range?: string;
+                /** @description Range, this_week default */
+                range?: components["schemas"]["StatsRange"];
                 /** @description Page size */
                 limit?: number;
                 /** @description Page offset */
                 offset?: number;
-                /** @description listenbrainz or lastfm */
-                source?: string;
+                /** @description Provider, listenbrainz default */
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path?: never;
@@ -28458,7 +29706,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TrendingArtistsPage"];
+                    "application/json": components["schemas"]["ChartPage_ArtistRef"];
                 };
             };
             /** @description Bad range or source */
@@ -28466,17 +29714,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28489,14 +29741,14 @@ export interface operations {
     your_top_albums: {
         parameters: {
             query?: {
-                /** @description Range key, this_week default */
-                range?: string;
+                /** @description Range, this_week default */
+                range?: components["schemas"]["StatsRange"];
                 /** @description Page size */
                 limit?: number;
                 /** @description Page offset */
                 offset?: number;
-                /** @description listenbrainz or lastfm */
-                source?: string;
+                /** @description Provider, listenbrainz default */
+                source?: components["schemas"]["ListenSource"];
             };
             header?: never;
             path?: never;
@@ -28510,7 +29762,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PopularAlbumsPage"];
+                    "application/json": components["schemas"]["ChartPage_AlbumRef"];
                 };
             };
             /** @description Bad range or source */
@@ -28518,17 +29770,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28536,52 +29783,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-        };
-    };
-    discard_item_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Import item id */
-                item_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
+            /** @description Not configured (NOT_CONFIGURED) or not built in this version yet (NOT_AVAILABLE) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DropImportItemResponse"];
-                };
-            };
-        };
-    };
-    match_item_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Import item id */
-                item_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DropImportMatchRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DropImportItemResponse"];
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -28676,7 +29884,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28685,9 +29895,16 @@ export interface operations {
             query?: {
                 /** @description Page size, 1-200. Default 50. */
                 limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
-                /** @description `name`, `date_added`, `year`, or `artist`. Default `name`. */
+                /**
+                 * @description The `next` of the page before, with the same sort and order.
+                 *     Absent for the first page.
+                 */
+                after?: string;
+                /**
+                 * @description `name`, `date_added`, `year`, `artist`, `random` (one shuffle per
+                 *     walk, kept across its pages), or `rediscover` (oldest first).
+                 *     Default `name`.
+                 */
                 sort?: string;
                 /** @description `asc` or `desc`. Default `asc`. */
                 order?: string;
@@ -28723,14 +29940,73 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    match_album: {
+        parameters: {
+            query?: {
+                /** @description Page size, 1-1000. Default 200. */
+                limit?: number;
+                /** @description Page start. Default 0. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Release-group mbid or local album id */
+                mbid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Track page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackPage"];
+                };
+            };
+            /** @description Bad query string */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown mbid or album id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28761,35 +30037,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview expired or the albums changed since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28820,35 +30106,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description An album changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28878,14 +30174,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28919,35 +30219,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, or MusicBrainz does not know the release */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz is not answering */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -28977,157 +30287,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-        };
-    };
-    get_pin_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Album id */
-                album_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Pin display */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
                 content: {
-                    "application/json": components["schemas"]["EditionPinResponse"];
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown album id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    set_pin_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Album id */
-                album_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EditionPinBody"];
-            };
-        };
-        responses: {
-            /** @description Pin display */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EditionPinResponse"];
-                };
-            };
-            /** @description Unknown edition for this album */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Curator role required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown album id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    clear_pin_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Album id */
-                album_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Pin display */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EditionPinResponse"];
-                };
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Curator role required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown album id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -29157,28 +30337,117 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Nothing waits for confirmation */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    seal_custom_edition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CustomEditionBody"];
+            };
+        };
+        responses: {
+            /** @description The album's edition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionStatusView"];
+                };
+            };
+            /** @description Not a release id, or the files cannot be sealed under that release group (CUSTOM_EDITION_NOT_SEALABLE) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album, or MusicBrainz does not know the release */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The album changed since it was read (STALE_REVISION) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description MusicBrainz is not answering */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29212,53 +30481,211 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album or track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Library busy or a file is outside the library folders */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A file could not be recycled; nothing changed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz is not answering */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
-    restore_extras: {
+    match_edition_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+                /** @description Local track id of the file */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MatchFileBody"];
+            };
+        };
+        responses: {
+            /** @description The album's edition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionStatusView"];
+                };
+            };
+            /** @description The album has no edition, or the track is not on it */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album, or the file is not one of its files */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The edition changed (STALE_REVISION), the file is already on a track, another file holds the track, or the album is a custom edition */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description MusicBrainz is not answering */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    unmatch_edition_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+                /** @description Local track id of the file */
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album's edition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionStatusView"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album, not one of its files, or no match to undo */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The match changed since (STALE_REVISION), or the app has written the file since */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    leave_unmanaged: {
         parameters: {
             query?: never;
             header?: never;
@@ -29270,17 +30697,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RestoreExtrasBody"];
+                "application/json": components["schemas"]["LeaveUnmanagedBody"];
             };
         };
         responses: {
-            /** @description Files put back and rescanned */
+            /** @description The album's edition */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RestoreExtrasView"];
+                    "application/json": components["schemas"]["EditionStatusView"];
                 };
             };
             /** @description Not authenticated */
@@ -29288,28 +30715,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Curator role required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Nothing to take back */
+            /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Another file now sits at an old path; nothing was put back */
+            /** @description The album's edition changed since it was read (STALE_REVISION) */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29342,35 +30777,317 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Curator role required */
+            /** @description Curator role required to plan another release */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, or MusicBrainz does not know the release */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz is not answering */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    create_edition_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditionTagsBody"];
+            };
+        };
+        responses: {
+            /** @description The tag write, queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionTagsQueuedView"];
+                };
+            };
+            /** @description The folder's profile cannot be used */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The edition changed (STALE_REVISION); the album has no edition from MusicBrainz, is left unmanaged, is still being placed, spans two folders or is written by itself; no file sits on the edition; the profile writes no tags; or the Library Management settings cannot be read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_edition_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+                /** @description The tag write's job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tag write */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionTagsJobView"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown tag write, or another curator's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    apply_edition_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+                /** @description The tag write's job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditionTagsApplyBody"];
+            };
+        };
+        responses: {
+            /** @description Writing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionTagsJobView"];
+                };
+            };
+            /** @description Wrong token or no request key */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown tag write, or another curator's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Expired, changed since it was planned, or nothing to write */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    undo_edition_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+                /** @description The written tag write's job id */
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditionTagsUndoBody"];
+            };
+        };
+        responses: {
+            /** @description The undo, queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditionTagsQueuedView"];
+                };
+            };
+            /** @description Bad body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown tag write, or another curator's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not written, already undone, changed since the page loaded, or the Library Management settings cannot be read */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29400,28 +31117,136 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No change to take back */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The edition changed again since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_album_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id */
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album's history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumHistoryView"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    hand_back_management: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id or release-group MBID */
+                album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hand-back answer */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandBackResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Album not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The album's files could not be read; it stays unmanaged */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29455,28 +31280,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Album not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The exclusion changed; reload and retry */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29520,97 +31353,183 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin role required */
+            /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz is unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
-    reidentify_album: {
+    list_album_removals: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Local album id */
+                /** @description Local album id or release-group MBID */
                 album_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReidentifyBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Re-identification job (new or the one this key started) */
+            /** @description Removals that can be put back */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationView"];
+                    "application/json": components["schemas"]["AlbumRemovalsView"];
                 };
-            };
-            /** @description Bad body or release MBID */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin role required */
+            /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Unknown album, or no indexed files */
+            /** @description Unknown album */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description The album moved, is excluded, or needs the Local metadata confirmation */
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    put_back_removal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Local album id or release-group MBID */
+                album_id: string;
+                /** @description The removal's id */
+                removal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Files put back and indexed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PutBackView"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album, or nothing left to put back */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another file now sits at an old path, a file or track changed, none of the files are left in the recycle bin, or the library is busy; nothing was put back */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The files could not be put back; they stay in the recycle bin */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29640,28 +31559,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Album not found or has no files */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The library could not start a scan */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29695,35 +31622,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album or track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview expired or the album changed since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29757,35 +31694,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album or track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The album changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29819,35 +31766,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview expired or the albums changed since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29881,35 +31838,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The album changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29943,35 +31910,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No reversible automatic edition */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The identity changed since the automatic acceptance */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -29993,7 +31970,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AlbumView"];
+                    "application/json": components["schemas"]["AlbumDetailView"];
                 };
             };
             /** @description Not authenticated */
@@ -30001,14 +31978,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30049,35 +32030,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Album not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Library busy or a file is outside the library folders */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A file could not be recycled; nothing changed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30117,21 +32108,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The album has no local art */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30161,28 +32158,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Album not found or has no indexed tracks */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The album already has an exact release, or changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30212,14 +32217,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30249,7 +32258,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30284,6 +32295,47 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown album id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    undo_artist_repair: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The history entry's undo_id */
+                repair_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album's earlier artist is back */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
             };
             /** @description Not authenticated */
@@ -30291,14 +32343,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Unknown album id */
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No artist repair that can be undone */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The album's artist changed since the repair */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30307,8 +32381,11 @@ export interface operations {
             query?: {
                 /** @description Page size, 1-200. Default 50. */
                 limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
+                /**
+                 * @description The `next` of the page before, with the same scope, sort and
+                 *     order. Absent for the first page.
+                 */
+                after?: string;
                 /**
                  * @description `name`, `album_count`, `appearance_count`, or `date_added`.
                  *     Default `name`.
@@ -30341,14 +32418,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30383,21 +32464,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30427,21 +32514,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The group no longer exists */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30475,35 +32568,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The group no longer exists */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A member changed since the group was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30534,35 +32637,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown or already merged artist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview expired or an artist changed since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30585,7 +32698,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MembershipPreviewResponse"];
+                    "application/json": components["schemas"]["ArtistMergePreviewResponse"];
                 };
             };
             /** @description No duplicate chosen, or a reserved artist would be merged away */
@@ -30593,35 +32706,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown or already merged artist */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description An artist changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30648,14 +32771,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30664,7 +32791,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Local artist id */
+                /** @description Local artist id or linked MusicBrainz artist id */
                 id: string;
             };
             cookie?: never;
@@ -30685,14 +32812,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown artist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30701,12 +32832,12 @@ export interface operations {
             query?: {
                 /** @description Page size, 1-1000. Default 200. */
                 limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
+                /** @description The `next` of the page before. Absent for the first page. */
+                after?: string;
             };
             header?: never;
             path: {
-                /** @description Local artist id */
+                /** @description Local artist id or linked MusicBrainz artist id */
                 id: string;
             };
             cookie?: never;
@@ -30727,21 +32858,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown artist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30750,12 +32887,12 @@ export interface operations {
             query?: {
                 /** @description Page size, 1-1000. Default 200. */
                 limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
+                /** @description The `next` of the page before. Absent for the first page. */
+                after?: string;
             };
             header?: never;
             path: {
-                /** @description Local artist id */
+                /** @description Local artist id or linked MusicBrainz artist id */
                 id: string;
             };
             cookie?: never;
@@ -30776,21 +32913,85 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown artist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    library_artist_artwork: {
+        parameters: {
+            query?: {
+                /** @description 250, 500, 1200, or original (the default) for full size */
+                size?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Local artist id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
+            };
+            /** @description Image unchanged */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad query string or unsupported size */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description None of the artist's albums has art */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30843,14 +33044,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30884,28 +33089,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Already closed, or changed since read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30939,28 +33152,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Changed since read, or no longer editable */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -30994,42 +33215,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The contribution is closed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Discogs unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31063,42 +33296,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution or Discogs release not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Changed since read, or no longer editable */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Discogs unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31132,35 +33377,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Changed since read, or no longer editable */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31194,35 +33449,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution or release not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not in the duplicate result, or does not match safely */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31256,35 +33521,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Draft incomplete, source expired, or changed since read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31318,35 +33593,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not waiting for a result, or a different one exists */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31380,42 +33665,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Duplicate check missing or found an exact release */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description MusicBrainz unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31449,28 +33746,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Nothing to verify, or changed since read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31504,28 +33809,122 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Contribution or album not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not stale, or changed since read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_decades: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Decades */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecadesResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    undo_album_fold: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The history entry's undo_id */
+                fold_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album is back */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
                 content?: never;
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Curator role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No fold that can be undone */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The albums changed since the fold */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31552,7 +33951,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31587,14 +33988,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31625,21 +34030,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The switch changed since it was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31670,21 +34081,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The switch changed since it was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31715,28 +34132,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31766,21 +34191,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31811,28 +34242,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The idempotency key started another kind of job */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31862,14 +34301,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31899,21 +34342,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -31947,35 +34396,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The report changed since it was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32015,28 +34474,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32070,28 +34537,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32125,28 +34600,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32180,28 +34663,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown repair job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32232,35 +34723,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required; admin role for anything but a plain retag */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preview token */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale preview or blocked bundle */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32291,28 +34792,90 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Restore blocked for a file */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_plugin_files: {
+        parameters: {
+            query: {
+                /** @description Plugin name. */
+                plugin: string;
+                /** @description Cursor from the previous page. */
+                cursor?: string;
+                /** @description Files per page, 1 to 100 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the plugin's files */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginFilesPage"];
+                };
+            };
+            /** @description Bad cursor or limit */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32343,28 +34906,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required; admin role for anything but a plain retag */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Missing identity, collision, or no space */
+            /** @description Missing identity, collision, no space, or the album's chosen edition is still being placed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32395,35 +34966,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin role required */
+            /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Unknown bundle id */
+            /** @description Unknown bundle id, or one a curator did not apply */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Undo blocked for a file */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32450,14 +35031,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32488,28 +35073,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The impact changed, or a restore or write is running */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32536,14 +35129,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32574,28 +35171,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Settings or library folders changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32626,35 +35231,83 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preview or file */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview or settings changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    hand_back_all: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Albums waiting to be handed back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandBackAllResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32684,21 +35337,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32729,28 +35388,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The idempotency key started another kind of job */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32780,14 +35447,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32817,21 +35488,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preparation job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32865,35 +35542,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preparation job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The report changed since it was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32927,28 +35614,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preparation job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The report changed since it was read */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -32988,28 +35683,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown preparation job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33048,21 +35751,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33092,21 +35801,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33139,21 +35854,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33187,35 +35908,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not a finished apply, or nothing to undo */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33246,28 +35977,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Settings or library policy changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33297,21 +36036,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33345,35 +36090,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Preview expired, stale, or nothing to write */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33407,35 +36162,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or already applying */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33446,14 +36211,12 @@ export interface operations {
                 after_ordinal?: number;
                 /** @description Files per page, 1 to 200 (default 100). */
                 limit?: number;
-                /** @description `eligible`, `warning`, `blocked`, or `stale`. */
-                eligibility?: string;
+                eligibility?: components["schemas"]["Eligibility"];
                 reason_code?: string;
                 root_id?: string;
                 album_id?: string;
                 audio_format?: string;
-                /** @description `tags`, `path`, `sidecars`, or `no_change`. */
-                change_kind?: string;
+                change_kind?: "tags" | "path" | "sidecars" | "artwork" | "no_change";
             };
             header?: never;
             path: {
@@ -33478,28 +36241,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33533,21 +36304,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job, file or artwork */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33577,28 +36354,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required, or another administrator's preview */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Preview no longer ready */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33625,14 +36410,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33662,28 +36451,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown write */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A file is missing or different, or the write needs no attention */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33714,35 +36511,83 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Settings or library folders changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_management_takeovers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Albums left unmanaged */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagementTakeoverPage"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33772,28 +36617,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The file cannot be read now */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33820,7 +36673,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33851,14 +36706,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -33888,83 +36747,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown job */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    select_reidentification_candidate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Re-identification job id */
-                job_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CandidateChoiceBody"];
-            };
-        };
-        responses: {
-            /** @description Settled job */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OperationView"];
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Confirmation missing, the release does not map every file, or the custom edition cannot be sealed */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Admin role required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
-            };
-            /** @description The job or the album changed since it was read */
-            409: {
-                headers: {
-                    [name: string]: unknown;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-                content?: never;
             };
         };
     };
@@ -33998,35 +36801,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34060,35 +36873,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34122,35 +36945,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stale revision or reused idempotency key */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34180,14 +37013,233 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_recycle_bin: {
+        parameters: {
+            query?: {
+                /** @description The previous page's `next_cursor`. */
+                cursor?: string;
+                /** @description Items per page, 1 to 100 (50 by default). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the recycle bin */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleBinPage"];
+                };
+            };
+            /** @description Bad cursor or limit */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    empty_recycle_bin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyRecycleBinBody"];
+            };
+        };
+        responses: {
+            /** @description Emptying started */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmptyRecycleBinView"];
+                };
+            };
+            /** @description Bad body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recycle_bin_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Emptying state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleBinStatus"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    recycle_bin_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What Empty would delete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleBinSummary"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The server is busy; try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34218,14 +37270,182 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_retag_pairs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open pairs, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetagPairListResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    dismiss_retag_pair: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The pair's old album */
+                old_album_id: string;
+                /** @description The pair's new album */
+                new_album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dismissed, or dismissed already */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetagPairDismissResponse"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such pair */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    join_retag_pair: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The pair's old album */
+                old_album_id: string;
+                /** @description The pair's new album */
+                new_album_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetagPairJoinBody"];
+            };
+        };
+        responses: {
+            /** @description Joined, or joined already */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetagPairJoinResponse"];
+                };
+            };
+            /** @description An album's revision is missing, or the edition to keep is missing, not needed or not one of the two */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Admin role required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such pair */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The pair was dismissed, an album was merged, removed or changed its edition, or work is open on one */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34296,14 +37516,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34334,28 +37558,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required (admin to exclude) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The selection changed since the preview */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34386,21 +37618,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required (admin to exclude) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34431,14 +37669,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34468,14 +37710,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34509,35 +37755,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review or candidate */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34567,28 +37823,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34618,28 +37882,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34669,28 +37941,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34720,28 +38000,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34771,28 +38059,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The review's album was not excluded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34826,28 +38122,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown review id, or the album has no files */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Review already settled, album excluded, or needs the Local metadata confirmation */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34874,7 +38178,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34905,28 +38211,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Root id exists or recovery blocked */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -34957,35 +38271,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown root id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Library disabled or policy moved */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35012,7 +38336,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35043,28 +38369,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Library disabled or library policy changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35091,14 +38425,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35128,21 +38466,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35174,21 +38518,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35218,14 +38568,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown run id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35255,28 +38609,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown scan run */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35311,21 +38673,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown run id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35359,28 +38727,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown run id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Run changed, or cannot pause in its state */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35414,28 +38790,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown run id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Run changed, or is not paused */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35469,28 +38853,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown run id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Run changed, or already finished */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35517,7 +38909,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    list_suggestions: {
+        parameters: {
+            query?: {
+                /** @description Track cap, 1-40. Default 12. */
+                limit?: number;
+                /** @description Era anchor for the `same_era` pool, e.g. 1990. */
+                decade?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suggestions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestionsResponse"];
+                };
+            };
+            /** @description Bad query string */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35526,9 +38963,16 @@ export interface operations {
             query?: {
                 /** @description Page size, 1-500. Default 50. */
                 limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
-                /** @description `title` or `date_added`. Default `title`. */
+                /**
+                 * @description The `next` of the page before, with the same sort and order.
+                 *     Absent for the first page.
+                 */
+                after?: string;
+                /**
+                 * @description `title`, `date_added`, `artist` (then album, disc and track),
+                 *     `album` (then disc and track), or `random` (one shuffle per walk,
+                 *     kept across its pages). Default `title`.
+                 */
                 sort?: string;
                 /** @description `asc` or `desc`. Default `asc`. */
                 order?: string;
@@ -35553,7 +38997,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TrackPage"];
+                    "application/json": components["schemas"]["TrackListPage"];
                 };
             };
             /** @description Bad query string */
@@ -35561,14 +39005,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35599,35 +39047,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The preview expired or the albums changed since */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35658,35 +39116,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown album, track or target */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description An album changed since the page loaded */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35716,14 +39184,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35759,35 +39231,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Curator role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Track not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Library busy or the file is outside the library folders */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The file could not be recycled; nothing changed */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35817,14 +39299,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -35854,36 +39340,44 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required, or the file left the library roots */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
     list_unconfirmed: {
         parameters: {
             query?: {
-                /** @description `unconfirmed` (default) or `unmatched`. */
-                state?: string;
+                /** @description Default: `unconfirmed`. */
+                state?: "unconfirmed" | "unmatched";
                 limit?: number;
                 offset?: number;
             };
@@ -35907,255 +39401,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    browse_albums: {
-        parameters: {
-            query?: {
-                /** @description Page size, 1-200. Default 50. */
-                limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
-                /**
-                 * @description `name`, `date_added`, `year`, `random`, or `rediscover`
-                 *     (oldest first). Default `name`.
-                 */
-                sort?: string;
-                /** @description `asc` or `desc`. Default `asc`. */
-                order?: string;
-                /** @description Title/artist substring filter, case folded. */
-                q?: string;
-                /** @description Restrict to one decade start year, e.g. 1990. */
-                decade?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Album cards */
-            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AlbumCardPage"];
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
-            };
-            /** @description Bad query string */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    match_album: {
-        parameters: {
-            query?: {
-                /** @description Page size, 1-1000. Default 200. */
-                limit?: number;
-                /** @description Page start. Default 0. */
-                offset?: number;
-            };
-            header?: never;
-            path: {
-                /** @description Release-group mbid or local album id */
-                mbid: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Track page */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TrackPage"];
-                };
-            };
-            /** @description Bad query string */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unknown mbid or album id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_decades: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Decades */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DecadesResponse"];
-                };
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    recent_albums: {
-        parameters: {
-            query?: {
-                /** @description Card cap, 1-50. Default 20. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Recent albums */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AlbumCard"][];
-                };
-            };
-            /** @description Bad query string */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    search_library: {
-        parameters: {
-            query?: {
-                /** @description Substring query, case folded, at least one character. */
-                q?: string;
-                /** @description Cap applied per group, 1-50. Default 20. */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Search results */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SearchResults"];
-                };
-            };
-            /** @description Bad query string */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_suggestions: {
-        parameters: {
-            query?: {
-                /** @description Track cap, 1-40. Default 12. */
-                limit?: number;
-                /** @description Era anchor for the `same_era` pool, e.g. 1990. */
-                decade?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Suggestions */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SuggestionsResponse"];
-                };
-            };
-            /** @description Bad query string */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -36441,14 +39698,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No link */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36479,21 +39740,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description ListenBrainz is rate-limiting */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36520,14 +39787,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No link */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36552,7 +39823,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36651,7 +39924,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36682,14 +39957,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36740,7 +40019,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36791,7 +40072,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36820,14 +40103,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36855,14 +40142,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36893,21 +40184,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36938,21 +40235,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -36983,21 +40286,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown track */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37024,7 +40333,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37055,14 +40366,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37093,14 +40408,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37130,14 +40449,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37171,28 +40494,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37222,21 +40553,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37264,14 +40601,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37305,28 +40646,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37356,21 +40705,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37400,14 +40755,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37441,28 +40800,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37496,28 +40863,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37551,28 +40926,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist or track id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37604,21 +40987,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist or track id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37654,28 +41043,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist or track id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37709,28 +41106,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Owner only */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown playlist id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37757,14 +41162,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37794,28 +41203,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin or route */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Too many requests */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37845,35 +41262,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin or route */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Request body too large */
             413: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Too many requests */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37903,28 +41330,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin or route */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Too many requests */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -37955,42 +41390,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The repository moved since the preview */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description GitHub refused the request or could not be reached */
+            /** @description GitHub refused the request, could not be reached, or sent an unreadable answer */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description GitHub is rate limiting this server */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38021,35 +41468,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description GitHub refused the request or could not be reached */
+            /** @description GitHub refused the request, could not be reached, or sent an unreadable answer */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description GitHub is rate limiting this server */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38076,7 +41533,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38110,28 +41569,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38161,25 +41628,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
-    plugin_panel_js: {
+    plugin_panel_page: {
         parameters: {
             query?: never;
             header?: never;
@@ -38191,12 +41664,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Panel bundle */
+            /** @description Panel page */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/html": unknown;
+                };
             };
             /** @description Not modified */
             304: {
@@ -38210,21 +41685,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin or panel */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38258,49 +41739,161 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown plugin */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description The repository moved since the preview */
+            /** @description The repository moved since the preview, was replaced, or has no releases now */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description GitHub refused the request or could not be reached */
+            /** @description GitHub refused the request, could not be reached, or sent an unreadable answer */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description GitHub is rate limiting this server */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rating_lookup_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RatingLookupBody"];
+            };
+        };
+        responses: {
+            /** @description The caller's ratings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatingLookupResponse"];
+                };
+            };
+            /** @description Bad body or too many ids */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    set_rating_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Kind: album, artist, or track */
+                kind: string;
+                /** @description Local id of the rated item */
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRatingBody"];
+            };
+        };
+        responses: {
+            /** @description The caller's rating now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RatingStatusResponse"];
+                };
+            };
+            /** @description Bad kind, rating or body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No live item holds the id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -38947,6 +42540,10 @@ export interface operations {
             query: {
                 /** @description MusicBrainz release or release-group id. */
                 mbid: string;
+                /** @description Album title. */
+                title?: string;
+                /** @description Album artist. */
+                artist?: string;
             };
             header?: never;
             path: {
@@ -39440,7 +43037,10 @@ export interface operations {
     };
     cancel_one_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `album` (default) or `track`. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path: {
                 /** @description Album or recording MBID */
@@ -39523,7 +43123,10 @@ export interface operations {
     };
     approve_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `album` (default) or `track`. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path: {
                 /** @description Album or recording MBID */
@@ -39545,7 +43148,10 @@ export interface operations {
     };
     reject_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `album` (default) or `track`. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path: {
                 /** @description Album or recording MBID */
@@ -39588,14 +43194,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -39666,14 +43276,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -39797,7 +43411,18 @@ export interface operations {
     };
     history_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 1-based page. */
+                page?: number;
+                /** @description Rows per page (1..=100). */
+                page_size?: number;
+                /** @description Status filter. */
+                status?: string;
+                /** @description `newest` (default), `oldest`, or `status`. */
+                sort?: string;
+                /** @description `album` or `track`; unset means both. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -39816,7 +43441,10 @@ export interface operations {
     };
     clear_history_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `album` (default) or `track`. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path: {
                 /** @description Album or recording MBID */
@@ -39943,20 +43571,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Weekly Mix is not available on this server */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
     retry_one_handler: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description `album` (default) or `track`. */
+                kind?: components["schemas"]["RequestKind"];
+            };
             header?: never;
             path: {
                 /** @description Album or recording MBID */
@@ -39972,25 +43607,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionResponse"];
-                };
-            };
-        };
-    };
-    sync_handler: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SyncResponse"];
                 };
             };
         };
@@ -40014,6 +43630,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrackIntakeResponse"];
+                };
+            };
+        };
+    };
+    from_album_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Recording MBID */
+                musicbrainz_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionResponse"];
+                };
+            };
+            /** @description Another user's request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No track request for this recording */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No album version to take, or the request needs approval */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -40130,14 +43795,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40168,14 +43837,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40192,6 +43865,8 @@ export interface operations {
                 limit_tracks?: number;
                 /** @description Comma-separated subset (`artists,albums,tracks`); absent means all. */
                 buckets?: string;
+                /** @description Where to look; absent means `all`. */
+                scope?: "all" | "library";
             };
             header?: never;
             path?: never;
@@ -40213,14 +43888,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40251,14 +43930,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40293,14 +43976,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40337,21 +44024,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown bucket */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -40370,7 +44063,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdvancedSettingsForm"];
+                    "application/json": components["schemas"]["AdvancedSettings"];
                 };
             };
         };
@@ -40384,7 +44077,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AdvancedSettingsForm"];
+                "application/json": components["schemas"]["AdvancedSettings"];
             };
         };
         responses: {
@@ -40394,7 +44087,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AdvancedSettingsForm"];
+                    "application/json": components["schemas"]["AdvancedSettings"];
                 };
             };
         };
@@ -40408,7 +44101,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Frontend cache TTLs */
+            /** @description Web app settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -40592,37 +44285,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PolicySummaryResponse"];
                 };
-            };
-        };
-    };
-    post_policy_impact: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DownloadPolicy"];
-            };
-        };
-        responses: {
-            /** @description Impact preview */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PolicyImpactResponse"];
-                };
-            };
-            /** @description Bucket counts are unwired */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -40959,57 +44621,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GetIt"];
                 };
-            };
-        };
-    };
-    get_home_settings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Home page settings */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HomeSettings"];
-                };
-            };
-        };
-    };
-    put_home: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HomeSettings"];
-            };
-        };
-        responses: {
-            /** @description Saved settings */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HomeSettings"];
-                };
-            };
-            /** @description A value is out of range */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };
@@ -41358,14 +44969,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Expected revision is stale */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41416,14 +45031,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Expected revision is stale */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41454,35 +45073,45 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown dry run */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description A dry run is stale or settings changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41533,28 +45162,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Settings or library folders changed */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41584,28 +45221,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown job */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41656,14 +45301,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41693,28 +45342,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown or excluded library folder */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description The library folders cannot be opened right now */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41745,7 +45402,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -41998,7 +45657,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42052,7 +45713,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42083,21 +45746,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Expected revision is stale */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Catalog reads are unwired */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42128,7 +45797,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42175,7 +45846,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42206,21 +45879,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Expected revision is stale */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Catalog reads are unwired */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42282,7 +45961,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42300,7 +45981,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42419,7 +46102,53 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    get_lyrics_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lyrics lookup switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LyricsSettings"];
+                };
+            };
+        };
+    };
+    put_lyrics_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LyricsSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved switch */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LyricsSettings"];
+                };
             };
         };
     };
@@ -42494,7 +46223,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42525,7 +46256,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42576,14 +46309,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Probe failed */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42654,14 +46391,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
-            /** @description Admin access required */
+            /** @description Admin role required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -42824,14 +46565,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Plex is unreachable */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43015,7 +46760,7 @@ export interface operations {
             };
         };
     };
-    get_scrobble: {
+    get_public_address: {
         parameters: {
             query?: never;
             header?: never;
@@ -43024,18 +46769,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Scrobble targets */
+            /** @description Stated public addresses */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScrobbleSettings"];
+                    "application/json": components["schemas"]["PublicAddress"];
                 };
             };
         };
     };
-    put_scrobble: {
+    put_public_address: {
         parameters: {
             query?: never;
             header?: never;
@@ -43044,17 +46789,26 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ScrobbleSettings"];
+                "application/json": components["schemas"]["PublicAddress"];
             };
         };
         responses: {
-            /** @description Saved targets */
+            /** @description The list as stored */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScrobbleSettings"];
+                    "application/json": components["schemas"]["PublicAddress"];
+                };
+            };
+            /** @description An entry is not an address, or there are more than eight */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -43246,6 +47000,8 @@ export interface operations {
                 format?: string;
                 /** @description Client bitrate cap in kbps (0 or unset means uncapped) */
                 max_bitrate?: number;
+                /** @description Seek offset in seconds for a transcode */
+                start_seconds?: number;
                 /** @description Ask a transcode landing for its estimated Content-Length */
                 estimate_content_length?: boolean;
             };
@@ -43279,55 +47035,78 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Playback refused */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown audio id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Range not satisfiable */
             416: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stream capacity exhausted */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Remote source failed the read */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
     stream_head: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Requested output codec: mp3, opus, or raw */
+                format?: string;
+                /** @description Client bitrate cap in kbps (0 or unset means uncapped) */
+                max_bitrate?: number;
+                /** @description Seek offset in seconds for a transcode */
+                start_seconds?: number;
+                /** @description Ask a transcode landing for its estimated Content-Length */
+                estimate_content_length?: boolean;
+            };
             header?: never;
             path: {
                 /** @description Audio source: local, jellyfin, navidrome, plex, or plugin */
@@ -43351,42 +47130,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Not authenticated */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Playback refused */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Unknown audio id */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Stream capacity exhausted */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description Remote source failed the read */
             502: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43413,7 +47204,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43461,7 +47254,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43488,7 +47283,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43515,7 +47312,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43542,7 +47341,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43572,7 +47373,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43599,7 +47402,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43639,10 +47444,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description YouTube had no video for the album */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description YouTube search is not set up (NOT_CONFIGURED) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -43661,15 +47477,6 @@ export interface operations {
             };
             /** @description YouTube failed */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description YouTube search is not set up (NOT_CONFIGURED) */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -43715,10 +47522,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description YouTube had no video for the track */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description YouTube search is not set up (NOT_CONFIGURED) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -43737,15 +47555,6 @@ export interface operations {
             };
             /** @description YouTube failed */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description YouTube search is not set up (NOT_CONFIGURED) */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -43791,7 +47600,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43828,7 +47639,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43871,7 +47684,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             /** @description No link saved for the album */
             404: {
@@ -43908,7 +47723,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43935,7 +47752,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -43975,11 +47794,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
-    get_quota: {
+    get_youtube_quota: {
         parameters: {
             query?: never;
             header?: never;
@@ -44002,7 +47823,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -44043,7 +47866,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -44073,7 +47898,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
         };
     };
@@ -44093,6 +47920,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    openapi_json: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description This API document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
                 };
             };
         };

@@ -14,7 +14,7 @@ interface SearchCache {
 	enrichmentSource: EnrichmentSource;
 }
 
-let searchCacheTTL = 5 * 60 * 1000;
+const searchCacheTTL = CACHE_TTL.SEARCH;
 
 const persistentSearchCache = createLocalStorageCache<Omit<SearchCache, 'timestamp'>>(
 	CACHE_KEYS.SEARCH,
@@ -66,11 +66,6 @@ function persistCache(cache: SearchCache): void {
 	);
 }
 
-export function updateSearchCacheTTL(ttlMs: number): void {
-	searchCacheTTL = ttlMs;
-	persistentSearchCache.updateTTL(ttlMs);
-}
-
 function createSearchStore() {
 	const { subscribe, set, update } = writable<SearchCache | null>(null);
 
@@ -80,7 +75,7 @@ function createSearchStore() {
 			query: string,
 			artists: Artist[],
 			albums: Album[],
-			enrichmentSource: EnrichmentSource = 'none',
+			enrichmentSource: EnrichmentSource = null,
 			topArtist: Artist | null = null,
 			topAlbum: Album | null = null
 		) {

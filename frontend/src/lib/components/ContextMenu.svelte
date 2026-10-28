@@ -11,6 +11,7 @@
 
 <script lang="ts">
 	import { EllipsisVertical } from 'lucide-svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 	import type { Component, SvelteComponent } from 'svelte';
 
 	const MENU_WIDTH = 208;
@@ -82,10 +83,17 @@
 		}
 	}
 
+	// Where the button sat when the menu opened, so a scroll that leaves it in
+	// place (another box scrolling, or the page holding its place while images
+	// above it load) keeps the menu open.
+	let openedAt: { top: number; left: number } | null = null;
+
 	function handleScroll() {
-		if (detailsEl?.open) {
-			detailsEl.open = false;
-		}
+		if (!detailsEl?.open || !summaryEl) return;
+		const rect = summaryEl.getBoundingClientRect();
+		const moved =
+			!openedAt || Math.abs(rect.top - openedAt.top) > 2 || Math.abs(rect.left - openedAt.left) > 2;
+		if (moved) detailsEl.open = false;
 	}
 
 	function handleToggle() {
@@ -96,6 +104,8 @@
 			}
 			activeMenu = detailsEl;
 			computeMenuPosition();
+			const rect = summaryEl?.getBoundingClientRect();
+			openedAt = rect ? { top: rect.top, left: rect.left } : null;
 		} else if (activeMenu === detailsEl) {
 			activeMenu = null;
 		}
@@ -119,15 +129,15 @@
 	class="dropdown {position === 'start' ? 'dropdown-start' : 'dropdown-end'}"
 	ontoggle={handleToggle}
 >
-	<summary
-		bind:this={summaryEl}
-		class="btn btn-ghost btn-circle {size === 'xs' ? 'btn-xs' : 'btn-sm'}"
+	<IconButton
+		as="summary"
+		bind:ref={summaryEl}
+		size={size === 'xs' ? 'xs' : 'sm'}
+		icon={EllipsisVertical}
+		label="More actions"
 		aria-haspopup="menu"
-		aria-label="More actions"
 		onclick={(e: MouseEvent) => e.stopPropagation()}
-	>
-		<EllipsisVertical class={size === 'xs' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
-	</summary>
+	/>
 </details>
 
 {#if isOpen}

@@ -4,9 +4,9 @@
 // tracks. The captures live in server/tests/reference/compat; the README
 // there says how to run this.
 //
-//   plant <reference dir> <tmp dir>      copy the fixture tracks into <tmp dir>/music
-//   navidrome <reference dir> --image-id <id> [--port 14533]
-//   jellyfin <reference dir> --image-id <id> [--port 18096]
+//   plant <reference dir> <tmp dir> [--set lyrics]   copy the fixture tracks into <tmp dir>/music
+//   navidrome <reference dir> --image-id <id> [--port 14533] [--set arpeggi|ratings]
+//   jellyfin <reference dir> --image-id <id> [--port 18096] [--set lyrics|played|paging]
 //   check <reference dir>                verify the checksums and the scrubbing
 //   clean <tmp dir>                      remove the planted tracks
 //
@@ -24,6 +24,12 @@ const HOST = '127.0.0.1';
 const SERVERS = {
 	navidrome: { image: 'deluan/navidrome:0.62.0', version: '0.62.0', port: 14533 },
 	jellyfin: { image: 'jellyfin/jellyfin:10.10.6', version: '10.10.6', port: 18096 }
+};
+// Request sets recorded on their own, each into `<server>-<version>-<set>`.
+const SETS = { navidrome: ['arpeggi', 'ratings'], jellyfin: ['lyrics', 'played', 'paging'] };
+// Files a set plants beside the tracks, from the fixtures folder.
+const EXTRA_FILES = {
+	lyrics: [{ fixture: 'lyrics_airbag.lrc', path: 'Radiohead/OK Computer/01 Airbag.lrc' }]
 };
 const USER = 'reference';
 const CLIENT = 'dn-ref';
@@ -83,17 +89,25 @@ function tmpDir(dir) {
 	return resolved;
 }
 
-function plant(refDir, dir) {
+function extraFiles(set) {
+	if (set !== undefined && !Object.values(SETS).flat().includes(set)) stop(`unknown --set ${set}`);
+	return EXTRA_FILES[set] ?? [];
+}
+
+function plant(refDir, dir, args) {
 	refuseInCi();
 	const tmp = tmpDir(dir);
 	const library = loadLibrary(refDir);
+	const extras = extraFiles(args.set);
 	if (fs.existsSync(tmp)) stop(`${tmp} exists: run clean first`);
-	for (const track of library.tracks) {
-		const target = path.join(tmp, 'music', track.path);
+	for (const file of [...library.tracks, ...extras]) {
+		const target = path.join(tmp, 'music', file.path);
 		fs.mkdirSync(path.dirname(target), { recursive: true });
-		fs.copyFileSync(path.join(FIXTURES, track.fixture), target, fs.constants.COPYFILE_EXCL);
+		fs.copyFileSync(path.join(FIXTURES, file.fixture), target, fs.constants.COPYFILE_EXCL);
 	}
-	console.log(`planted ${library.tracks.length} tracks under ${path.join(tmp, 'music')}`);
+	console.log(
+		`planted ${library.tracks.length} tracks and ${extras.length} other files under ${path.join(tmp, 'music')}`
+	);
 }
 
 function clean(dir) {
@@ -406,9 +420,11 @@ function prepare(server, refDir, args) {
 		stop('--image-id sha256:... is required (from docker container inspect)');
 	const port = Number(args.port ?? pinned.port);
 	if (!Number.isInteger(port) || port < 1024 || port > 65535) stop('bad --port');
+	const set = args.set;
+	if (set !== undefined && !(SETS[server] ?? []).includes(set)) stop(`unknown --set ${set}`);
 	const library = loadLibrary(refDir);
 	const folder = path.join(path.resolve(refDir), `${server}-${pinned.version}`);
-	const folders = [folder, `${folder}-writes`];
+	const folders = set ? [`${folder}-${set}`] : [folder, `${folder}-writes`];
 	for (const dir of folders)
 		if (fs.existsSync(dir)) stop(`${dir} exists: a capture is never replaced`);
 	const capture = (reported) => ({
@@ -419,9 +435,10 @@ function prepare(server, refDir, args) {
 		recorded: new Date().toISOString().slice(0, 10),
 		recorder: SCRIPT,
 		library: '../library.json',
-		library_sha256: library.sha256
+		library_sha256: library.sha256,
+		...(extraFiles(set).length ? { extra_files: extraFiles(set) } : {})
 	});
-	return { pinned, library, folders, capture, recorder: new Recorder(server, port) };
+	return { pinned, library, folders, set, capture, recorder: new Recorder(server, port) };
 }
 
 function resolveByName(recorder, kind, wanted, found) {
@@ -631,8 +648,68 @@ function navidromeWrites() {
 	];
 }
 
+// Arpeggi's artist browsing. Its library sync is the search3 below, copied
+// from a request log in Arpeggi-App issue #6. It sends the folder id that
+// getMusicFolders lists, which against gonic, numbering from 0, was 0
+// (issue #153).
+function navidromeArpeggi() {
+	const sync = [
+		['artistCount', '500'],
+		['artistOffset', '0'],
+		['albumCount', '0'],
+		['albumOffset', '0'],
+		['songCount', '0'],
+		['songOffset', '0']
+	];
+	return [
+		rest('getMusicFolders', 'getMusicFolders'),
+		rest('search3.artist-sync', 'search3', [...sync, ['musicFolderId', '1']]),
+		rest('getArtists.folder-1', 'getArtists', [['musicFolderId', '1']]),
+		rest('getIndexes.if-modified-since', 'getIndexes', [
+			['musicFolderId', '1'],
+			['ifModifiedSince', '1760000000000']
+		]),
+		rest('getArtist.no-mbid', 'getArtist', [['id', '{artist.yuki}']]),
+		rest('getArtists.folder-0', 'getArtists', [['musicFolderId', '0']]),
+		rest('search3.folder-0', 'search3', [...sync, ['musicFolderId', '0']])
+	];
+}
+
+// One rating each on a track, an album and an artist, then what shows them,
+// then the track's rating cleared.
+function navidromeRatings() {
+	const track = '{track.airbag}';
+	const album = '{album.ok_computer}';
+	const artist = '{artist.radiohead}';
+	const write = { write: true };
+	const rate = (name, id, rating) =>
+		rest(
+			name,
+			'setRating',
+			[
+				['id', id],
+				['rating', rating]
+			],
+			write
+		);
+	return [
+		rate('setRating.track', track, '4'),
+		rate('setRating.album', album, '3'),
+		rate('setRating.artist', artist, '5'),
+		rest('getSong', 'getSong', [['id', track]]),
+		rest('getAlbum', 'getAlbum', [['id', album]]),
+		rest('getArtist', 'getArtist', [['id', artist]]),
+		rest('getArtists', 'getArtists'),
+		rest('search3', 'search3'),
+		rest('getStarred2', 'getStarred2'),
+		rest('getAlbumList2.highest', 'getAlbumList2', [['type', 'highest']]),
+		rate('setRating.track-cleared', track, '0'),
+		rest('getSong.cleared', 'getSong', [['id', track]])
+	];
+}
+
 async function navidrome(refDir, args) {
-	const { pinned, library, folders, capture, recorder } = prepare('navidrome', refDir, args);
+	const { pinned, library, folders, set, capture, recorder } = prepare('navidrome', refDir, args);
 	const { scrub, refs } = recorder;
 
 	const page = await recorder.firstRead({ path: '/app/' });
@@ -686,9 +763,15 @@ async function navidrome(refDir, args) {
 	);
 
 	recorder.into(folders[0]);
-	await recorder.recordAll(navidromeReads());
-	recorder.into(folders[1]);
-	await recorder.recordAll(navidromeWrites());
+	if (set === 'arpeggi') {
+		await recorder.recordAll(navidromeArpeggi());
+	} else if (set === 'ratings') {
+		await recorder.recordAll(navidromeRatings());
+	} else {
+		await recorder.recordAll(navidromeReads());
+		recorder.into(folders[1]);
+		await recorder.recordAll(navidromeWrites());
+	}
 	recorder.write(capture(version));
 }
 
@@ -710,6 +793,13 @@ async function navidrome(refDir, args) {
 //   and one MusicBrainz artist lookup failed for that reason, so nothing
 //   was fetched.
 // - All six tracks are accepted, in five albums.
+// - /Artists lists the credited artists only. Various Artists, the
+//   compilation's album artist, is in /Artists/AlbumArtists.
+// - With --set lyrics, the .lrc planted beside Airbag was picked up by the
+//   first scan with the library options below as they are: no option was
+//   added, and LrcLib stays disabled. Airbag then has HasLyrics true and a
+//   second MediaStreams entry of Type Lyric, whose Path is the .lrc. A
+//   track without lyrics answers /Audio/{id}/Lyrics with 404.
 function jellyfinAuth(row) {
 	const identity = `MediaBrowser Client="${CLIENT}", Device="${CLIENT}", DeviceId="${CLIENT}-device", Version="1.0"`;
 	const auth = row.auth ?? 'default';
@@ -900,8 +990,109 @@ function jellyfinWrites() {
 	];
 }
 
+// Lyrics, with lyrics_airbag.lrc planted beside Airbag: the two tracks
+// alone, the album's tracks, PlaybackInfo as Finamp sends it, then the
+// lyrics address for both, an unknown id and no token.
+function jellyfinLyrics() {
+	const user = ['userId', '{user}'];
+	const playbackInfo = (name, track) =>
+		jf(name, `/Items/${track}/PlaybackInfo`, [user], {
+			method: 'POST',
+			body: { UserId: '{user}', DeviceProfile: {} }
+		});
+	return [
+		jf('item.airbag', '/Items/{track.airbag}', [user]),
+		jf('item.paranoid-android', '/Items/{track.paranoid_android}', [user]),
+		jf('items.parent-album', '/Items', [user, ['ParentId', '{album.ok_computer}']]),
+		playbackInfo('playback-info.airbag', '{track.airbag}'),
+		playbackInfo('playback-info.paranoid-android', '{track.paranoid_android}'),
+		jf('lyrics.airbag', '/Audio/{track.airbag}/Lyrics'),
+		jf('lyrics.paranoid-android', '/Audio/{track.paranoid_android}/Lyrics'),
+		jf('error.lyrics-unknown', `/Audio/${UNKNOWN_HEX_ID}/Lyrics`),
+		jf('error.lyrics-no-token', '/Audio/{track.airbag}/Lyrics', [], { auth: 'none' })
+	];
+}
+
+// Played marks: a track marked on the legacy path, its album marked on the
+// modern one, the played filter and the DatePlayed sort, a mark on each of
+// two artists with their tracks by credit and by album artist, both marks
+// taken off again, then an unknown id.
+function jellyfinPlayed() {
+	const user = ['userId', '{user}'];
+	const recursive = ['Recursive', 'true'];
+	const tracks = ['IncludeItemTypes', 'Audio'];
+	const albums = ['IncludeItemTypes', 'MusicAlbum'];
+	const post = { method: 'POST', write: true };
+	const remove = { method: 'DELETE', write: true };
+	const track = '{track.airbag}';
+	const album = '{album.ok_computer}';
+	const artist = (key) => {
+		const id = `{artist.${key}}`;
+		return [
+			jf(`played.artist.${key}`, `/UserPlayedItems/${id}`, [user], post),
+			jf(`item.artist.${key}`, `/Items/${id}`, [user]),
+			jf(`items.artist-ids.${key}`, '/Items', [user, recursive, tracks, ['ArtistIds', id]]),
+			jf(`items.album-artist-ids.${key}`, '/Items', [
+				user,
+				recursive,
+				tracks,
+				['AlbumArtistIds', id]
+			])
+		];
+	};
+	return [
+		jf('played.track.legacy', `/Users/{user}/PlayedItems/${track}`, [], post),
+		jf('item.track.played', `/Items/${track}`, [user]),
+		jf('item.album.one-track-played', `/Items/${album}`, [user]),
+		jf('played.album', `/UserPlayedItems/${album}`, [user], post),
+		jf('item.album.played', `/Items/${album}`, [user]),
+		jf('items.parent-album.played', '/Items', [user, ['ParentId', album]]),
+		jf('items.albums.filter-played', '/Items', [user, recursive, albums, ['Filters', 'IsPlayed']]),
+		jf('items.albums.filter-unplayed', '/Items', [
+			user,
+			recursive,
+			albums,
+			['Filters', 'IsUnplayed']
+		]),
+		jf('items.tracks.sort-date-played', '/Items', [
+			user,
+			recursive,
+			tracks,
+			['SortBy', 'DatePlayed'],
+			['SortOrder', 'Descending']
+		]),
+		...artist('massive_attack'),
+		...artist('various_artists'),
+		jf('unplayed.track', `/UserPlayedItems/${track}`, [user], remove),
+		jf('unplayed.album.legacy', `/Users/{user}/PlayedItems/${album}`, [], remove),
+		jf('item.track.unplayed', `/Items/${track}`, [user]),
+		jf('item.album.unplayed', `/Items/${album}`, [user]),
+		jf('items.tracks.filter-played', '/Items', [user, recursive, tracks, ['Filters', 'IsPlayed']]),
+		jf('error.played-unknown', `/UserPlayedItems/${UNKNOWN_HEX_ID}`, [user], post)
+	];
+}
+
+// Paging without SortBy: pages that start off a multiple of Limit, with
+// and without the total, for albums and tracks.
+function jellyfinPaging() {
+	const user = ['userId', '{user}'];
+	const recursive = ['Recursive', 'true'];
+	const albums = ['IncludeItemTypes', 'MusicAlbum'];
+	const tracks = ['IncludeItemTypes', 'Audio'];
+	const noTotal = ['EnableTotalRecordCount', 'false'];
+	const page = (start) => [
+		['StartIndex', start],
+		['Limit', '2']
+	];
+	return [
+		jf('items.albums.paged', '/Items', [user, recursive, albums, ...page('3')]),
+		jf('items.albums.paged-no-total', '/Items', [user, recursive, albums, ...page('1'), noTotal]),
+		jf('items.tracks.paged-no-total', '/Items', [user, recursive, tracks, ...page('1'), noTotal])
+	];
+}
+
 async function jellyfin(refDir, args) {
-	const { pinned, library, folders, capture, recorder } = prepare('jellyfin', refDir, args);
+	const { pinned, library, folders, set, capture, recorder } = prepare('jellyfin', refDir, args);
 	const { scrub, refs } = recorder;
 	const publicInfo = jf('system.info.public', '/System/Info/Public', [], { auth: 'none' });
 
@@ -1003,6 +1194,11 @@ async function jellyfin(refDir, args) {
 		})
 	);
 	const artists = named(await recorder.ok({ path: '/Artists', query: [['userId', '{user}']] }));
+	const albumArtists = named(
+		await recorder.ok({ path: '/Artists/AlbumArtists', query: [['userId', '{user}']] })
+	);
+	for (const albumArtist of albumArtists)
+		if (!artists.some((known) => known.id === albumArtist.id)) artists.push(albumArtist);
 	resolveByName(recorder, 'artist', library.artists, artists);
 	console.log(
 		`albums on the server: ${items
@@ -1016,9 +1212,17 @@ async function jellyfin(refDir, args) {
 		items.filter((item) => item.type === 'Audio')
 	);
 
-	await recorder.recordAll(jellyfinReads());
-	recorder.into(folders[1]);
-	await recorder.recordAll(jellyfinWrites());
+	if (set === 'lyrics') {
+		await recorder.recordAll(jellyfinLyrics());
+	} else if (set === 'played') {
+		await recorder.recordAll(jellyfinPlayed());
+	} else if (set === 'paging') {
+		await recorder.recordAll(jellyfinPaging());
+	} else {
+		await recorder.recordAll(jellyfinReads());
+		recorder.into(folders[1]);
+		await recorder.recordAll(jellyfinWrites());
+	}
 	recorder.write(capture(info.Version));
 }
 
@@ -1136,7 +1340,7 @@ async function main() {
 	const need = (count) => {
 		if (positional.length !== count) stop('usage: see the top of this script');
 	};
-	if (command === 'plant') return (need(2), plant(positional[0], positional[1]));
+	if (command === 'plant') return (need(2), plant(positional[0], positional[1], named));
 	if (command === 'clean') return (need(1), clean(positional[0]));
 	if (command === 'check') return (need(1), check(positional[0]));
 	if (command === 'navidrome') return (need(1), navidrome(positional[0], named));

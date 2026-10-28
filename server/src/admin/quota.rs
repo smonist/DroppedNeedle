@@ -9,7 +9,7 @@
 //!   pure inherit, the v2 `set` rule) and apply to the ledger at once, so
 //!   an edited quota bites on the next request. Boot reloads the table into
 //!   the ledger ([`reload_overrides`]).
-//! - Bounds mirror v2: count 0–1M, days 1–1M, storage 0–1M; 0 means
+//! - Bounds mirror v2: count 0-1M, days 1-1M, storage 0-1M; 0 means
 //!   unlimited.
 //! - Usage reads the enforcement view: window counts from the ledger's
 //!   recorded asks, storage from landed download bytes by owner.
@@ -22,15 +22,11 @@
 //! the user-admin routes. v2 answered 200-with-zeros on GET and
 //! blew up on the FK on PUT; neither helps an admin editor.
 
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use super::models::{QuotaOverrideView, QuotaResponse};
 use super::{AdminDb, error::AdminError, models::QuotaOverrideBody};
-use crate::{
-    acquire::requests::quota::{QuotaLedger, QuotaOverride},
-    auth::users::UsersDeps,
-    db::writer::Lane,
-};
+use droppedneedle_acquire::requests::quota::{QuotaLedger, QuotaOverride};
+use droppedneedle_auth::users::UsersDeps;
+use droppedneedle_kernel::db::{DbError, writer::Lane};
 
 /// Top of every quota bound (the v2 1M ceiling).
 const QUOTA_MAX: u64 = 1_000_000;
@@ -56,7 +52,11 @@ pub async fn get_quota(
         AdminError::internal(&format_args!("effective quota failed: {error:?}"))
     })?;
     let in_window = ledger
-        .count_in_window(user_id, effective.request_days, now_epoch())
+        .count_in_window(
+            user_id,
+            effective.request_days,
+            u64::try_from(users.clock.now_unix()).unwrap_or(0),
+        )
         .await
         .map_err(|error| {
             AdminError::internal(&format_args!("quota window count failed: {error:?}"))
@@ -107,7 +107,9 @@ pub async fn set_quota(
     // drift apart, which stays 400.
     write_override(db, &user.id, &row).await?;
     if let Err(error) = ledger.set_override(&user.id, row.clone()) {
-        if let crate::acquire::requests::error::RequestsError::InvalidInput { message } = error {
+        if let droppedneedle_acquire::requests::error::RequestsError::InvalidInput { message } =
+            error
+        {
             return Err(AdminError::InvalidInput { message });
         }
         return Err(AdminError::internal(&format_args!(
@@ -124,11 +126,12 @@ pub async fn set_quota(
 pub async fn reload_overrides(
     pool: &sqlx::SqlitePool,
     ledger: &QuotaLedger,
-) -> Result<usize, crate::db::error::DbError> {
+) -> Result<usize, droppedneedle_kernel::db::error::DbError> {
     let rows: Vec<OverrideRow> =
         sqlx::query_as("SELECT user_id, request_quota_count, request_quota_days, storage_quota_gb FROM user_quotas")
             .fetch_all(pool)
-            .await?;
+            .await
+            .map_err(|error| droppedneedle_kernel::db::map_sqlx_busy("quota-overrides-reload", error))?;
     let mut loaded = 0;
     for (user_id, count, days, storage) in rows {
         let row = QuotaOverride {
@@ -152,7 +155,7 @@ async fn read_override(db: &AdminDb, user_id: &str) -> Result<Option<QuotaOverri
          FROM user_quotas WHERE user_id = ?1",
     )
     .bind(user_id)
-    .fetch_optional(&db.pool)
+    .fetch_optional(db.db.sqlx())
     .await
     .map_err(|error| AdminError::internal(&format_args!("quota override read failed: {error}")))?;
     Ok(row.map(|(count, days, storage)| QuotaOverride {
@@ -160,6 +163,31 @@ async fn read_override(db: &AdminDb, user_id: &str) -> Result<Option<QuotaOverri
         request_days: days.and_then(|value| u32::try_from(value).ok()),
         storage_gb: storage.and_then(|value| u64::try_from(value).ok()),
     }))
+}
+
+/// Why an override write failed.
+#[derive(Debug, thiserror::Error)]
+enum OverrideWriteError {
+    /// No `auth_users` row to hang the override on: the foreign key refused
+    /// it. The user is known to the user store but not mirrored yet.
+    #[error("no such user")]
+    UnknownUser,
+    /// Any other failure, the lane's own included.
+    #[error(transparent)]
+    Db(#[from] DbError),
+}
+
+impl From<rusqlite::Error> for OverrideWriteError {
+    fn from(error: rusqlite::Error) -> Self {
+        match &error {
+            rusqlite::Error::SqliteFailure(failure, _)
+                if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY =>
+            {
+                Self::UnknownUser
+            }
+            _ => Self::Db(error.into()),
+        }
+    }
 }
 
 /// Persist one override row through the writer lane. All-`None` deletes the
@@ -171,7 +199,7 @@ async fn write_override(
 ) -> Result<(), AdminError> {
     let user_id = user_id.to_owned();
     let row = row.clone();
-    db.lane
+    db.db
         .write(Lane::Foreground, "admin-quota-set", move |tx| {
             if row.request_count.is_none() && row.request_days.is_none() && row.storage_gb.is_none()
             {
@@ -200,12 +228,10 @@ async fn write_override(
         })
         .await
         .map_err(|error| match error {
-            crate::db::error::DbError::WriteFailed { cause, .. }
-                if cause.contains("FOREIGN KEY") =>
-            {
-                AdminError::NotFound
+            OverrideWriteError::UnknownUser => AdminError::NotFound,
+            OverrideWriteError::Db(other) => {
+                AdminError::internal(&format_args!("quota override write failed: {other}"))
             }
-            other => AdminError::internal(&format_args!("quota override write failed: {other}")),
         })?;
     Ok(())
 }
@@ -219,13 +245,13 @@ async fn user_storage_bytes(db: &AdminDb, user_id: &str) -> Result<u64, AdminErr
          WHERE user_id = ?1 AND status = 'completed'",
     )
     .bind(user_id)
-    .fetch_one(&db.pool)
+    .fetch_one(db.db.sqlx())
     .await
     .map_err(|error| AdminError::internal(&format_args!("quota storage read failed: {error}")))?;
     Ok(total.unwrap_or(0).max(0) as u64)
 }
 
-/// v2 `set_override` bounds: count 0–1M, days 1–1M, storage 0–1M.
+/// v2 `set_override` bounds: count 0-1M, days 1-1M, storage 0-1M.
 fn check_bounds(body: &QuotaOverrideBody) -> Result<(), AdminError> {
     let bounds = [
         (
@@ -250,12 +276,4 @@ fn check_bounds(body: &QuotaOverrideBody) -> Result<(), AdminError> {
         }
     }
     Ok(())
-}
-
-/// Wall-clock now as unix seconds for the trailing-window math.
-fn now_epoch() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|span| span.as_secs())
-        .unwrap_or(0)
 }

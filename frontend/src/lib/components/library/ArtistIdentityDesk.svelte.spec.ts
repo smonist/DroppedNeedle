@@ -1,8 +1,8 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
-import type { MembershipPreviewResponse } from '$lib/queries/library/LibraryOperationsTypes';
+import type { ArtistMergePreviewResponse } from '$lib/queries/library/LibraryOperationsTypes';
 import type {
 	ArtistDuplicateGroupDetail,
 	ArtistDuplicateGroupSummary,
@@ -11,17 +11,15 @@ import type {
 
 const memberOne = {
 	id: 'artist-1',
-	name: 'NIKI',
-	sort_name: 'NIKI',
+	name: 'KIRA',
+	sort_name: 'KIRA',
 	row_revision: 3,
-	provider_mbid: 'mbid-niki',
+	provider_mbid: 'mbid-kira',
 	album_credit_count: 2,
 	track_credit_count: 10,
 	primary_album_count: 2,
 	favorite_count: 1,
-	playlist_count: 1,
 	history_count: 2,
-	compatibility_id_count: 1,
 	proven_credit_count: 12,
 	active_credit_count: 12
 };
@@ -39,11 +37,11 @@ const memberTwo = {
 
 const group: ArtistDuplicateGroupSummary = {
 	id: 'group-1',
-	display_name: 'NIKI',
+	display_name: 'KIRA',
 	state: 'waiting_for_identity',
 	member_count: 2,
 	members: [memberOne, memberTwo],
-	provider_mbids: ['mbid-niki'],
+	provider_mbids: ['mbid-kira'],
 	recommended_survivor_id: 'artist-1',
 	affected_reference_count: 31,
 	reason_code: 'INCOMPLETE_PROVIDER_PROOF',
@@ -52,7 +50,8 @@ const group: ArtistDuplicateGroupSummary = {
 		message: 'Only some of these records are matched to MusicBrainz yet.',
 		action: 'Identify the unmatched albums.'
 	},
-	resolved_at: null
+	resolved_at: null,
+	merge_basis: null
 };
 
 const detail: ArtistDuplicateGroupDetail = {
@@ -61,12 +60,12 @@ const detail: ArtistDuplicateGroupDetail = {
 		{
 			subject_kind: 'album',
 			subject_id: 'album-1',
-			subject_name: 'Moonchild',
+			subject_name: 'Night Garden',
 			source_local_artist_id: 'artist-1',
 			local_artist_id: 'artist-1',
-			artist_mbid: 'mbid-niki',
-			canonical_name: 'NIKI',
-			credited_name: 'NIKI',
+			artist_mbid: 'mbid-kira',
+			canonical_name: 'KIRA',
+			credited_name: 'KIRA',
 			join_phrase: '',
 			release_mbid: 'release-1',
 			release_track_mbid: null,
@@ -78,7 +77,7 @@ const detail: ArtistDuplicateGroupDetail = {
 	releases: [
 		{
 			id: 'album-1',
-			name: 'Moonchild',
+			name: 'Night Garden',
 			row_revision: 7,
 			identity_ready: true,
 			exact_track_mapping_ready: false
@@ -89,36 +88,26 @@ const detail: ArtistDuplicateGroupDetail = {
 		album_credits: 3,
 		track_credits: 14,
 		favorites: 2,
-		playlist_snapshots: 2,
-		history: 4,
-		compatibility_ids: 2
+		history: 4
 	},
 	member_revisions: { 'artist-1': 3, 'artist-2': 5 }
 };
 
 const progress: ArtistReconciliationProgress = {
-	state: 'running',
-	completed_count: 12,
-	expected_count: 24,
 	automatically_resolved_count: 14,
 	waiting_for_identity_count: 49,
 	genuine_review_count: 3,
 	provider_conflict_count: 1,
 	ambiguous_credit_structure_count: 1,
-	same_name_only_count: 1,
-	operation_job_id: 'job-1'
+	same_name_only_count: 1
 };
 
-const previewResult: MembershipPreviewResponse = {
+const previewResult: ArtistMergePreviewResponse = {
 	preview_token: 'preview-1',
-	source_album_ids: [],
-	target_album_id: null,
-	track_ids: [],
+	surviving_artist_id: 'artist-1',
 	identity_conflicts: [],
 	aliases: ['artist-2'],
-	automatic_groups: [],
-	reference_counts: detail.reference_counts,
-	edition_changes: []
+	reference_counts: detail.reference_counts
 };
 
 const h = vi.hoisted(() => ({
@@ -208,7 +197,7 @@ beforeEach(async () => {
 describe('ArtistIdentityDesk', () => {
 	it('previews and confirms the whole group while restoring focus', async () => {
 		await render(ArtistIdentityDesk);
-		await page.getByRole('button', { name: /NIKI/ }).click();
+		await page.getByRole('button', { name: /KIRA/ }).click();
 		const opener = page.getByRole('button', { name: 'Preview group merge' });
 		await opener.click();
 		await expect
@@ -238,7 +227,7 @@ describe('ArtistIdentityDesk', () => {
 	it('resets a prior detach choice before every new merge preview', async () => {
 		h.preview.mockResolvedValue({ ...previewResult, identity_conflicts: ['mbid-conflict'] });
 		await render(ArtistIdentityDesk);
-		await page.getByRole('button', { name: /NIKI/ }).first().click();
+		await page.getByRole('button', { name: /KIRA/ }).first().click();
 		const opener = page.getByRole('button', { name: 'Preview group merge' });
 		await opener.click();
 		await page.getByRole('radio', { name: 'Detach conflicting provider identities' }).click();
@@ -258,7 +247,7 @@ describe('ArtistIdentityDesk', () => {
 	it('keeps a stale preview safe and requires a new one', async () => {
 		h.apply.mockRejectedValue(new Error('stale'));
 		await render(ArtistIdentityDesk);
-		await page.getByRole('button', { name: /NIKI/ }).click();
+		await page.getByRole('button', { name: /KIRA/ }).click();
 		await page.getByRole('button', { name: 'Preview group merge' }).click();
 		await page.getByRole('checkbox', { name: /preserve retired IDs/ }).click();
 		await page.getByRole('button', { name: 'Merge artists' }).click();
@@ -268,7 +257,7 @@ describe('ArtistIdentityDesk', () => {
 
 	it('dismisses the exact member revisions after confirmation', async () => {
 		await render(ArtistIdentityDesk);
-		await page.getByRole('button', { name: /NIKI/ }).click();
+		await page.getByRole('button', { name: /KIRA/ }).click();
 		await page.getByRole('button', { name: 'Mark records as distinct' }).click();
 		await expect
 			.element(page.getByRole('heading', { name: 'Keep these artists distinct?' }))

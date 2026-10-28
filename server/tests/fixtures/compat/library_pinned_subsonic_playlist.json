@@ -3,6 +3,7 @@
     "openSubsonic": true,
     "playlist": {
       "changed": "0000-00-00T00:00:00Z",
+      "coverArt": "pl-<id-13>",
       "created": "0000-00-00T00:00:00Z",
       "duration": 0,
       "entry": [
@@ -23,26 +24,36 @@
               "name": "U2"
             }
           ],
+          "bitDepth": 0,
           "bitRate": 344,
+          "bpm": 0,
           "channelCount": 2,
+          "comment": "",
           "contentType": "audio/mpeg",
-          "coverArt": "al-<id-6>",
+          "contributors": [],
+          "coverArt": "al-<id-6>_bbbb77b2",
           "created": "0000-00-00T00:00:00Z",
           "discNumber": 1,
           "displayAlbumArtist": "U2",
           "displayArtist": "U2",
+          "displayComposer": "",
           "duration": 0,
+          "explicitStatus": "",
           "genre": "Rock",
           "genres": [
             {
               "name": "Rock"
             }
           ],
-          "id": "tr-<id-11>",
+          "groupings": [],
+          "id": "tr-<id-12>",
           "isDir": false,
+          "isrc": [],
           "mediaType": "song",
+          "moods": [],
           "musicBrainzId": "rec-one-0003",
           "parent": "al-<id-6>",
+          "path": "U2/Achtung Baby/03 One.mp3",
           "replayGain": {},
           "samplingRate": 44100,
           "size": 16008,
@@ -55,13 +66,14 @@
           "year": 1991
         }
       ],
-      "id": "pl-<id-12>",
+      "id": "pl-<id-13>",
       "name": "Journey Mix",
       "owner": "alice",
       "public": false,
+      "readonly": false,
       "songCount": 1
     },
-    "serverVersion": "10.10.6",
+    "serverVersion": "re:\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?",
     "status": "ok",
     "type": "DroppedNeedle",
     "version": "1.16.1"

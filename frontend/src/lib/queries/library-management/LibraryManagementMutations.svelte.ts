@@ -1,6 +1,6 @@
 import { createMutation } from '@tanstack/svelte-query';
 
-import { api } from '$lib/api/client';
+import { ApiError, api } from '$lib/api/client';
 import { LIBRARY_MANAGEMENT_ENDPOINTS } from './endpoints';
 import { toPreviewDetail } from './libraryManagementAdapters';
 import type { OperationResponse } from '$lib/queries/library/LibraryOperationsTypes';
@@ -29,7 +29,6 @@ import type {
 	LibraryManagementProfileImportPreviewRequest,
 	LibraryManagementProfileImportRequest,
 	LibraryManagementSettingsImpactRequest,
-	LibraryManagementSettingsResponse,
 	LibraryManagementSettingsUpdateRequest,
 	LibraryManagementTagEditPreviewRequest,
 	LibraryManagementUndoPreviewRequest
@@ -73,13 +72,7 @@ export const copyLibraryManagementProfileMutation = () =>
 export const deleteLibraryManagementProfileMutation = () =>
 	createMutation(() => ({
 		mutationFn: (input: { profileId: string; request: LibraryManagementProfileDeleteRequest }) =>
-			// The typed client sends no DELETE body, so this one call names its type.
-			api.global.delete<LibraryManagementSettingsResponse>(
-				LIBRARY_MANAGEMENT_ENDPOINTS.profile(input.profileId),
-				{
-					body: input.request
-				}
-			),
+			api.global.v3.DELETE(LIBRARY_MANAGEMENT_ENDPOINTS.profile(input.profileId), input.request),
 		onSuccess: invalidateLibraryManagementSurfaces
 	}));
 
@@ -241,6 +234,39 @@ export const resolveLibraryManagementImportBundleMutation = () =>
 	createMutation(() => ({
 		mutationFn: (input: { bundleId: string }) =>
 			api.global.v3.POST(LIBRARY_MANAGEMENT_ENDPOINTS.resolveImportBundle(input.bundleId))
+	}));
+
+const HAND_BACK_UNREADABLE = 'HAND_BACK_UNREADABLE';
+
+// The sentence, with what to do, when an album's files could not be read
+// for a hand-back; null for any other outcome.
+export function handBackRefusalMessage(error: unknown): string | null {
+	if (!(error instanceof ApiError) || error.code !== HAND_BACK_UNREADABLE) return null;
+	const action = (error.details as { action?: unknown } | null)?.action;
+	return typeof action === 'string' ? `${error.message} ${action}` : error.message;
+}
+
+// Hands one album the app stepped back from to automatic management again.
+// Its files are then retagged and renamed from its edition.
+export const handBackLibraryAlbumMutation = () =>
+	createMutation(() => ({
+		mutationFn: (input: { albumId: string }) =>
+			api.global.v3.POST(LIBRARY_MANAGEMENT_ENDPOINTS.handBackAlbum(input.albumId)),
+		onSuccess: invalidateLibraryManagementSurfaces,
+		// Unreadable files are a state the page shows beside the button, not a toast.
+		onError: (error: Error) => {
+			if (handBackRefusalMessage(error) !== null) return;
+			showActionError('Could not hand this album back')(error);
+		}
+	}));
+
+// Hands back every album the app stepped back from. The server works
+// through them in the background.
+export const handBackAllLibraryAlbumsMutation = () =>
+	createMutation(() => ({
+		mutationFn: () => api.global.v3.POST(LIBRARY_MANAGEMENT_ENDPOINTS.handBackAll()),
+		onSuccess: invalidateLibraryManagementSurfaces,
+		onError: showActionError('Could not hand these albums back')
 	}));
 
 export const controlLibraryManagementOperationMutation = (action: 'pause' | 'resume' | 'stop') =>

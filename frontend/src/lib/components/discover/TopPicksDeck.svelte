@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { coverSrc } from '$lib/api/covers';
-	import { integrationStore } from '$lib/stores/integration';
 	import { ChevronLeft, ChevronRight, Sparkles, ThumbsDown } from 'lucide-svelte';
-	import { fly } from 'svelte/transition';
-	import type { TopPickItem, TopPicksSection } from '$lib/types';
+	import { fly } from '$lib/ui/motion';
+	import type { TopPickItem, TopPicksSection } from '$lib/queries/discover/types';
 	import { SvelteSet } from 'svelte/reactivity';
 	import AlbumImage from '$lib/components/AlbumImage.svelte';
 	import AlbumRequestButton from '$lib/components/AlbumRequestButton.svelte';
@@ -15,6 +14,9 @@
 	import HorizontalCarousel from '$lib/components/HorizontalCarousel.svelte';
 	import { albumHrefOrNull, artistHrefOrNull } from '$lib/utils/entityRoutes';
 	import { libraryStore } from '$lib/stores/library';
+	import Button from '$lib/ui/Button.svelte';
+	import Card from '$lib/ui/Card.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
 
 	interface Props {
 		section: TopPicksSection;
@@ -30,15 +32,16 @@
 	const dismissed = new SvelteSet<string>();
 	let dismissing = $state(false);
 	const picks = $derived(
-		section.items.filter((pick) => !pick.album.mbid || !dismissed.has(pick.album.mbid))
+		section.items.filter(
+			(pick) => !pick.album.musicbrainz_id || !dismissed.has(pick.album.musicbrainz_id)
+		)
 	);
 	const featured = $derived(picks[featuredIndex]);
-	const featuredHref = $derived(featured ? albumHrefOrNull(featured.album.mbid) : null);
-	const featuredArtistHref = $derived(
-		featured ? artistHrefOrNull(featured.album.artist_mbid) : null
-	);
+	const featuredHref = $derived(featured ? albumHrefOrNull(featured.album.musicbrainz_id) : null);
+	const featuredArtistHref = $derived(featured ? artistHrefOrNull(featured.album.artist_id) : null);
 	const isFeaturedRequested = $derived(
-		!!featured && (featured.album.requested || libraryStore.isRequested(featured.album.mbid))
+		!!featured &&
+			(featured.album.requested || libraryStore.isRequested(featured.album.musicbrainz_id))
 	);
 
 	// cycling is MANUAL only: a self-rotating hero yanks the card away mid-read
@@ -55,11 +58,12 @@
 	}
 
 	async function ignoreFeatured() {
-		if (!featured?.album.mbid || !featured.album.artist_mbid || !onignore || dismissing) return;
+		if (!featured?.album.musicbrainz_id || !featured.album.artist_id || !onignore || dismissing)
+			return;
 		dismissing = true;
 		try {
 			await onignore(featured);
-			dismissed.add(featured.album.mbid);
+			dismissed.add(featured.album.musicbrainz_id);
 			featuredIndex = 0;
 		} catch {
 			return;
@@ -74,11 +78,11 @@
 
 {#if picks.length > 0 && featured}
 	<section class="mb-6 sm:mb-8">
-		<div
-			class="relative overflow-hidden rounded-2xl border border-primary/15 bg-base-200/40 p-5 shadow-[0_4px_24px_oklch(from_var(--color-primary)_l_c_h_/_0.08)] sm:p-6"
-		>
+		<Card variant="bordered" class="relative overflow-hidden">
 			<HeroBackdrop
-				imageUrl={featured.album.mbid ? coverSrc('release-group', featured.album.mbid, 500) : null}
+				imageUrl={featured.album.musicbrainz_id
+					? coverSrc('release-group', featured.album.musicbrainz_id, 500)
+					: null}
 				opacity={0.1}
 				hoverOpacity={0.14}
 				blur={26}
@@ -86,7 +90,7 @@
 				position="full"
 			/>
 
-			<div class="relative mb-4 flex items-center justify-between gap-3">
+			<div class="relative mb-2 flex items-center justify-between gap-3">
 				<div class="flex items-center gap-2">
 					<span class="animate-glow-pulse rounded-lg p-1">
 						<Sparkles class="h-5 w-5 text-primary" />
@@ -111,28 +115,21 @@
 				</div>
 				{#if picks.length > 1}
 					<div class="flex items-center gap-1">
-						<button
-							class="btn btn-circle btn-ghost btn-sm"
+						<IconButton
+							size="sm"
+							icon={ChevronLeft}
+							label="Previous pick"
 							onclick={() => cycle(-1)}
-							aria-label="Previous pick"
-						>
-							<ChevronLeft class="h-4 w-4" />
-						</button>
+						/>
 						<span class="font-mono text-xs text-base-content/40">
 							{featuredIndex + 1}/{picks.length}
 						</span>
-						<button
-							class="btn btn-circle btn-ghost btn-sm"
-							onclick={() => cycle(1)}
-							aria-label="Next pick"
-						>
-							<ChevronRight class="h-4 w-4" />
-						</button>
+						<IconButton size="sm" icon={ChevronRight} label="Next pick" onclick={() => cycle(1)} />
 					</div>
 				{/if}
 			</div>
 
-			{#key featured.album.mbid}
+			{#key featured.album.musicbrainz_id}
 				<div
 					in:fly={{ x: 32 * slideDirection, duration: 250 }}
 					class="relative flex flex-col gap-5 sm:flex-row sm:items-center"
@@ -145,14 +142,14 @@
 							: ''}"
 					>
 						<AlbumImage
-							mbid={featured.album.mbid || ''}
-							alt={featured.album.name}
+							mbid={featured.album.musicbrainz_id || ''}
+							alt={featured.album.title}
 							size="full"
 							requestSize={250}
 							lazy={false}
 							rounded="none"
 							className="block aspect-square w-full object-cover"
-							customUrl={featured.album.image_url || null}
+							customUrl={featured.album.cover_url || null}
 						/>
 					</svelte:element>
 
@@ -198,7 +195,7 @@
 									? 'transition-colors hover:text-primary'
 									: ''}"
 							>
-								{featured.album.name}
+								{featured.album.title}
 							</svelte:element>
 							<svelte:element
 								this={featuredArtistHref ? 'a' : 'span'}
@@ -221,43 +218,44 @@
 							{/if}
 
 							<div class="mt-3 flex items-center justify-center gap-2 sm:justify-start">
-								{#if featured.album.mbid && $integrationStore.download_client && !featured.album.in_library && !isFeaturedRequested}
+								{#if featured.album.musicbrainz_id && !featured.album.in_library && !isFeaturedRequested}
 									<AlbumRequestButton
-										mbid={featured.album.mbid}
+										mbid={featured.album.musicbrainz_id}
 										artistName={featured.album.artist_name ?? ''}
-										albumName={featured.album.name}
-										artistMbid={featured.album.artist_mbid ?? undefined}
+										albumName={featured.album.title}
+										artistMbid={featured.album.artist_id ?? undefined}
 									/>
 								{/if}
-								{#if featured.album.mbid}
+								{#if featured.album.musicbrainz_id}
 									<SampleButton
-										sampleKey={featured.album.mbid}
+										sampleKey={featured.album.musicbrainz_id}
 										artist={featured.album.artist_name ?? ''}
-										title={featured.album.name}
+										title={featured.album.title}
 										kind="album"
 										size="sm"
-										artistMbid={featured.album.artist_mbid}
-										coverUrl={featured.album.image_url}
+										artistMbid={featured.album.artist_id}
+										coverUrl={featured.album.cover_url}
 									/>
 								{/if}
-								{#if featured.album.artist_mbid}
+								{#if featured.album.artist_id}
 									<RadioPlayButton
-										seed={{ seed_type: 'artist', seed_id: featured.album.artist_mbid }}
+										seed={{ seed_type: 'artist', seed_id: featured.album.artist_id }}
 										size="sm"
 										variant="ghost"
 										label="Start radio"
 									/>
 								{/if}
-								{#if onignore && featured.album.mbid && featured.album.artist_mbid}
-									<button
-										class="btn btn-ghost btn-sm gap-1.5 text-base-content/60"
-										onclick={() => void ignoreFeatured()}
+								{#if onignore && featured.album.musicbrainz_id && featured.album.artist_id}
+									<Button
+										variant="ghost"
+										size="sm"
+										icon={ThumbsDown}
 										disabled={dismissing}
 										title="Show fewer recommendations like this"
+										onclick={() => void ignoreFeatured()}
 									>
-										<ThumbsDown class="h-4 w-4" />
 										<span class="hidden sm:inline">Not for me</span>
-									</button>
+									</Button>
 								{/if}
 							</div>
 						</div>
@@ -266,27 +264,27 @@
 			{/key}
 
 			{#if picks.length > 1}
-				<div class="relative mt-5">
+				<div class="relative mt-3">
 					<HorizontalCarousel>
-						{#each picks as pick, i (pick.album.mbid ?? `${pick.album.name}-${i}`)}
+						{#each picks as pick, i (pick.album.musicbrainz_id ?? `${pick.album.title}-${i}`)}
 							<button
 								class="relative w-20 shrink-0 overflow-hidden rounded-lg transition-all duration-200 {i ===
 								featuredIndex
 									? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100'
 									: 'opacity-60 hover:opacity-100'}"
 								onclick={() => promote(i)}
-								aria-label="Feature {pick.album.name}"
-								title="{pick.album.name} - {pick.match_pct}% match"
+								aria-label="Feature {pick.album.title}"
+								title="{pick.album.title} - {pick.match_pct}% match"
 							>
 								<AlbumImage
-									mbid={pick.album.mbid || ''}
-									alt={pick.album.name}
+									mbid={pick.album.musicbrainz_id || ''}
+									alt={pick.album.title}
 									size="full"
 									requestSize={250}
 									lazy={true}
 									rounded="none"
 									className="block aspect-square w-full object-cover"
-									customUrl={pick.album.image_url || null}
+									customUrl={pick.album.cover_url || null}
 								/>
 								<span
 									class="absolute bottom-1 right-1 rounded-full bg-base-100/90 px-1.5 py-0.5 font-mono text-[0.6rem] font-bold text-primary shadow"
@@ -298,7 +296,7 @@
 					</HorizontalCarousel>
 				</div>
 			{/if}
-		</div>
+		</Card>
 	</section>
 {/if}
 

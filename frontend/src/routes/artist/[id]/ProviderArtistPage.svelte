@@ -5,7 +5,7 @@
 	import AlbumGridSkeleton from '$lib/components/AlbumGridSkeleton.svelte';
 	import ArtistWhereToBuy from '$lib/components/ArtistWhereToBuy.svelte';
 	import ReleaseList from '$lib/components/ReleaseList.svelte';
-	import Toast from '$lib/components/Toast.svelte';
+	import Button from '$lib/ui/Button.svelte';
 	import ArtistHero from '$lib/components/ArtistHero.svelte';
 	import ArtistDescription from '$lib/components/ArtistDescription.svelte';
 	import SimilarArtistsCarousel from '$lib/components/SimilarArtistsCarousel.svelte';
@@ -46,6 +46,7 @@
 	import ArtistReleasePagination from '$lib/components/ArtistReleasePagination.svelte';
 	import { mergeArtistReleasePages } from '$lib/queries/artist/artistReleasePages';
 	import { mergeArtistImages } from '$lib/queries/catalog/catalogAdapters';
+	import { getRatingsQuery, ratingOf, setRating } from '$lib/queries/ratings/RatingQueries.svelte';
 
 	interface Props {
 		data: { artistId: string; primarySource: MusicSource };
@@ -53,6 +54,12 @@
 	}
 
 	let { data, localArtist }: Props = $props();
+
+	// Only an artist the library holds is rated, under its local id.
+	const ratingsQuery = getRatingsQuery(() =>
+		localArtist ? { artistIds: [localArtist.id] } : null
+	);
+	const rate = setRating();
 
 	// svelte-ignore state_referenced_locally
 	let activeSource = new PersistedState<MusicSource>(
@@ -133,8 +140,6 @@
 		activeSource.current = resolvedSource;
 	});
 
-	let showToast = $state(false);
-	let toastMessage = 'Added to Library';
 	let requestedReleaseIds = $state(new Set<string>());
 	let albumsCollapsed = $state(false);
 	let epsCollapsed = $state(false);
@@ -250,8 +255,6 @@
 					id: releaseId,
 					requested: true
 				});
-
-				showToast = true;
 			}
 		} finally {
 			requestedReleaseIds.delete(releaseId);
@@ -344,9 +347,9 @@
 		<div class="flex items-center justify-center min-h-[50vh]">
 			<div class="alert alert-error">
 				<span>MusicBrainz is temporarily unavailable.</span>
-				<button class="btn btn-sm btn-ghost" onclick={() => void artistBasicQuery.refetch()}>
+				<Button variant="ghost" size="sm" onclick={() => void artistBasicQuery.refetch()}>
 					Retry
-				</button>
+				</Button>
 			</div>
 		</div>
 	{:else if error}
@@ -371,6 +374,10 @@
 						showBackButton
 						refreshing={refreshingArtist}
 						onrefresh={handleRefreshClick}
+						rating={localArtist ? ratingOf(ratingsQuery.data, 'artist', localArtist.id) : 0}
+						onrate={localArtist
+							? (rating) => rate.mutate({ kind: 'artist', itemId: localArtist.id, rating })
+							: undefined}
 					/>
 
 					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 justify-center sm:justify-start">
@@ -438,11 +445,15 @@
 
 				{#if downloadableReleaseCount > 0}
 					<div class="flex justify-center sm:justify-start">
-						<button class="btn btn-accent btn-sm gap-1.5" onclick={() => openDiscographyModal()}>
-							<Download class="h-4 w-4" />
+						<Button
+							variant="accent"
+							size="sm"
+							icon={Download}
+							onclick={() => openDiscographyModal()}
+						>
 							Download Discography
 							<span class="badge badge-sm ml-0.5">{downloadableReleaseCount}</span>
-						</button>
+						</Button>
 					</div>
 				{/if}
 
@@ -565,5 +576,3 @@
 		</div>
 	{/if}
 </div>
-
-<Toast bind:show={showToast} message={toastMessage} />

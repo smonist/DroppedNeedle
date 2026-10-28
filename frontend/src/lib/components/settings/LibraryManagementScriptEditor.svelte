@@ -2,6 +2,10 @@
 	import { ArrowDown, ArrowUp, Copy, FileCode, Plus } from 'lucide-svelte';
 
 	import type { ManagementScriptSettings } from '$lib/queries/library-management/types';
+	import Button from '$lib/ui/Button.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import SelectField from '$lib/ui/SelectField.svelte';
+	import TextField from '$lib/ui/TextField.svelte';
 	import { createUuid } from '$lib/utils/uuid';
 
 	interface Props {
@@ -99,24 +103,21 @@
 
 <div class="management-script-editor">
 	<div class="management-script-toolbar">
-		<label class="grid min-w-0 flex-1 gap-1 text-xs">
-			<span class="font-semibold">Script currently being edited</span>
-			<select class="select select-bordered select-sm bg-base-100" bind:value={editorScriptId}>
-				{#each scripts as script (script.id)}
-					<option value={script.id}>{script.name}</option>
-				{/each}
-			</select>
-		</label>
-		<button class="btn btn-outline btn-sm" onclick={() => addScript(false)}>
-			<Plus class="h-4 w-4" /> New
-		</button>
-		<button
-			class="btn btn-outline btn-sm"
+		<div class="min-w-0 flex-1">
+			<SelectField
+				label="Script currently being edited"
+				options={scripts.map((script) => ({ value: script.id, label: script.name }))}
+				bind:value={editorScriptId}
+			/>
+		</div>
+		<Button variant="outline" size="sm" icon={Plus} onclick={() => addScript(false)}>New</Button>
+		<Button
+			variant="outline"
+			size="sm"
+			icon={Copy}
 			disabled={!selectedScript}
-			onclick={() => addScript(true)}
+			onclick={() => addScript(true)}>Duplicate</Button
 		>
-			<Copy class="h-4 w-4" /> Duplicate
-		</button>
 	</div>
 
 	{#if selectedScript}
@@ -132,39 +133,41 @@
 					{#if kind === 'naming'}<span class="badge badge-ghost badge-sm">{namingAssignment}</span
 						>{/if}
 					{#if kind === 'tagging'}
-						<button class="btn btn-ghost btn-xs" onclick={toggleAttached} aria-pressed={attached}>
+						<Button variant="ghost" size="xs" onclick={toggleAttached} aria-pressed={attached}>
 							{attached ? 'Attached' : 'Attach'}
-						</button>
+						</Button>
 					{/if}
 					{#if kind === 'tagging' && attached}
-						<button
-							class="btn btn-ghost btn-xs btn-square"
-							aria-label="Run script earlier"
+						<IconButton
+							size="xs"
+							shape="square"
+							icon={ArrowUp}
+							label="Run script earlier"
 							disabled={selectedIds.indexOf(editorScriptId) === 0}
-							onclick={() => moveAttached(-1)}><ArrowUp class="h-3.5 w-3.5" /></button
-						>
-						<button
-							class="btn btn-ghost btn-xs btn-square"
-							aria-label="Run script later"
+							onclick={() => moveAttached(-1)}
+						/>
+						<IconButton
+							size="xs"
+							shape="square"
+							icon={ArrowDown}
+							label="Run script later"
 							disabled={selectedIds.indexOf(editorScriptId) === selectedIds.length - 1}
-							onclick={() => moveAttached(1)}><ArrowDown class="h-3.5 w-3.5" /></button
-						>
+							onclick={() => moveAttached(1)}
+						/>
 					{/if}
 				</div>
 			</div>
 
-			<label class="mt-3 grid gap-1 text-xs">
-				<span class="font-semibold">Script name</span>
-				<input
-					class="input input-bordered input-sm bg-base-100"
-					value={selectedScript.name}
-					oninput={(event) => updateScript({ name: event.currentTarget.value })}
+			<div class="mt-3">
+				<TextField
+					label="Script name"
+					bind:value={() => selectedScript.name, (name) => updateScript({ name })}
 				/>
-			</label>
+			</div>
 			<label class="mt-3 grid gap-1 text-xs">
 				<span class="font-semibold">Source</span>
 				<textarea
-					class="textarea textarea-bordered min-h-32 w-full bg-base-100 font-mono text-xs leading-relaxed"
+					class="textarea min-h-32 w-full font-mono text-xs leading-relaxed"
 					value={selectedScript.source}
 					oninput={(event) => updateScript({ source: event.currentTarget.value })}
 					aria-label={`${kind} script source`}></textarea>
@@ -179,7 +182,7 @@
 			{#if kind === 'naming'}
 				<div class="mt-3 rounded-lg border border-base-content/10 bg-base-100 p-3 text-xs">
 					<strong>Built-in Picard-style examples</strong>
-					<p class="mt-1 font-mono">Anthony Green/Avalon (2008)/03 - Drugdealer.flac</p>
+					<p class="mt-1 font-mono">Artist/Album (2008)/03 - Title.flac</p>
 					<p class="font-mono">Artist/Album (2023)/CD 01/01 - Track.flac</p>
 					<p class="font-mono">Artist/Album (2023)/Disc 01/01 - Track.flac</p>
 				</div>
@@ -261,3 +264,30 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.management-script-editor {
+		display: grid;
+		gap: 0.75rem;
+	}
+
+	.management-script-toolbar {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.5rem;
+	}
+
+	.management-script-workbench {
+		padding: 0.85rem;
+		border: 1px solid color-mix(in oklab, var(--color-library-manage) 18%, transparent);
+		border-radius: 0.8rem;
+		background: color-mix(in oklab, var(--color-base-200) 58%, var(--color-base-100));
+	}
+
+	@media (max-width: 639px) {
+		.management-script-toolbar {
+			align-items: stretch;
+			flex-direction: column;
+		}
+	}
+</style>

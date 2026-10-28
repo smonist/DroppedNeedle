@@ -1,4 +1,4 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
@@ -12,10 +12,11 @@ import type {
 
 const h = vi.hoisted(() => ({
 	editions: undefined as AlbumEditionsResponse | undefined,
-	setPin: vi.fn(),
-	clearPin: vi.fn(),
 	acquire: vi.fn()
 }));
+
+vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/album/x') } }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
 
 vi.mock('$lib/queries/albums/EditionQueries.svelte', () => ({
 	getAlbumEditionsQuery: () => ({
@@ -23,20 +24,27 @@ vi.mock('$lib/queries/albums/EditionQueries.svelte', () => ({
 			return h.editions;
 		}
 	}),
-	setEditionPin: () => ({ mutateAsync: h.setPin, isPending: false }),
-	clearEditionPin: () => ({ mutateAsync: h.clearPin, isPending: false }),
 	acquireEdition: () => ({ mutateAsync: h.acquire, isPending: false }),
+	getEditionFetchQuery: () => ({ data: { latest: null } }),
+	editionFetchLive: () => false,
 	getAlbumEditionStatusQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	getEditionTracksQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	chooseAlbumEdition: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	handBackAlbumEdition: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	confirmAlbumEdition: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	undoAlbumEdition: () => ({ mutateAsync: vi.fn(), isPending: false }),
-	retagAfterChoice: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	sealCustomEdition: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	leaveAlbumUnmanaged: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	previewEditionTags: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	getTagWriteQuery: () => ({ data: undefined, refetch: vi.fn() }),
+	tagWriteFinished: vi.fn(),
+	writeEditionTags: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	undoTagWrite: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	editionsKey: (id: string) => ['editions', id],
 	getEditionPlanQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	removeEditionExtras: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
-	restoreEditionExtras: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
+	matchEditionFile: () => ({ mutateAsync: vi.fn(), isPending: false }),
+	unmatchEditionFile: () => ({ mutateAsync: vi.fn(), isPending: false }),
 	getWaitingAlbumsQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	invalidateAlbumEdition: () => Promise.resolve()
 }));
@@ -49,8 +57,8 @@ vi.mock('$lib/queries/library/LibraryMutations.svelte', () => ({
 
 const localAlbum: LibraryAlbumDetail = {
 	id: 'local-album-1',
-	title: 'Avalon',
-	artist_name: 'Anthony Green',
+	title: 'Glass Harbor',
+	artist_name: 'Northern Static',
 	artist_id: 'local-artist-1',
 	musicbrainz_release_group_id: '4b6276da-e7c7-36df-8771-34b92f774d3b',
 	musicbrainz_release_id: '0687c8a5-40a2-4a0c-bdc9-c1d80d94bef5',
@@ -82,9 +90,6 @@ const localAlbum: LibraryAlbumDetail = {
 	custom_manifest_track_count: 0,
 	custom_manifest_recognized_track_count: 0,
 	custom_manifest_stale: false,
-	management_excluded: false,
-	management_exclusion_revision: null,
-	management_excluded_at: null,
 	active_edition_conversion: null,
 	display_release_mbid: null,
 	pick_basis: null
@@ -114,7 +119,6 @@ vi.mock('$lib/queries/library/LibraryQueries.svelte', () => ({
 }));
 
 vi.mock('$lib/queries/library/LibraryOperationQueries.svelte', () => ({
-	getLibraryOperationQuery: () => ({ data: undefined, isError: false }),
 	getCurrentLibraryRunsQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	getLibraryRunQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 	getLibraryRunHistoryQuery: () => ({ data: undefined, isLoading: false, isError: false }),
@@ -133,19 +137,18 @@ vi.mock('$lib/queries/library/LibraryEditionQueries.svelte', () => ({
 }));
 
 vi.mock('$lib/queries/library/LibraryCatalogMutations.svelte', () => ({
-	reidentifyLibraryAlbum: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
-	reenableAlbumManagement: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
-	selectReidentificationCandidate: () => ({
-		mutateAsync: vi.fn(),
-		isPending: false,
-		isError: false
-	})
+	reenableAlbumManagement: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false })
 }));
 
 vi.mock('$lib/queries/library/LibraryOperationMutations.svelte', () => ({
 	controlLibraryOperation: () => ({ mutateAsync: vi.fn() }),
 	controlLibraryRun: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false }),
 	controlIdentification: () => ({ mutateAsync: vi.fn(), mutate: vi.fn(), isPending: false })
+}));
+
+vi.mock('$lib/queries/library-management/LibraryManagementMutations.svelte', () => ({
+	handBackLibraryAlbumMutation: () => ({ mutateAsync: vi.fn(), isPending: false, error: null }),
+	handBackRefusalMessage: () => null
 }));
 
 vi.mock('$lib/queries/downloads/UpgradeQueries.svelte', () => ({
@@ -183,7 +186,7 @@ vi.mock('$lib/utils/blobDownload', () => ({ downloadBlob: blob.download }));
 import AlbumHeader from './AlbumHeader.svelte';
 
 const album: AlbumBasicInfo = {
-	title: 'Avalon',
+	title: 'Glass Harbor',
 	musicbrainz_id: '4b6276da-e7c7-36df-8771-34b92f774d3b',
 	artist_name: 'Juliet',
 	artist_id: 'artist-1',
@@ -249,7 +252,7 @@ describe('AlbumHeader album download button', () => {
 		expect.assertions(2);
 		await renderHeader({ localCopies: [localAlbum], downloadAllowed: false });
 
-		await expect.element(page.getByRole('heading', { name: 'Avalon' })).toBeVisible();
+		await expect.element(page.getByRole('heading', { name: 'Glass Harbor' })).toBeVisible();
 		await expect
 			.element(page.getByRole('button', { name: /Download album/ }))
 			.not.toBeInTheDocument();

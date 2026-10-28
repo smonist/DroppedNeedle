@@ -1,14 +1,11 @@
-import { page } from '@vitest/browser/context';
+import { page } from 'vitest/browser';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 
 // keep the Request button real; stub only its mutation hook so it renders without a QueryClient
 const downloadMutations = vi.hoisted(() => ({ requestMutate: vi.fn() }));
 vi.mock('$lib/queries/downloads/DownloadMutations.svelte', () => ({
-	requestTrack: () => ({ mutate: downloadMutations.requestMutate, isPending: false }),
-	importHeldTrack: () => ({ mutate: vi.fn(), isPending: false }),
-	discardHeldTrack: () => ({ mutate: vi.fn(), isPending: false }),
-	reverifyHeldTrack: () => ({ mutate: vi.fn(), isPending: false })
+	requestTrack: () => ({ mutate: downloadMutations.requestMutate, isPending: false })
 }));
 
 // the per-track upgrade affordance's mutation hook (QueryClient-dependent)
@@ -16,7 +13,7 @@ vi.mock('$lib/queries/downloads/UpgradeQueries.svelte', () => ({
 	requestUpgradeTrack: () => ({ mutateAsync: vi.fn(), isPending: false })
 }));
 
-// role gates the upgrade affordance (admin/trusted curators only, D18)
+// role gates the upgrade affordance (admin/trusted curators only)
 const auth = vi.hoisted(() => ({ role: 'user' }));
 vi.mock('$lib/stores/authStore.svelte', () => ({
 	LAST_USER_ID_KEY: 'test:last-user',
@@ -30,7 +27,7 @@ vi.mock('$lib/stores/authStore.svelte', () => ({
 	}
 }));
 
-// download_client gates the Request button
+// download_client gates the Upgrade button
 vi.mock('$lib/stores/integration', () => ({
 	integrationStore: {
 		subscribe: (cb: (v: unknown) => void) => {
@@ -78,14 +75,12 @@ import { buildRenderedTrackSections, buildSortedTrackMap } from './albumTrackRes
 import type {
 	AlbumBasicInfo,
 	AlbumTracksInfo,
-	HeldImport,
-	JellyfinTrackInfo,
+	HeldFileInEntry,
 	LibraryFileMeta,
 	LocalAlbumMatch,
-	LocalTrackInfo,
-	NavidromeTrackInfo,
-	PlexTrackInfo
+	LocalTrackInfo
 } from '$lib/types';
+import type { RemoteTrack } from '$lib/queries/remotes/types';
 
 const TRACKS: AlbumTracksInfo['tracks'] = [
 	{ position: 1, disc_number: 1, title: 'Matched By MBID', length: 100000, recording_id: 'rec-1' },
@@ -143,8 +138,8 @@ const byPosition = new Map<string, LibraryFileMeta>([
 
 async function renderList(
 	over: {
-		heldByRecording?: Map<string, HeldImport>;
-		heldByPosition?: Map<string, HeldImport>;
+		heldByRecording?: Map<string, HeldFileInEntry>;
+		heldByPosition?: Map<string, HeldFileInEntry>;
 		byRecording?: Map<string, LibraryFileMeta>;
 		byPosition?: Map<string, LibraryFileMeta>;
 		releaseMbid?: string | null;
@@ -207,9 +202,9 @@ async function renderList(
 			? (
 					track: { position: number; disc_number?: number | null; title: string },
 					local: LocalTrackInfo | null,
-					jellyfin: JellyfinTrackInfo | null,
-					navidrome: NavidromeTrackInfo | null,
-					plex: PlexTrackInfo | null
+					jellyfin: RemoteTrack | null,
+					navidrome: RemoteTrack | null,
+					plex: RemoteTrack | null
 				) => realMenuItems(track, album, local, jellyfin, navidrome, plex, null)
 			: () => []
 	};
@@ -247,6 +242,77 @@ describe('AlbumTrackList upgrade affordance (admin/trusted, below cutoff)', () =
 		await renderList({ byRecording: belowCutoffOwned });
 
 		expect(page.getByRole('button', { name: /upgrade/i }).elements()).toHaveLength(0);
+	});
+});
+
+function heldFile(over: Partial<HeldFileInEntry['file']>): HeldFileInEntry {
+	const file: HeldFileInEntry['file'] = {
+		id: 1,
+		original_name: '03 Genuinely Missing.flac',
+		release_mbid: null,
+		release_track_mbid: null,
+		recording_mbid: null,
+		track_number: 3,
+		disc_number: 1,
+		track_title: 'Genuinely Missing',
+		file_format: 'flac',
+		duration_seconds: 180,
+		expected_duration_seconds: null,
+		reason: 'fingerprint_mismatch',
+		reason_detail: null,
+		reason_text: 'The fingerprint did not match this track.',
+		reason_action: 'Listen to it and import it if it is right.',
+		reason_kind: 'hold',
+		source: 'soulseek',
+		source_task_id: 'task-1',
+		created_at: 1,
+		evidence_title: null,
+		evidence_artist: null,
+		evidence_score: null,
+		actions: ['import', 'recheck'],
+		...over
+	};
+	return {
+		entry: {
+			id: 1,
+			origin: 'download',
+			state: 'held',
+			release_group_mbid: 'rg-1',
+			artist_name: 'Artist',
+			album_title: 'Album',
+			created_at: 1,
+			expires_at: 2,
+			files: [file]
+		},
+		file
+	};
+}
+
+describe('AlbumTrackList held toggle', () => {
+	it('titles a held row by why it is held', async () => {
+		await renderList({
+			tracks: [
+				...TRACKS,
+				{ position: 4, disc_number: 1, title: 'Unverified', length: 100000, recording_id: 'rec-4' }
+			],
+			heldByRecording: new Map([
+				[
+					'rec-3',
+					heldFile({
+						id: 3,
+						reason: 'target_occupied',
+						reason_kind: 'library',
+						reason_text: 'Another file sits where this would go.'
+					})
+				],
+				['rec-4', heldFile({ id: 4 })]
+			])
+		});
+
+		await expect.element(page.getByTitle('Another file sits where this would go.')).toBeVisible();
+		await expect
+			.element(page.getByTitle('The fingerprint did not match this track.'))
+			.toBeVisible();
 	});
 });
 

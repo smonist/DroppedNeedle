@@ -11,7 +11,10 @@
 		X
 	} from 'lucide-svelte';
 
-	import type { QualityRecipeEntry, QualityRecipeQuality } from '$lib/types';
+	import Button from '$lib/ui/Button.svelte';
+	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
+	import IconButton from '$lib/ui/IconButton.svelte';
+	import Input from '$lib/ui/Input.svelte';
 
 	import {
 		FLAC_OPTIONS,
@@ -27,10 +30,10 @@
 		recipeWithIds,
 		standardEntryDuplicate,
 		standardRecipeEntry,
-		UNKNOWN_BEHAVIOR_OPTIONS,
-		unknownQualitySummary,
 		validateRecipeEntry,
 		type PresetKey,
+		type QualityRecipeEntry,
+		type QualityRecipeQuality,
 		type RecipeDraftEntry,
 		type RecipeMigrationStatus
 	} from './qualityRecipeModel';
@@ -41,10 +44,8 @@
 	const FORMAT_ICONS = { flac: Disc3, mp3: Music2 } as const;
 	interface Props {
 		qualityRecipe: RecipeDraftEntry[];
-		unknownQualityBehavior: string;
 		baseline?: string | null;
 		baselineRecipe?: readonly QualityRecipeEntry[];
-		baselineUnknownQualityBehavior?: string;
 		migrationStatus?: RecipeMigrationStatus | null;
 		migrationMessage?: string | null;
 		saving?: boolean;
@@ -53,10 +54,8 @@
 
 	let {
 		qualityRecipe = $bindable(),
-		unknownQualityBehavior = $bindable(),
 		baseline = null,
 		baselineRecipe = [],
-		baselineUnknownQualityBehavior = 'allow_as_fallback',
 		migrationStatus = null,
 		migrationMessage = null,
 		saving = false,
@@ -68,33 +67,28 @@
 	let customFlacBitDepth = $state('');
 	let customFlacSampleRate = $state('');
 	let customMp3Min = $state('');
-	let customMp3Target = $state('');
 	let customMp3Max = $state('');
 	let editingId = $state<string | null>(null);
 	let editingFormat = $state<'flac' | 'mp3' | null>(null);
 	let pendingPresetKey = $state<PresetKey | null>(null);
-	let presetTrigger = $state<HTMLElement | null>(null);
-	let confirmDialog = $state<HTMLDialogElement | null>(null);
+	let presetConfirmOpen = $state(false);
 	let dragId = $state<string | null>(null);
 	let focusId = $state<string | null>(null);
 	let recipeSequence = $state(0);
 
-	const currentFingerprint = $derived(recipeFingerprint(qualityRecipe, unknownQualityBehavior));
+	const currentFingerprint = $derived(recipeFingerprint(qualityRecipe));
 	const dirty = $derived(baseline !== null && currentFingerprint !== baseline);
 	const selectedPreset = $derived(
-		PRESET_KEYS.find((key) => presetMatches(qualityRecipe, unknownQualityBehavior, PRESETS[key]))
+		PRESET_KEYS.find((key) => presetMatches(qualityRecipe, PRESETS[key]))
 	);
 	const savedPreset = $derived.by(() => {
 		if (baseline === null) return undefined;
 		return PRESET_KEYS.find(
-			(key) =>
-				recipeFingerprint(baselineRecipe, baselineUnknownQualityBehavior) ===
-				recipeFingerprint(PRESETS[key].recipe, PRESETS[key].unknown_quality_behavior)
+			(key) => recipeFingerprint(baselineRecipe) === recipeFingerprint(PRESETS[key].recipe)
 		);
 	});
 	const pendingPresetLabel = $derived(pendingPresetKey ? PRESETS[pendingPresetKey].label : '');
 	const summary = $derived(recipeSummary(qualityRecipe));
-	const liveSummary = $derived(`${summary} ${unknownQualitySummary(unknownQualityBehavior)}`);
 	const migrationAlert = $derived(
 		migrationStatus === 'v1' ||
 			migrationStatus === 'invalid' ||
@@ -129,7 +123,6 @@
 				format: 'mp3',
 				quality: 'custom',
 				min_bitrate_kbps: Number(customMp3Min),
-				target_bitrate_kbps: Number(customMp3Target),
 				max_bitrate_kbps: Number(customMp3Max)
 			};
 		}
@@ -159,20 +152,18 @@
 		});
 	});
 
-	function requestPreset(key: PresetKey, event: MouseEvent) {
+	function requestPreset(key: PresetKey) {
 		if (!dirty && migrationStatus !== 'non_convertible' && migrationStatus !== 'invalid') {
 			applyPreset(key);
 			return;
 		}
-		presetTrigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
 		pendingPresetKey = key;
-		confirmDialog?.showModal();
+		presetConfirmOpen = true;
 	}
 
 	function applyPreset(key: PresetKey) {
 		const preset = PRESETS[key];
 		qualityRecipe = recipeWithIds(preset.recipe);
-		unknownQualityBehavior = preset.unknown_quality_behavior;
 		editingId = null;
 		editingFormat = null;
 		resetForm();
@@ -180,13 +171,7 @@
 
 	function confirmPreset() {
 		if (pendingPresetKey) applyPreset(pendingPresetKey);
-		confirmDialog?.close();
-	}
-
-	function onDialogClose() {
 		pendingPresetKey = null;
-		presetTrigger?.focus();
-		presetTrigger = null;
 	}
 
 	function resetForm() {
@@ -195,7 +180,6 @@
 		customFlacBitDepth = '';
 		customFlacSampleRate = '';
 		customMp3Min = '';
-		customMp3Target = '';
 		customMp3Max = '';
 	}
 
@@ -212,7 +196,6 @@
 			mp3Quality = entry.quality as Mp3Quality;
 			if (entry.quality === 'custom') {
 				customMp3Min = String(entry.min_bitrate_kbps ?? '');
-				customMp3Target = String(entry.target_bitrate_kbps ?? '');
 				customMp3Max = String(entry.max_bitrate_kbps ?? '');
 			}
 		}
@@ -293,7 +276,6 @@
 		if (ondiscard) ondiscard();
 		else {
 			qualityRecipe = recipeWithIds(baselineRecipe);
-			unknownQualityBehavior = baselineUnknownQualityBehavior;
 		}
 		editingId = null;
 		editingFormat = null;
@@ -318,7 +300,7 @@
 </script>
 
 <div class="flex min-w-0 flex-col gap-5" data-motion="quality-recipe">
-	<p class="sr-only" role="status" aria-live="polite">{liveSummary}</p>
+	<p class="sr-only" role="status" aria-live="polite">{summary}</p>
 
 	{#if migrationAlert}
 		<div class="alert alert-warning items-start" role="alert">
@@ -335,8 +317,7 @@
 					</p>
 				{:else}
 					<p class="mt-1 text-xs text-base-content/70">
-						Choose a replacement preset below to create a valid FLAC and MP3 recipe. Active tasks
-						keep their saved policy.
+						Choose a replacement preset below to create a valid FLAC and MP3 recipe.
 					</p>
 				{/if}
 			</div>
@@ -348,12 +329,12 @@
 		<div class="grid gap-2 sm:grid-cols-2" role="group" aria-label="Quality presets">
 			{#each PRESET_KEYS as key (key)}
 				{@const preset = PRESETS[key]}
-				<button
-					type="button"
-					class="btn btn-ghost h-auto min-h-16 items-start justify-between gap-3 border border-base-300 px-3 py-2 text-start motion-reduce:transition-none hover:border-primary/50"
+				<Button
+					variant="ghost"
+					class="h-auto min-h-16 items-start justify-between gap-3 px-3 py-2 text-start"
 					data-preset={key}
 					aria-label={`Apply ${preset.label} preset`}
-					onclick={(event) => requestPreset(key, event)}
+					onclick={() => requestPreset(key)}
 				>
 					<span class="min-w-0">
 						<span class="block font-medium">{preset.label}</span>
@@ -368,7 +349,7 @@
 							<span class="badge badge-outline badge-sm">Selected</span>
 						{/if}
 					</span>
-				</button>
+				</Button>
 			{/each}
 		</div>
 	</fieldset>
@@ -399,10 +380,6 @@
 		{:else}
 			<p class="mt-2 text-xs text-base-content/55">No recipe entries yet.</p>
 		{/if}
-		<p class="mt-2 text-xs leading-5 text-base-content/55">
-			{unknownQualitySummary(unknownQualityBehavior)} This applies when a complete album cannot map to
-			exactly one recipe entry; it is not another preference position.
-		</p>
 	</section>
 
 	<section aria-label="Ordered quality recipe">
@@ -410,7 +387,7 @@
 			<div>
 				<h4 class="font-semibold">Try in this order</h4>
 				<p class="text-sm text-base-content/60">
-					The first match wins. Reordering changes preference only, never entry contents.
+					Soulseek prefers earlier entries when copies are equally complete.
 				</p>
 			</div>
 			<span class="text-xs uppercase tracking-[0.12em] text-base-content/45"
@@ -436,10 +413,11 @@
 							>
 								{index + 1}
 							</span>
-							<button
-								type="button"
-								class="btn btn-ghost btn-square min-h-11 min-w-11 cursor-grab text-base-content/45 motion-reduce:transition-none hover:text-base-content active:cursor-grabbing"
-								aria-label={`Drag to reorder ${recipeEntrySummary(entry)}`}
+							<IconButton
+								label={`Drag to reorder ${recipeEntrySummary(entry)}`}
+								icon={GripVertical}
+								shape="square"
+								class="cursor-grab active:cursor-grabbing"
 								data-recipe-handle={entry.id}
 								draggable="true"
 								ondragstart={() => (dragId = entry.id)}
@@ -453,9 +431,7 @@
 										move(index, 1);
 									}
 								}}
-							>
-								<GripVertical class="size-5" aria-hidden="true" />
-							</button>
+							/>
 							<span
 								class="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-base-200 text-primary"
 								aria-hidden="true"
@@ -476,54 +452,47 @@
 										>{/if}
 								</div>
 								{#if entry.format === 'mp3' && entry.quality === 'custom'}
-									<p class="mt-1 text-xs text-base-content/55">
-										Inclusive range; target {entry.target_bitrate_kbps} kbps
-									</p>
+									<p class="mt-1 text-xs text-base-content/55">Inclusive range</p>
 								{:else if entry.format === 'flac' && entry.quality === 'custom'}
 									<p class="mt-1 text-xs text-base-content/55">Exact detail match</p>
 								{/if}
 							</div>
 							<div class="flex shrink-0 flex-wrap items-center gap-1">
-								<button
-									type="button"
-									class="btn btn-ghost btn-sm min-h-11 min-w-11 motion-reduce:transition-none"
-									aria-label={`Move ${recipeEntrySummary(entry)} up`}
+								<IconButton
+									label={`Move ${recipeEntrySummary(entry)} up`}
+									icon={ChevronUp}
+									size="sm"
+									shape="square"
 									disabled={saving || index === 0}
 									onclick={() => move(index, -1)}
-								>
-									<ChevronUp class="size-5" aria-hidden="true" />
-								</button>
-								<button
-									type="button"
-									class="btn btn-ghost btn-sm min-h-11 min-w-11 motion-reduce:transition-none"
-									aria-label={`Move ${recipeEntrySummary(entry)} down`}
+								/>
+								<IconButton
+									label={`Move ${recipeEntrySummary(entry)} down`}
+									icon={ChevronDown}
+									size="sm"
+									shape="square"
 									disabled={saving || index === qualityRecipe.length - 1}
 									onclick={() => move(index, 1)}
-								>
-									<ChevronDown class="size-5" aria-hidden="true" />
-								</button>
-								<button
-									type="button"
-									class="btn btn-ghost btn-sm min-h-11 gap-1 motion-reduce:transition-none"
+								/>
+								<Button
+									variant="ghost"
+									size="sm"
+									icon={Pencil}
 									aria-label={`Edit ${recipeEntrySummary(entry)}`}
 									disabled={saving}
 									onclick={() => beginEdit(entry)}
 								>
-									<Pencil class="size-4" aria-hidden="true" />
 									<span class="hidden sm:inline">Edit</span>
-								</button>
-								<button
-									type="button"
-									class="btn btn-ghost btn-sm min-h-11 min-w-11 text-error motion-reduce:transition-none"
-									aria-label={`Remove ${recipeEntrySummary(entry)}`}
-									title={qualityRecipe.length === 1
-										? 'At least one recipe entry must remain.'
-										: undefined}
+								</Button>
+								<IconButton
+									label={`Remove ${recipeEntrySummary(entry)}`}
+									icon={Trash2}
+									variant="danger-ghost"
+									size="sm"
+									shape="square"
 									disabled={saving || qualityRecipe.length === 1}
 									onclick={() => remove(index)}
-								>
-									<Trash2 class="size-4" aria-hidden="true" />
-								</button>
+								/>
 							</div>
 						</div>
 					</li>
@@ -548,7 +517,7 @@
 					>
 						<input
 							type="radio"
-							class="radio radio-primary radio-sm mt-0.5"
+							class="radio radio-sm mt-0.5"
 							name="flac-quality"
 							value={option.quality}
 							checked={flacQuality === option.quality}
@@ -565,7 +534,7 @@
 				>
 					<input
 						type="radio"
-						class="radio radio-primary radio-sm mt-0.5"
+						class="radio radio-sm mt-0.5"
 						name="flac-quality"
 						value="custom"
 						checked={flacQuality === 'custom'}
@@ -583,27 +552,29 @@
 				<div class="grid min-w-0 gap-2 sm:grid-cols-2">
 					<label class="flex min-w-0 flex-col gap-1">
 						<span class="text-xs text-base-content/70">Bit depth</span>
-						<input
-							class="input input-sm w-full"
+						<Input
+							label="Custom FLAC bit depth"
 							type="number"
+							size="sm"
+							class="w-full"
 							min="1"
 							max="64"
 							step="1"
 							placeholder="1-64"
-							aria-label="Custom FLAC bit depth"
 							bind:value={customFlacBitDepth}
 						/>
 					</label>
 					<label class="flex min-w-0 flex-col gap-1">
 						<span class="text-xs text-base-content/70">Sample rate (Hz)</span>
-						<input
-							class="input input-sm w-full"
+						<Input
+							label="Custom FLAC sample rate"
 							type="number"
+							size="sm"
+							class="w-full"
 							min="8000"
 							max="768000"
 							step="1"
 							placeholder="8000-768000"
-							aria-label="Custom FLAC sample rate"
 							bind:value={customFlacSampleRate}
 						/>
 					</label>
@@ -616,16 +587,17 @@
 				>
 					{addHelpText('flac', flacFormError)}
 				</p>
-				<button
-					type="button"
-					class="btn btn-primary btn-sm min-h-11 motion-reduce:transition-none"
+				<Button
+					variant="primary"
+					size="sm"
 					disabled={saving || flacFormError !== null}
 					aria-label={editingFormat === 'flac'
 						? 'Update FLAC recipe entry'
 						: 'Add FLAC recipe entry'}
 					onclick={() => saveEntry('flac')}
-					>{editingFormat === 'flac' ? 'Update FLAC' : 'Add FLAC'}</button
 				>
+					{editingFormat === 'flac' ? 'Update FLAC' : 'Add FLAC'}
+				</Button>
 			</div>
 		</fieldset>
 
@@ -639,7 +611,7 @@
 					>
 						<input
 							type="radio"
-							class="radio radio-primary radio-sm mt-0.5"
+							class="radio radio-sm mt-0.5"
 							name="mp3-quality"
 							value={option.quality}
 							checked={mp3Quality === option.quality}
@@ -658,7 +630,7 @@
 				>
 					<input
 						type="radio"
-						class="radio radio-primary radio-sm mt-0.5"
+						class="radio radio-sm mt-0.5"
 						name="mp3-quality"
 						value="custom"
 						checked={mp3Quality === 'custom'}
@@ -667,46 +639,36 @@
 					<span class="min-w-0"
 						><span class="block text-sm font-medium">Custom</span><span
 							class="block text-xs leading-4 text-base-content/55"
-							>Inclusive minimum, target, and maximum</span
+							>Inclusive minimum and maximum</span
 						></span
 					>
 				</label>
 			</div>
 			{#if mp3Quality === 'custom'}
-				<div class="grid min-w-0 gap-2 sm:grid-cols-3">
+				<div class="grid min-w-0 gap-2 sm:grid-cols-2">
 					<label class="flex min-w-0 flex-col gap-1"
-						><span class="text-xs text-base-content/70">Minimum (kbps)</span><input
-							class="input input-sm w-full"
+						><span class="text-xs text-base-content/70">Minimum (kbps)</span><Input
+							label="Custom MP3 minimum bitrate"
 							type="number"
+							size="sm"
+							class="w-full"
 							min="16"
 							max="2048"
 							step="1"
 							placeholder="16-2048"
-							aria-label="Custom MP3 minimum bitrate"
 							bind:value={customMp3Min}
 						/></label
 					>
 					<label class="flex min-w-0 flex-col gap-1"
-						><span class="text-xs text-base-content/70">Target (kbps)</span><input
-							class="input input-sm w-full"
+						><span class="text-xs text-base-content/70">Maximum (kbps)</span><Input
+							label="Custom MP3 maximum bitrate"
 							type="number"
+							size="sm"
+							class="w-full"
 							min="16"
 							max="2048"
 							step="1"
 							placeholder="16-2048"
-							aria-label="Custom MP3 target bitrate"
-							bind:value={customMp3Target}
-						/></label
-					>
-					<label class="flex min-w-0 flex-col gap-1"
-						><span class="text-xs text-base-content/70">Maximum (kbps)</span><input
-							class="input input-sm w-full"
-							type="number"
-							min="16"
-							max="2048"
-							step="1"
-							placeholder="16-2048"
-							aria-label="Custom MP3 maximum bitrate"
 							bind:value={customMp3Max}
 						/></label
 					>
@@ -719,53 +681,25 @@
 				>
 					{addHelpText('mp3', mp3FormError)}
 				</p>
-				<button
-					type="button"
-					class="btn btn-primary btn-sm min-h-11 motion-reduce:transition-none"
+				<Button
+					variant="primary"
+					size="sm"
 					disabled={saving || mp3FormError !== null}
 					aria-label={editingFormat === 'mp3' ? 'Update MP3 recipe entry' : 'Add MP3 recipe entry'}
 					onclick={() => saveEntry('mp3')}
-					>{editingFormat === 'mp3' ? 'Update MP3' : 'Add MP3'}</button
 				>
+					{editingFormat === 'mp3' ? 'Update MP3' : 'Add MP3'}
+				</Button>
 			</div>
 		</fieldset>
 	</div>
-
-	<fieldset class="fieldset min-w-0 border-t border-base-300 pt-4">
-		<legend class="fieldset-legend">Unknown or incomplete quality</legend>
-		<div class="grid gap-2 lg:grid-cols-3">
-			{#each UNKNOWN_BEHAVIOR_OPTIONS as option (option.value)}
-				<label
-					class="flex min-w-0 cursor-pointer items-start gap-2 rounded-lg border border-base-300 px-3 py-2 min-h-11 transition-colors motion-reduce:transition-none hover:border-primary/50"
-				>
-					<input
-						type="radio"
-						class="radio radio-primary radio-sm mt-0.5"
-						name="unknown-quality-behavior"
-						value={option.value}
-						checked={unknownQualityBehavior === option.value}
-						onchange={() => (unknownQualityBehavior = option.value)}
-					/>
-					<span class="min-w-0"
-						><span class="block text-sm font-medium">{option.label}</span><span
-							class="block text-xs leading-4 text-base-content/55">{option.detail}</span
-						></span
-					>
-				</label>
-			{/each}
-		</div>
-	</fieldset>
 
 	{#if editingId}
 		<div
 			class="flex flex-wrap items-center justify-between gap-2 rounded-box border border-primary/30 bg-primary/5 p-3"
 		>
 			<p class="text-sm text-base-content/75">Editing keeps this entry in its current position.</p>
-			<button
-				type="button"
-				class="btn btn-ghost btn-sm min-h-11 gap-1 motion-reduce:transition-none"
-				onclick={cancelEdit}><X class="size-4" aria-hidden="true" />Cancel edit</button
-			>
+			<Button variant="ghost" size="sm" icon={X} onclick={cancelEdit}>Cancel edit</Button>
 		</div>
 	{/if}
 
@@ -773,42 +707,22 @@
 		class="flex flex-col gap-2 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-end"
 	>
 		{#if dirty}
-			<button
-				type="button"
-				class="btn btn-ghost btn-sm min-h-11 motion-reduce:transition-none"
-				disabled={saving}
-				onclick={discard}>Discard</button
-			>
+			<Button variant="ghost" size="sm" disabled={saving} onclick={discard}>Discard</Button>
 		{/if}
 	</div>
 	{#if recipeValidationError}
 		<p class="text-xs text-error" role="alert">{recipeValidationError}</p>
 	{/if}
 
-	<dialog
-		class="modal"
-		bind:this={confirmDialog}
-		onclose={onDialogClose}
-		aria-labelledby="quality-recipe-dialog-title"
-		aria-describedby="quality-recipe-dialog-description"
+	<ConfirmDialog
+		bind:open={presetConfirmOpen}
+		title="Replace this quality recipe?"
+		confirmLabel="Apply preset"
+		onconfirm={confirmPreset}
 	>
-		<div class="modal-box">
-			<h3 id="quality-recipe-dialog-title" class="font-semibold">Replace this quality recipe?</h3>
-			<p id="quality-recipe-dialog-description" class="mt-2 text-sm text-base-content/70">
-				You have unsaved recipe changes. Applying <strong>{pendingPresetLabel}</strong> replaces the current
-				order and quality entries.
-			</p>
-			<div class="modal-action">
-				<form method="dialog">
-					<button class="btn btn-ghost min-h-11 motion-reduce:transition-none">Cancel</button>
-				</form>
-				<button
-					type="button"
-					class="btn btn-primary min-h-11 motion-reduce:transition-none"
-					onclick={confirmPreset}>Apply preset</button
-				>
-			</div>
-		</div>
-		<form method="dialog" class="modal-backdrop"><button>close</button></form>
-	</dialog>
+		<p class="text-sm text-base-content/70">
+			You have unsaved recipe changes. Applying <strong>{pendingPresetLabel}</strong> replaces the current
+			order and quality entries.
+		</p>
+	</ConfirmDialog>
 </div>
